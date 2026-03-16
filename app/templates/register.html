@@ -151,7 +151,7 @@
                 
                 <div class="form-options" id="terms-block">
                     <label class="checkbox-wrapper">
-                        <input type="checkbox" id="terms" required>
+                        <input type="checkbox" id="terms">
                         <span class="checkmark"></span>
                         <span class="checkbox-text">Я согласен с <a href="/static/docs/terms-of-service.pdf" target="_blank">условиями использования</a> и <a href="/static/docs/privacy-policy.pdf" target="_blank">политикой конфиденциальности</a></span>
                     </label>
@@ -224,6 +224,8 @@
 
             block.scrollIntoView({ behavior: 'smooth', block: 'center' });
 
+            block.classList.remove('shake');
+            void block.offsetWidth;
             block.classList.add('highlight', 'shake');
             hint.classList.add('visible');
 
@@ -231,11 +233,6 @@
                 block.classList.remove('shake');
                 block.removeEventListener('animationend', handler);
             });
-
-            setTimeout(function() {
-                block.classList.remove('highlight');
-                hint.classList.remove('visible');
-            }, 4000);
         }
 
         document.getElementById('terms').addEventListener('change', function() {
