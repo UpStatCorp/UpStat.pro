@@ -6,6 +6,38 @@
     <title>Регистрация - SaaS Оценка</title>
     <link rel="stylesheet" href="/static/styles.css">
     <link rel="stylesheet" href="/static/auth.css">
+    <style>
+        .terms-hint {
+            display: none;
+            color: #ef4444;
+            font-size: 13px;
+            margin-top: 8px;
+            padding-left: 28px;
+            animation: fadeIn .3s ease;
+        }
+        .terms-hint.visible { display: block; }
+
+        #terms-block.shake {
+            animation: shake .4s ease;
+        }
+        #terms-block.highlight .checkmark {
+            border-color: #ef4444 !important;
+            box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.15);
+            transition: border-color .3s, box-shadow .3s;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%      { transform: translateX(-4px); }
+            40%      { transform: translateX(4px); }
+            60%      { transform: translateX(-3px); }
+            80%      { transform: translateX(3px); }
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-4px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+    </style>
 </head>
 <body class="auth-page">
     <div class="auth-container">
@@ -117,15 +149,16 @@
                     </div>
                 </div>
                 
-                <div class="form-options">
+                <div class="form-options" id="terms-block">
                     <label class="checkbox-wrapper">
                         <input type="checkbox" id="terms" required>
                         <span class="checkmark"></span>
                         <span class="checkbox-text">Я согласен с <a href="/static/docs/terms-of-service.pdf" target="_blank">условиями использования</a> и <a href="/static/docs/privacy-policy.pdf" target="_blank">политикой конфиденциальности</a></span>
                     </label>
+                    <div class="terms-hint" id="terms-hint">Необходимо принять условия для продолжения</div>
                 </div>
                 
-                <button type="submit" class="auth-button">
+                <button type="submit" class="auth-button" id="submit-btn">
                     Создать аккаунт
                 </button>
             </form>
@@ -185,8 +218,45 @@
             }
         }
 
+        function highlightTerms() {
+            const block = document.getElementById('terms-block');
+            const hint  = document.getElementById('terms-hint');
+
+            block.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+            block.classList.add('highlight', 'shake');
+            hint.classList.add('visible');
+
+            block.addEventListener('animationend', function handler() {
+                block.classList.remove('shake');
+                block.removeEventListener('animationend', handler);
+            });
+
+            setTimeout(function() {
+                block.classList.remove('highlight');
+                hint.classList.remove('visible');
+            }, 4000);
+        }
+
+        document.getElementById('terms').addEventListener('change', function() {
+            if (this.checked) {
+                document.getElementById('terms-block').classList.remove('highlight');
+                document.getElementById('terms-hint').classList.remove('visible');
+            }
+        });
+
+        document.querySelector('.auth-form').addEventListener('submit', function(e) {
+            if (!document.getElementById('terms').checked) {
+                e.preventDefault();
+                highlightTerms();
+            }
+        });
+
         function registerWithGoogle() {
-            // Сохраняем invite_token в URL, если он есть
+            if (!document.getElementById('terms').checked) {
+                highlightTerms();
+                return;
+            }
             const urlParams = new URLSearchParams(window.location.search);
             const inviteToken = urlParams.get('invite_token');
             let googleUrl = '/auth/google';
