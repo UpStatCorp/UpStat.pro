@@ -285,7 +285,7 @@
 </div>
 
 <style>
-.rec-page { padding: 28px 32px; max-width: 1400px; }
+.rec-page { padding: 28px 32px; max-width: 100%; box-sizing: border-box; }
 
 /* Header */
 .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; gap: 16px; flex-wrap: wrap; }
@@ -293,7 +293,7 @@
 .page-subtitle { color: var(--muted); font-size: 14px; margin: 4px 0 0; }
 
 /* Stats */
-.stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+.stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr)); gap: 12px; margin-bottom: 20px; }
 .stat-mini { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; text-align: center; transition: all .2s; }
 .stat-mini:hover { border-color: rgba(37,99,235,.15); }
 .stat-mini-val { font-size: 26px; font-weight: 700; color: var(--text); }
@@ -326,8 +326,8 @@
 @keyframes fadeSlide { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
 
 /* Table */
-.records-table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; margin-bottom: 16px; }
-.records-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.records-table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow-x: auto; margin-bottom: 16px; -webkit-overflow-scrolling: touch; }
+.records-table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 700px; }
 .records-table thead { background: var(--surface-hover); }
 body.dark .records-table thead { background: rgba(30,41,59,.5); }
 .records-table th { padding: 10px 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); text-align: left; white-space: nowrap; border-bottom: 1px solid var(--border); }

@@ -26,7 +26,7 @@ def is_manager(user: User) -> bool:
 
 def assert_can_manage_team(db: Session, current_user: User, team_id: int) -> Team:
     """
-    Проверяет, может ли пользователь управлять командой (админ или менеджер этой команды).
+    Проверяет, может ли пользователь управлять командой (создатель команды).
     Выбрасывает HTTPException 403, если нет прав.
     Возвращает объект Team, если права есть.
     """
@@ -34,12 +34,7 @@ def assert_can_manage_team(db: Session, current_user: User, team_id: int) -> Tea
     if not team:
         raise HTTPException(status_code=404, detail="Команда не найдена")
     
-    # Админ может управлять любой командой
-    if is_admin(current_user):
-        return team
-    
-    # Менеджер может управлять только своими командами
-    if is_manager(current_user) and team.manager_id == current_user.id:
+    if team.manager_id == current_user.id:
         return team
     
     raise HTTPException(status_code=403, detail="Нет прав для управления этой командой")
@@ -47,13 +42,10 @@ def assert_can_manage_team(db: Session, current_user: User, team_id: int) -> Tea
 
 def get_manager_teams(db: Session, current_user: User):
     """
-    Возвращает все команды, где пользователь менеджер.
-    Если пользователь админ — возвращает все команды.
+    Возвращает команды, где пользователь является создателем (manager_id).
+    Админ и менеджер имеют одинаковые права — видят только свои команды.
     """
-    if is_admin(current_user):
-        return db.query(Team).all()
-    
-    if is_manager(current_user):
+    if is_admin(current_user) or is_manager(current_user):
         return db.query(Team).filter(Team.manager_id == current_user.id).all()
     
     return []
@@ -62,15 +54,10 @@ def get_manager_teams(db: Session, current_user: User):
 def get_accessible_user_ids_for_manager(db: Session, current_user: User) -> list[int]:
     """
     Возвращает список user_id, по которым менеджер может смотреть прогресс.
-    - Админ видит всех пользователей (возвращает None, что означает "все")
-    - Менеджер видит только участников своих команд
+    - Админ и менеджер видят только участников своих команд
     - Обычный пользователь видит только себя
     """
-    if is_admin(current_user):
-        # Админ видит всех — возвращаем None, что означает "не фильтровать"
-        return None
-    
-    if is_manager(current_user):
+    if is_admin(current_user) or is_manager(current_user):
         # Получаем все команды менеджера
         teams = db.query(Team).filter(Team.manager_id == current_user.id).all()
         team_ids = [t.id for t in teams]

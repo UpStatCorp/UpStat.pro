@@ -184,14 +184,13 @@ def team_script_page(
     if not team:
         raise HTTPException(status_code=404, detail="Команда не найдена")
     
-    # Проверяем, является ли пользователь менеджером или участником команды
-    is_manager_or_admin = (is_admin(current_user) or is_manager(current_user)) and team.manager_id == current_user.id
+    is_team_manager = team.manager_id == current_user.id
     is_member = db.query(TeamMember).filter(
         TeamMember.team_id == team_id,
         TeamMember.user_id == current_user.id
     ).first() is not None
     
-    if not (is_manager_or_admin or is_member):
+    if not (is_team_manager or is_member):
         raise HTTPException(status_code=403, detail="Нет доступа к этой команде")
     
     # Получаем скрипт команды
@@ -213,7 +212,7 @@ def team_script_page(
             "team": team,
             "script": script,
             "script_data": script_data,
-            "can_edit": is_manager_or_admin  # Только менеджер может редактировать
+            "can_edit": is_team_manager
         }
     )
 

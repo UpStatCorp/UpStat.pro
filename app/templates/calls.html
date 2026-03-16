@@ -214,8 +214,8 @@
 /* Контейнер страницы */
 .calls-container {
   padding: 24px;
-  max-width: 1400px;
-  margin: 0 auto;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 /* Заголовок */
@@ -241,7 +241,7 @@
 /* Сетка карточек */
 .calls-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(380px, 100%), 1fr));
   gap: 24px;
 }
 

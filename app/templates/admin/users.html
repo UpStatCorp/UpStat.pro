@@ -2,18 +2,18 @@
 
 {% block content %}
 <!-- Заголовок -->
-<div style="margin-bottom: 32px;">
-    <h1 style="font-size: 28px; font-weight: 700; color: var(--text); margin: 0 0 8px 0;">
-        <i class="fas fa-users" style="color: var(--admin-info); margin-right: 12px;"></i>
+<div style="margin-bottom: 20px;">
+    <h1 style="font-size: 22px; font-weight: 700; color: var(--text); margin: 0 0 4px 0;">
+        <i class="fas fa-users" style="color: var(--admin-info); margin-right: 8px;"></i>
         Управление пользователями
     </h1>
-    <p style="color: var(--muted); margin: 0; font-size: 16px;">
-        Просмотр, редактирование и управление пользователями системы. Всего пользователей: {{ users|length }}
+    <p style="color: var(--muted); margin: 0; font-size: 13px;">
+        Всего пользователей: {{ users|length }}
     </p>
 </div>
 
 <!-- Статистика пользователей -->
-<div class="admin-cards" style="margin-bottom: 32px;">
+<div class="admin-cards" style="margin-bottom: 20px;">
     <div class="admin-card">
         <div class="admin-card-header">
             <div class="admin-card-title">Всего пользователей</div>
@@ -98,9 +98,9 @@
                 <td>
                     <div style="display: flex; align-items: center; gap: 12px;">
                         {% if user.avatar %}
-                        <img src="{{ user.avatar }}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;" alt="Avatar">
+                        <img src="{{ user.avatar }}" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;" alt="Avatar">
                         {% else %}
-                        <div style="width: 40px; height: 40px; background: #e5e7eb; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #6b7280;">
+                        <div style="width: 32px; height: 32px; background: #e5e7eb; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #6b7280; font-size: 12px;">
                             <i class="fas fa-user"></i>
                         </div>
                         {% endif %}
@@ -144,34 +144,28 @@
                 </td>
                 <td>
                     {% if user.id != current_user.id %}
-                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                        <!-- Смена роли -->
-                        <form method="post" action="/admin/users/{{ user.id }}/set-role" style="margin: 0; display: flex; gap: 6px; align-items: center;">
+                    <div style="display: flex; gap: 6px; align-items: center;">
+                        <form method="post" action="/admin/users/{{ user.id }}/set-role" style="margin: 0; display: flex; gap: 4px; align-items: center;">
                             <select name="role"
-                                    style="padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 12px; font-weight: 500; cursor: pointer; background: white; color: #374151; outline: none; transition: border-color 0.2s;"
-                                    onfocus="this.style.borderColor='#6366f1'" onblur="this.style.borderColor='#d1d5db'">
-                                <option value="user" {% if user.role == 'user' %}selected{% endif %}>👤 Пользователь</option>
-                                <option value="manager" {% if user.role == 'manager' %}selected{% endif %}>📋 РОП</option>
-                                <option value="sale_manager" {% if user.role == 'sale_manager' %}selected{% endif %}>💼 Менеджер продаж</option>
-                                <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>🛡️ Администратор</option>
+                                    style="padding: 4px 6px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 11px; font-weight: 500; cursor: pointer; background: white; color: #374151; outline: none;">
+                                <option value="user" {% if user.role == 'user' %}selected{% endif %}>Пользователь</option>
+                                <option value="manager" {% if user.role == 'manager' %}selected{% endif %}>РОП</option>
+                                <option value="sale_manager" {% if user.role == 'sale_manager' %}selected{% endif %}>Менеджер продаж</option>
+                                <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>Администратор</option>
                             </select>
                             <button type="submit"
-                                    style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: none; border-radius: 8px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.2s ease; background: #6366f1; color: white;"
-                                    onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(99,102,241,0.3)'"
-                                    onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'"
-                                    onclick="return confirm('Изменить роль пользователя {{ user.name }}?')">
-                                <i class="fas fa-save"></i> Сохранить
+                                    style="padding: 4px 8px; border: none; border-radius: 6px; font-size: 11px; font-weight: 500; cursor: pointer; background: #6366f1; color: white;"
+                                    onclick="return confirm('Изменить роль пользователя {{ user.name }}?')"
+                                    title="Сохранить роль">
+                                <i class="fas fa-save"></i>
                             </button>
                         </form>
-                        
-                        <!-- Удаление пользователя -->
                         <form method="post" action="/admin/users/{{ user.id }}/delete" style="margin: 0;">
                             <button type="submit" 
-                                    style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: none; border-radius: 8px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.2s ease; background: var(--admin-primary); color: white;"
-                                    onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(220,38,38,0.3)'"
-                                    onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'"
-                                    onclick="return confirm('Вы уверены, что хотите удалить пользователя {{ user.name }}? Это действие нельзя отменить!')">
-                                <i class="fas fa-trash"></i> Удалить
+                                    style="padding: 4px 8px; border: none; border-radius: 6px; font-size: 11px; font-weight: 500; cursor: pointer; background: var(--admin-primary); color: white;"
+                                    onclick="return confirm('Удалить пользователя {{ user.name }}? Это действие нельзя отменить!')"
+                                    title="Удалить пользователя">
+                                <i class="fas fa-trash"></i>
                             </button>
                         </form>
                     </div>

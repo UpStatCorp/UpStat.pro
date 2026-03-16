@@ -216,7 +216,7 @@
 </div>
 
 <style>
-.crm-page { padding: 28px 32px; max-width: 1200px; }
+.crm-page { padding: 28px 32px; max-width: 100%; box-sizing: border-box; }
 
 /* Header */
 .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 28px; gap: 16px; flex-wrap: wrap; }
@@ -224,7 +224,7 @@
 .page-subtitle { color: var(--muted); font-size: 14px; margin: 4px 0 0; }
 
 /* Stats */
-.stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 32px; }
+.stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 16px; margin-bottom: 32px; }
 .stat-card-crm { display: flex; align-items: center; gap: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; transition: all .2s; }
 .stat-card-crm:hover { border-color: rgba(37,99,235,.2); }
 .stat-icon-crm { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
@@ -239,7 +239,7 @@
 .section-title { font-size: 18px; font-weight: 600; margin: 0 0 16px; color: var(--text); }
 
 /* Integration cards */
-.integrations-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+.integrations-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr)); gap: 16px; }
 .integration-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; transition: all .2s; }
 .integration-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.06); border-color: rgba(37,99,235,.15); }
 body.dark .integration-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.3); }
@@ -255,7 +255,7 @@ body.dark .status-dot.active { color: #34d399; }
 .integration-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
 /* Add CRM */
-.add-crm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+.add-crm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr)); gap: 16px; }
 .add-crm-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 28px 20px; text-align: center; transition: all .25s; }
 .add-crm-card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,.08); }
 body.dark .add-crm-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,.3); }
@@ -265,7 +265,7 @@ body.dark .add-crm-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,.3); }
 /* How it works */
 .how-it-works { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px; }
 .how-it-works h3 { font-size: 15px; font-weight: 600; margin: 0 0 16px; color: var(--text); }
-.steps-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.steps-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 16px; }
 .step { display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--muted); }
 .step-num { width: 28px; height: 28px; border-radius: 8px; background: linear-gradient(135deg, var(--primary), var(--primary-hover)); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex-shrink: 0; }
 
