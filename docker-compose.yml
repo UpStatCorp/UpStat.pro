@@ -48,7 +48,7 @@ services:
       - SECRET_KEY=${SECRET_KEY:-dev_secret_key_change_me_in_production}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
-      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-https://up-stat.com/auth/google/callback}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-http://localhost:8000/auth/google/callback}
       - REDIS_URL=redis://redis:6379
       - DATABASE_URL=postgresql://${POSTGRES_USER:-saas_user}:${POSTGRES_PASSWORD:-saas_password}@postgres:5432/${POSTGRES_DB:-saas}
       # Параметры стабильности голоса (Voice Assistant)
@@ -77,10 +77,10 @@ services:
       # CRM интеграции (AmoCRM + Bitrix24)
       - AMOCRM_CLIENT_ID=${AMOCRM_CLIENT_ID}
       - AMOCRM_CLIENT_SECRET=${AMOCRM_CLIENT_SECRET}
-      - AMOCRM_REDIRECT_URI=${AMOCRM_REDIRECT_URI:-https://up-stat.com/crm/oauth/callback}
+      - AMOCRM_REDIRECT_URI=${AMOCRM_REDIRECT_URI:-http://localhost:8000/crm/oauth/callback}
       - BITRIX24_CLIENT_ID=${BITRIX24_CLIENT_ID}
       - BITRIX24_CLIENT_SECRET=${BITRIX24_CLIENT_SECRET}
-      - BITRIX24_REDIRECT_URI=${BITRIX24_REDIRECT_URI:-https://up-stat.com/crm/oauth/callback}
+      - BITRIX24_REDIRECT_URI=${BITRIX24_REDIRECT_URI:-http://localhost:8000/crm/oauth/callback}
 
       - SMTP_HOST=smtp.gmail.com
       - SMTP_PORT=587
@@ -89,7 +89,7 @@ services:
       - SMTP_FROM_EMAIL=dunawayctaylor81@gmail.com
       - SMTP_FROM_NAME=UpStat
       - SMTP_USE_TLS=true
-      - PUBLIC_APP_URL=http://localhost:8000
+      - PUBLIC_APP_URL=${PUBLIC_APP_URL:-http://localhost:8000}
     volumes:
       - ./app:/app
       - ./voice_assistant:/app/voice_assistant
@@ -111,7 +111,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6380:6379"
+      - "${REDIS_HOST_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     networks:
@@ -128,8 +128,8 @@ services:
   nginx:
     image: nginx:alpine
     ports:
-      - "8080:80"
-      - "8443:443"
+      - "${NGINX_HTTP_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf
       - ./ssl:/etc/nginx/ssl
@@ -146,6 +146,4 @@ networks:
 volumes:
   redis_data:
   postgres_data:
-    external: true
-    name: saas_ocenka-main_v36_postgres_data
   pgadmin_data:

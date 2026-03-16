@@ -1,0 +1,44 @@
+# Environment files
+.env
+.env.*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+.cursor/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Databases
+*.db
+*.sqlite3
+backup.sql
+
+# Uploads (user data)
+uploads/
+
+# SSL certificates
+ssl/
+
+# Logs
+server.log
+*.log
+
+# Docker override (local settings)
+docker-compose.override.yml
+
+# Cookies / secrets
+cookies.txt
+
+# Node modules
+node_modules/
