@@ -82,13 +82,21 @@
     
     {% if users %}
     <table class="admin-table">
+        <colgroup>
+            <col style="width: 22%;">
+            <col style="width: 22%;">
+            <col style="width: 14%;">
+            <col style="width: 12%;">
+            <col style="width: 10%;">
+            <col style="width: 20%;">
+        </colgroup>
         <thead>
             <tr>
                 <th>Пользователь</th>
                 <th>Email</th>
                 <th>Роль</th>
                 <th>Телефон</th>
-                <th>Дата регистрации</th>
+                <th>Дата</th>
                 <th>Действия</th>
             </tr>
         </thead>
@@ -96,25 +104,22 @@
             {% for user in users %}
             <tr{% if user.role == 'admin' %} style="background: rgba(220, 38, 38, 0.02);"{% elif user.role == 'sale_manager' %} style="background: rgba(139, 92, 246, 0.02);"{% endif %}>
                 <td>
-                    <div style="display: flex; align-items: center; gap: 12px;">
+                    <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                         {% if user.avatar %}
-                        <img src="{{ user.avatar }}" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;" alt="Avatar">
+                        <img src="{{ user.avatar }}" style="width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0;" alt="">
                         {% else %}
-                        <div style="width: 32px; height: 32px; background: #e5e7eb; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #6b7280; font-size: 12px;">
+                        <div style="width: 28px; height: 28px; background: #e5e7eb; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #6b7280; font-size: 11px; flex-shrink: 0;">
                             <i class="fas fa-user"></i>
                         </div>
                         {% endif %}
-                        <div>
-                            <div style="font-weight: 600; margin-bottom: 2px;">{{ user.name }}</div>
-                            <div style="font-size: 12px; color: var(--muted);">ID: {{ user.id }}</div>
-                            {% if user.id == current_user.id %}
-                            <span style="display: inline-block; background: var(--admin-info); color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-top: 2px;">Это вы</span>
-                            {% endif %}
+                        <div style="min-width: 0; overflow: hidden;">
+                            <div style="font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ user.name }}">{{ user.name }}</div>
+                            <div style="font-size: 11px; color: var(--muted);">ID: {{ user.id }}{% if user.id == current_user.id %} <span style="background: var(--admin-info); color: white; padding: 1px 4px; border-radius: 3px; font-size: 9px;">Это вы</span>{% endif %}</div>
                         </div>
                     </div>
                 </td>
-                <td>
-                    <div style="font-weight: 500;">{{ user.email }}</div>
+                <td title="{{ user.email }}">
+                    <div style="font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ user.email }}</div>
                 </td>
                 <td>
                     {% if user.role == 'admin' %}

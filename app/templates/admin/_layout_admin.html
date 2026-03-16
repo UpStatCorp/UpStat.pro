@@ -181,8 +181,7 @@
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      overflow-x: auto;
-      -webkit-overflow-scrolling: touch;
+      overflow: hidden;
       box-shadow: var(--shadow);
     }
     .admin-table-header{
@@ -199,13 +198,16 @@
     .admin-table{
       width: 100%;
       border-collapse: collapse;
+      table-layout: fixed;
     }
     .admin-table th,
     .admin-table td{
-      padding: 10px 14px;
+      padding: 10px 12px;
       text-align: left;
       border-bottom: 1px solid #f1f5f9;
       font-size: 13px;
+      overflow: hidden;
+      text-overflow: ellipsis;
       white-space: nowrap;
     }
     .admin-table th{
