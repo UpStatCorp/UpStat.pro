@@ -6,11 +6,14 @@ from models import User, Conversation, PasswordResetToken
 from security import hash_password, verify_password
 from services.google_oauth import google_oauth_service
 from services.team_invitations import accept_invitation
-from services.email import send_password_reset_email
+from services.email import send_password_reset_email, send_verification_code
+from services.caching_service import get_cache_service
 from datetime import datetime, timedelta
 import secrets
 import logging
 import os
+import random
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -201,7 +204,6 @@ def register(request: Request, db: Session = Depends(get_db),
              name: str = Form(...), email: str = Form(...), password: str = Form(...)):
     email_norm = email.lower().strip()
     
-    # Проверяем, есть ли приглашение и совпадает ли email
     invite_token = request.session.get("invite_token")
     if invite_token:
         try:
@@ -221,7 +223,6 @@ def register(request: Request, db: Session = Depends(get_db),
         except Exception as e:
             logger.warning(f"Ошибка проверки приглашения: {e}")
     
-    # Получаем invited_email для отображения в форме при ошибках
     invited_email_for_form = None
     if invite_token:
         try:
@@ -254,19 +255,151 @@ def register(request: Request, db: Session = Depends(get_db),
             status_code=400
         )
 
-    user = User(email=email_norm, name=name.strip(), password_hash=hash_password(password), role="user")
-    db.add(user); db.flush()
+    code = str(random.randint(100000, 999999))
+    cache = get_cache_service(os.getenv("REDIS_URL"))
+    payload = json.dumps({
+        "code": code,
+        "name": name.strip(),
+        "password_hash": hash_password(password),
+        "invite_token": invite_token,
+        "attempts": 0,
+        "sent_at": datetime.utcnow().isoformat()
+    })
+    cache.set(f"email_verify:{email_norm}", payload, ttl=600)
+
+    try:
+        send_verification_code(email_norm, code)
+    except Exception as e:
+        logger.error(f"Не удалось отправить код верификации на {email_norm}: {e}")
+        return request.app.state.templates.TemplateResponse(
+            "register.html",
+            {
+                "request": request,
+                "error": "Не удалось отправить код на email. Попробуйте позже.",
+                "invited_email": invited_email_for_form,
+                "has_invitation": invite_token is not None
+            },
+            status_code=500
+        )
+
+    logger.info(f"Verification code sent to {email_norm}")
+    return request.app.state.templates.TemplateResponse(
+        "register_verify.html",
+        {"request": request, "email": email_norm}
+    )
+
+
+@router.post("/register/verify")
+def register_verify(request: Request, db: Session = Depends(get_db),
+                    email: str = Form(...), code: str = Form(...)):
+    email_norm = email.lower().strip()
+    code = code.strip()
+    cache = get_cache_service(os.getenv("REDIS_URL"))
+    raw = cache.get(f"email_verify:{email_norm}")
+
+    if not raw:
+        return request.app.state.templates.TemplateResponse(
+            "register_verify.html",
+            {"request": request, "email": email_norm,
+             "error": "Код истёк. Пройдите регистрацию заново."}
+        )
+
+    data = json.loads(raw) if isinstance(raw, str) else raw
+
+    if data.get("attempts", 0) >= 5:
+        cache.delete(f"email_verify:{email_norm}")
+        return request.app.state.templates.TemplateResponse(
+            "register_verify.html",
+            {"request": request, "email": email_norm,
+             "error": "Слишком много попыток. Пройдите регистрацию заново."}
+        )
+
+    if code != data["code"]:
+        data["attempts"] = data.get("attempts", 0) + 1
+        cache.set(f"email_verify:{email_norm}", json.dumps(data), ttl=600)
+        remaining = 5 - data["attempts"]
+        return request.app.state.templates.TemplateResponse(
+            "register_verify.html",
+            {"request": request, "email": email_norm,
+             "error": f"Неверный код. Осталось попыток: {remaining}"}
+        )
+
+    cache.delete(f"email_verify:{email_norm}")
+
+    if db.query(User).filter(User.email == email_norm).first():
+        return request.app.state.templates.TemplateResponse(
+            "register_verify.html",
+            {"request": request, "email": email_norm,
+             "error": "Такой e-mail уже зарегистрирован"}
+        )
+
+    user = User(
+        email=email_norm,
+        name=data["name"],
+        password_hash=data["password_hash"],
+        role="user"
+    )
+    db.add(user)
+    db.flush()
     conv = Conversation(user_id=user.id, title="Мой первый диалог")
-    db.add(conv); db.commit()
+    db.add(conv)
+    db.commit()
 
     request.session["user_id"] = user.id
-    request.session["show_welcome"] = True  # Показать приветственное окно новому пользователю
-    
-    # Привязываем инвайт, если есть
+    request.session["show_welcome"] = True
+
+    if data.get("invite_token"):
+        request.session["invite_token"] = data["invite_token"]
     _attach_invitation_if_present(request, db, user)
-    
-    # → кабинет
+
     return RedirectResponse(url="/dashboard", status_code=status.HTTP_302_FOUND)
+
+
+@router.post("/register/resend")
+def register_resend(request: Request, email: str = Form(...)):
+    email_norm = email.lower().strip()
+    cache = get_cache_service(os.getenv("REDIS_URL"))
+    raw = cache.get(f"email_verify:{email_norm}")
+
+    if not raw:
+        return request.app.state.templates.TemplateResponse(
+            "register_verify.html",
+            {"request": request, "email": email_norm,
+             "error": "Сессия истекла. Пройдите регистрацию заново."}
+        )
+
+    data = json.loads(raw) if isinstance(raw, str) else raw
+
+    sent_at = datetime.fromisoformat(data.get("sent_at", "2000-01-01"))
+    if (datetime.utcnow() - sent_at).total_seconds() < 60:
+        return request.app.state.templates.TemplateResponse(
+            "register_verify.html",
+            {"request": request, "email": email_norm,
+             "error": "Подождите минуту перед повторной отправкой."}
+        )
+
+    new_code = str(random.randint(100000, 999999))
+    data["code"] = new_code
+    data["attempts"] = 0
+    data["sent_at"] = datetime.utcnow().isoformat()
+    cache.set(f"email_verify:{email_norm}", json.dumps(data), ttl=600)
+
+    try:
+        send_verification_code(email_norm, new_code)
+    except Exception as e:
+        logger.error(f"Не удалось повторно отправить код на {email_norm}: {e}")
+        return request.app.state.templates.TemplateResponse(
+            "register_verify.html",
+            {"request": request, "email": email_norm,
+             "error": "Не удалось отправить код. Попробуйте позже."}
+        )
+
+    logger.info(f"Verification code resent to {email_norm}")
+    return request.app.state.templates.TemplateResponse(
+        "register_verify.html",
+        {"request": request, "email": email_norm,
+         "success": "Новый код отправлен на вашу почту."}
+    )
 
 @router.post("/logout")
 def logout(request: Request):

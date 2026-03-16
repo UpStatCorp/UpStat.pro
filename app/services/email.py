@@ -127,6 +127,69 @@ UpStat
         logger.error(f"❌ Ошибка отправки email: {str(e)}", exc_info=True)
 
 
+def send_verification_code(user_email: str, code: str):
+    """
+    Отправляет 6-значный код подтверждения email при регистрации.
+    """
+    config = _get_smtp_config()
+
+    if not config["host"] or not config["user"] or not config["password"]:
+        logger.info(f"Verification code email -> {user_email} | code={code}")
+        logger.warning("SMTP не настроен, письмо не отправлено")
+        return
+
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"Код подтверждения: {code}"
+        msg["From"] = f"{config['from_name']} <{config['from_email']}>"
+        msg["To"] = user_email
+
+        html_body = f"""
+        <!DOCTYPE html>
+        <html lang="ru">
+        <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background: linear-gradient(135deg, #2563eb, #1d4ed8); padding: 30px; border-radius: 12px; text-align: center; margin-bottom: 30px;">
+                <h1 style="color: white; margin: 0; font-size: 28px;">Подтверждение email</h1>
+            </div>
+            <div style="background: #f8fafc; padding: 30px; border-radius: 12px; margin-bottom: 30px; text-align: center;">
+                <p style="font-size: 16px; margin: 0 0 20px 0; color: #64748b;">
+                    Введите этот код на странице регистрации:
+                </p>
+                <div style="font-size: 36px; font-weight: 800; letter-spacing: 8px; color: #1e293b; padding: 16px 24px; background: white; border-radius: 12px; border: 2px dashed #cbd5e1; display: inline-block;">
+                    {code}
+                </div>
+                <p style="font-size: 14px; color: #94a3b8; margin: 20px 0 0 0;">
+                    Код действителен 10 минут
+                </p>
+            </div>
+            <div style="text-align: center; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+                <p style="font-size: 12px; color: #94a3b8; margin: 0;">
+                    Если вы не регистрировались в UpStat, просто проигнорируйте это письмо.
+                </p>
+            </div>
+        </body>
+        </html>
+        """
+
+        text_body = f"""Код подтверждения email: {code}\n\nВведите этот код на странице регистрации.\nКод действителен 10 минут.\n\nЕсли вы не регистрировались в UpStat, проигнорируйте это письмо.\n\n---\n{config['from_name']}"""
+
+        msg.attach(MIMEText(text_body, "plain", "utf-8"))
+        msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+        with smtplib.SMTP(config["host"], config["port"]) as server:
+            if config["use_tls"]:
+                server.starttls()
+            server.login(config["user"], config["password"])
+            server.send_message(msg)
+
+        logger.info(f"Verification code email sent: {config['from_email']} -> {user_email}")
+
+    except Exception as e:
+        logger.error(f"Error sending verification code email: {str(e)}", exc_info=True)
+        raise
+
+
 def send_password_reset_email(user_email: str, reset_link: str, user_name: str = None):
     """
     Отправляет email с ссылкой для восстановления пароля.

@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Подтверждение email - UpStat</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="stylesheet" href="/static/auth.css">
+    <style>
+        .code-inputs {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin: 24px 0;
+        }
+        .code-input {
+            width: 48px;
+            height: 56px;
+            text-align: center;
+            font-size: 24px;
+            font-weight: 700;
+            background: var(--auth-surface);
+            border: 2px solid var(--auth-border);
+            border-radius: 12px;
+            color: var(--auth-text);
+            outline: none;
+            transition: all .2s ease;
+            caret-color: var(--auth-primary);
+        }
+        .code-input:focus {
+            border-color: var(--auth-primary);
+            box-shadow: 0 0 0 3px rgba(59,130,246,.15);
+            background: var(--auth-surface-hover);
+        }
+        .code-input.filled {
+            border-color: var(--auth-primary);
+            background: rgba(59,130,246,.05);
+        }
+        .code-input.error {
+            border-color: var(--auth-error);
+            box-shadow: 0 0 0 3px rgba(239,68,68,.1);
+            animation: shake .4s ease;
+        }
+        @keyframes shake {
+            0%,100% { transform: translateX(0); }
+            20%     { transform: translateX(-3px); }
+            40%     { transform: translateX(3px); }
+            60%     { transform: translateX(-2px); }
+            80%     { transform: translateX(2px); }
+        }
+
+        .verify-icon {
+            width: 64px; height: 64px;
+            background: rgba(59,130,246,.1);
+            border-radius: 16px;
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 20px;
+            border: 1px solid rgba(59,130,246,.2);
+        }
+        .verify-icon svg { width: 32px; height: 32px; color: var(--auth-primary); }
+
+        .email-display {
+            color: var(--auth-primary);
+            font-weight: 600;
+            word-break: break-all;
+        }
+
+        .resend-row {
+            text-align: center;
+            margin-top: 16px;
+            font-size: 14px;
+            color: var(--auth-text-muted);
+        }
+        .resend-btn {
+            background: none; border: none;
+            color: var(--auth-primary);
+            font-weight: 600; font-size: 14px;
+            cursor: pointer; padding: 0;
+            transition: color .2s;
+        }
+        .resend-btn:hover { color: var(--auth-primary-hover); text-decoration: underline; }
+        .resend-btn:disabled { color: var(--auth-text-muted); cursor: default; text-decoration: none; }
+
+        .success-message {
+            background: rgba(16,185,129,.1);
+            border: 1px solid rgba(16,185,129,.3);
+            border-radius: 12px;
+            padding: 12px 16px;
+            color: #10b981;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 16px;
+            display: flex; align-items: center; gap: 10px;
+        }
+
+        @media (max-width: 480px) {
+            .code-inputs { gap: 6px; }
+            .code-input { width: 40px; height: 48px; font-size: 20px; border-radius: 10px; }
+        }
+    </style>
+</head>
+<body class="auth-page">
+    <div class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header" style="text-align: center;">
+                <div class="verify-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="2" y="4" width="20" height="16" rx="2"/>
+                        <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
+                    </svg>
+                </div>
+                <h1>Подтвердите email</h1>
+                <p>Мы отправили 6-значный код на<br><span class="email-display">{{ email }}</span></p>
+            </div>
+
+            {% if error %}
+            <div class="error-message" style="background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.3); border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; display: flex; align-items: center; gap: 10px;">
+                <svg style="width:18px;height:18px;color:#ef4444;flex-shrink:0;" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                </svg>
+                <span style="color:#ef4444;font-weight:500;font-size:14px;">{{ error }}</span>
+            </div>
+            {% endif %}
+
+            {% if success %}
+            <div class="success-message">
+                <svg style="width:18px;height:18px;flex-shrink:0;" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                </svg>
+                {{ success }}
+            </div>
+            {% endif %}
+
+            <form method="post" action="/register/verify" id="verify-form">
+                <input type="hidden" name="email" value="{{ email }}">
+                <input type="hidden" name="code" id="code-hidden" value="">
+
+                <div class="code-inputs" id="code-inputs">
+                    <input type="text" inputmode="numeric" maxlength="1" class="code-input" data-idx="0" autocomplete="one-time-code">
+                    <input type="text" inputmode="numeric" maxlength="1" class="code-input" data-idx="1">
+                    <input type="text" inputmode="numeric" maxlength="1" class="code-input" data-idx="2">
+                    <input type="text" inputmode="numeric" maxlength="1" class="code-input" data-idx="3">
+                    <input type="text" inputmode="numeric" maxlength="1" class="code-input" data-idx="4">
+                    <input type="text" inputmode="numeric" maxlength="1" class="code-input" data-idx="5">
+                </div>
+
+                <button type="submit" class="auth-button" id="verify-btn" style="width:100%;" disabled>
+                    Подтвердить
+                </button>
+            </form>
+
+            <div class="resend-row">
+                <span id="resend-text">Не пришёл код? </span>
+                <form method="post" action="/register/resend" style="display:inline;">
+                    <input type="hidden" name="email" value="{{ email }}">
+                    <button type="submit" class="resend-btn" id="resend-btn" disabled>
+                        Отправить повторно (<span id="countdown">60</span>с)
+                    </button>
+                </form>
+            </div>
+
+            <div class="auth-footer" style="margin-top:24px;">
+                <p><a href="/register">Вернуться к регистрации</a></p>
+            </div>
+        </div>
+
+        <div class="auth-sidebar">
+            <div class="sidebar-content">
+                <div class="brand-logo"><h2>UpStat</h2></div>
+                <div class="social-proof">
+                    <h3>Почти готово!</h3>
+                    <p>Осталось подтвердить email, чтобы начать использовать платформу</p>
+                </div>
+                <div class="features-list">
+                    <div class="feature-item">
+                        <span class="feature-icon">🔒</span>
+                        <span>Защита аккаунта</span>
+                    </div>
+                    <div class="feature-item">
+                        <span class="feature-icon">✉️</span>
+                        <span>Проверка email</span>
+                    </div>
+                    <div class="feature-item">
+                        <span class="feature-icon">🚀</span>
+                        <span>Быстрый старт</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const inputs = document.querySelectorAll('.code-input');
+        const hidden = document.getElementById('code-hidden');
+        const form   = document.getElementById('verify-form');
+        const btn    = document.getElementById('verify-btn');
+
+        function collectCode() {
+            let code = '';
+            inputs.forEach(function(inp) { code += inp.value; });
+            hidden.value = code;
+            btn.disabled = code.length < 6;
+            inputs.forEach(function(inp) {
+                inp.classList.toggle('filled', inp.value.length > 0);
+                inp.classList.remove('error');
+            });
+        }
+
+        inputs.forEach(function(inp, i) {
+            inp.addEventListener('input', function(e) {
+                var v = this.value.replace(/\D/g, '');
+                if (v.length > 1) {
+                    var chars = v.split('');
+                    for (var j = 0; j < chars.length && (i + j) < inputs.length; j++) {
+                        inputs[i + j].value = chars[j];
+                    }
+                    var next = Math.min(i + chars.length, inputs.length - 1);
+                    inputs[next].focus();
+                } else {
+                    this.value = v;
+                    if (v && i < inputs.length - 1) inputs[i + 1].focus();
+                }
+                collectCode();
+                if (hidden.value.length === 6) form.submit();
+            });
+
+            inp.addEventListener('keydown', function(e) {
+                if (e.key === 'Backspace' && !this.value && i > 0) {
+                    inputs[i - 1].focus();
+                    inputs[i - 1].value = '';
+                    collectCode();
+                }
+                if (e.key === 'ArrowLeft' && i > 0) inputs[i - 1].focus();
+                if (e.key === 'ArrowRight' && i < inputs.length - 1) inputs[i + 1].focus();
+            });
+
+            inp.addEventListener('paste', function(e) {
+                e.preventDefault();
+                var text = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 6);
+                for (var j = 0; j < text.length; j++) {
+                    if (inputs[j]) inputs[j].value = text[j];
+                }
+                if (text.length > 0) inputs[Math.min(text.length, inputs.length) - 1].focus();
+                collectCode();
+                if (hidden.value.length === 6) form.submit();
+            });
+
+            inp.addEventListener('focus', function() { this.select(); });
+        });
+
+        inputs[0].focus();
+
+        // Resend countdown
+        var seconds = 60;
+        var resendBtn = document.getElementById('resend-btn');
+        var countdown = document.getElementById('countdown');
+        var timer = setInterval(function() {
+            seconds--;
+            countdown.textContent = seconds;
+            if (seconds <= 0) {
+                clearInterval(timer);
+                resendBtn.disabled = false;
+                resendBtn.innerHTML = 'Отправить повторно';
+            }
+        }, 1000);
+    </script>
+</body>
+</html>
