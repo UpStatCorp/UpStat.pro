@@ -1,0 +1,346 @@
+{% extends "_layout_dashboard.html" %}
+{% block title %}Чат Тренера — UpStat{% endblock %}
+
+{% block content %}
+<div class="chat-container chat-trainer">
+  <!-- Заголовок чата тренера -->
+  <div class="chat-header trainer-header">
+    <div class="chat-title">
+      <h1>🎯 Чат с ИИ-тренером</h1>
+      <p>✨ Получайте персональные советы и тренируйте навыки продаж</p>
+    </div>
+    <div class="chat-status trainer-status">
+      <div class="status-indicator online trainer-indicator"></div>
+      <span>🏆 Тренер готов к работе</span>
+    </div>
+  </div>
+
+  <!-- Основной чат тренера -->
+  <section class="chat-card trainer-card">
+    <!-- Лента сообщений -->
+    <div id="messages" class="chat-scroll">
+      {% include "partials/messages_trener.html" %}
+    </div>
+
+    <!-- Композер -->
+    <form id="chat-form" class="composer trainer-composer" action="/chat_trener/send" method="post" enctype="multipart/form-data">
+      <label class="attach-btn trainer-attach" title="Прикрепить файл" id="attach-label" style="position:relative;">
+        <input type="file" name="files" id="file-input" multiple hidden />
+        <svg width="18" height="18" viewBox="0 0 24 24">
+          <path d="M21.44 11.05l-8.49 8.49a6 6 0 01-8.49-8.49l8.49-8.49a4 4 0 015.66 5.66l-8.49 8.49a2 2 0 01-2.83-2.83l7.78-7.78" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span id="attach-badge" class="badge trainer-badge hidden"></span>
+      </label>
+
+      <textarea name="text" id="text" placeholder="Спросите тренера, загрузите аудио или скриншоты переписки..." rows="1"></textarea>
+
+      <button class="send-btn trainer-send" type="submit" title="Отправить">
+        <svg width="18" height="18" viewBox="0 0 24 24">
+          <path d="M22 2L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </form>
+
+    <!-- Превью выбранных файлов -->
+    <div id="file-chips" class="chips hidden"></div>
+
+    <!-- Прогресс -->
+    <div id="progress" class="progress hidden">
+      <div class="bar" id="progress-bar" style="width:0%;"></div>
+      <div class="label" id="progress-label">Загрузка…</div>
+    </div>
+  </section>
+</div>
+
+<script>
+  // ===== базовые ссылки
+  const scroller = document.getElementById('messages');
+  const form = document.getElementById('chat-form');
+  const textEl = document.getElementById('text');
+  const fileInput = document.getElementById('file-input');
+  const sendBtn = form.querySelector('.send-btn');
+
+  const progress = document.getElementById('progress');
+  const bar = document.getElementById('progress-bar');
+  const label = document.getElementById('progress-label');
+
+  const chipsBox = document.getElementById('file-chips');
+  const badge = document.getElementById('attach-badge');
+
+  // автоскролл вниз
+  scroller.scrollTop = scroller.scrollHeight;
+  
+
+
+  // ===== утилиты
+  function humanSize(bytes){
+    if (bytes < 1024) return bytes + ' B';
+    const kb = bytes/1024;
+    if (kb < 1024) return kb.toFixed(0) + ' KB';
+    return (kb/1024).toFixed(1) + ' MB';
+  }
+
+  function renderChips(fileList){
+    const files = Array.from(fileList || []);
+    chipsBox.innerHTML = '';
+    if (!files.length){
+      chipsBox.classList.add('hidden');
+      badge.classList.add('hidden');
+      return;
+    }
+    chipsBox.classList.remove('hidden');
+    badge.classList.remove('hidden');
+    badge.textContent = files.length;
+
+    files.forEach((f, idx) => {
+      const chip = document.createElement('div');
+      chip.className = 'chip';
+      chip.innerHTML = `
+        <span class="chip-icon">📎</span>
+        <span class="chip-name" title="${f.name}">${f.name}</span>
+        <span class="chip-size">${humanSize(f.size)}</span>
+        <button type="button" class="chip-x" aria-label="Удалить">×</button>
+      `;
+      chip.querySelector('.chip-x').addEventListener('click', () => {
+        const dt = new DataTransfer();
+        Array.from(fileInput.files).forEach((file, i) => { if (i !== idx) dt.items.add(file); });
+        fileInput.files = dt.files;
+        renderChips(fileInput.files);
+      });
+      chipsBox.appendChild(chip);
+    });
+  }
+
+  // Автоматическое изменение размера textarea  
+  textEl.addEventListener('input', function() {
+    this.style.height = 'auto';
+    const maxHeight = window.innerWidth <= 480 ? 80 : 120;
+    this.style.height = Math.min(this.scrollHeight, maxHeight) + 'px';
+  });
+
+  // событие выбора файлов
+  fileInput.addEventListener('change', () => renderChips(fileInput.files));
+  
+  // Простой polling каждую секунду для новых сообщений
+  let lastMessageId = 0;
+  
+  // Инициализируем lastMessageId с ID последнего сообщения
+  const messages = document.querySelectorAll('.msg');
+  if (messages.length > 0) {
+    const lastMsg = messages[messages.length - 1];
+    lastMessageId = parseInt(lastMsg.dataset.id || '0');
+  }
+  
+  // Функция для прокрутки вниз
+  function scrollToBottom() {
+    scroller.scrollTop = scroller.scrollHeight;
+  }
+  
+  // Функция для показа уведомления
+  function showNotification(title, message) {
+    // Toast уведомление на странице (с классом trainer для стиля тренера)
+    const toast = document.createElement('div');
+    toast.className = 'toast-notification trainer';
+    toast.innerHTML = `
+      <div class="toast-icon">🏆</div>
+      <div class="toast-content">
+        <h4 class="toast-title">${title}</h4>
+        <p class="toast-message">${message}</p>
+      </div>
+      <button class="toast-close" onclick="this.parentElement.remove()">×</button>
+    `;
+    
+    // Добавляем в body
+    document.body.appendChild(toast);
+    
+    // Автоматически удаляем через 5 секунд
+    setTimeout(() => {
+      if (toast.parentElement) {
+        toast.remove();
+      }
+    }, 5000);
+    
+    // Клик по toast закрывает его
+    toast.addEventListener('click', (e) => {
+      if (!e.target.classList.contains('toast-close')) {
+        toast.remove();
+      }
+    });
+    
+    // Браузерное уведомление (если разрешено)
+    if ("Notification" in window && Notification.permission === "granted") {
+      new Notification(title, {
+        body: message,
+        icon: "/static/favicon.ico",
+        badge: "/static/favicon.ico"
+      });
+    }
+    
+    // Звуковое уведомление
+    try {
+      const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUKfj8LZjHAU5k9n0yXcsB');
+      audio.volume = 0.3;
+      audio.play().catch(e => console.log('Звук отключен:', e));
+    } catch(e) {
+      console.log('Не удалось воспроизвести звук:', e);
+    }
+  }
+
+  // Запрос разрешения на уведомления
+  if ("Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission();
+  }
+  
+  setInterval(() => {
+    fetch(`/chat_trener/poll?last_id=${lastMessageId}`)
+      .then(response => {
+        if (response.ok) {
+          return response.text();
+        }
+        if (response.status === 204) {
+          return null; // Нет новых сообщений
+        }
+        throw new Error('Poll failed');
+      })
+      .then(html => {
+        if (html) {
+          // Добавляем новые сообщения в конец
+          const tempDiv = document.createElement('div');
+          tempDiv.innerHTML = html;
+          const newMessages = tempDiv.querySelectorAll('.msg');
+          let hasNewBotMessages = false;
+          
+          newMessages.forEach(msg => {
+            const msgId = parseInt(msg.dataset.id || '0');
+            // Не добавляем, если уже есть сообщение с таким id
+            if (!scroller.querySelector(`.msg[data-id="${msgId}"]`)) {
+              scroller.appendChild(msg.cloneNode(true));
+              
+              // Проверяем, является ли это сообщением бота
+              if (msg.classList.contains('bot')) {
+                hasNewBotMessages = true;
+              }
+            }
+            // Обновляем lastMessageId
+            if (msgId > lastMessageId) {
+              lastMessageId = msgId;
+            }
+          });
+          
+          // Показываем уведомление, если есть новые сообщения от бота
+          if (hasNewBotMessages) {
+            const lastBotMsg = Array.from(newMessages).reverse().find(m => m.classList.contains('bot'));
+            if (lastBotMsg) {
+              const text = lastBotMsg.querySelector('.text')?.textContent || 'Новое сообщение';
+              const shortText = text.length > 80 ? text.substring(0, 80) + '...' : text;
+              showNotification('🏆 Анализ тренера готов!', shortText);
+            }
+          }
+          
+          // Автоматически прокручиваем вниз при новых сообщениях
+          scrollToBottom();
+        }
+      })
+      .catch(err => {
+        console.error('Poll error:', err);
+      });
+  }, 1000);
+  
+
+
+  // enter = отправка (shift+enter — перенос)
+  let enterLock = false;
+  textEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (enterLock || isSubmitting) return;
+      enterLock = true;
+      form.requestSubmit();
+      setTimeout(() => enterLock = false, 400);
+    }
+  });
+
+  // ===== submit с защитой от двойной отправки
+  let isSubmitting = false;
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (isSubmitting) return;
+    isSubmitting = true;
+
+    sendBtn.disabled = true;
+    sendBtn.style.opacity = .6;
+    sendBtn.style.cursor = 'not-allowed';
+
+    const fd = new FormData(form);
+
+    progress.classList.remove('hidden');
+    bar.style.width = '15%';
+    const n = (fileInput.files || []).length;
+    label.textContent = n ? `Отправляю ${n} файл(ов)…` : 'Отправка…';
+
+    try {
+      const resp = await fetch('/chat_trener/send', { method: 'POST', body: fd });
+      if (!resp.ok) throw new Error('Ошибка отправки');
+
+      bar.style.width = '60%';
+      label.textContent = 'Обновляю ленту…';
+
+      // Очищаем поле ввода и файлы
+      textEl.value = '';
+      fileInput.value = '';
+      renderChips(fileInput.files);
+
+      // 🔥 Мгновенно подтянуть свежие сообщения без F5:
+      console.log('HTMX available:', !!window.htmx);
+      if (window.htmx) {
+        console.log('Calling HTMX poll...');
+        // Используем обычный fetch для обновления
+        fetch(`/chat_trener/poll?last_id=${lastMessageId}`)
+          .then(response => {
+            if (response.ok) {
+              return response.text();
+            }
+            throw new Error('Poll failed');
+          })
+          .then(html => {
+            // Добавляем новые сообщения в конец
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = html;
+            const newMessages = tempDiv.querySelectorAll('.msg');
+            newMessages.forEach(msg => {
+              const msgId = parseInt(msg.dataset.id || '0');
+              if (!scroller.querySelector(`.msg[data-id="${msgId}"]`)) {
+                scroller.appendChild(msg.cloneNode(true));
+              }
+              if (msgId > lastMessageId) {
+                lastMessageId = msgId;
+              }
+            });
+            // Прокручиваем вниз
+            scrollToBottom();
+          })
+          .catch(err => {
+            console.error('Poll error:', err);
+          });
+      } else {
+        // Fallback если HTMX не загружен
+        console.log('HTMX not available, reloading...');
+        location.reload();
+      }
+    } catch (err) {
+      label.textContent = 'Ошибка';
+    } finally {
+      setTimeout(() => {
+        progress.classList.add('hidden');
+        bar.style.width = '0%';
+        isSubmitting = false;
+        sendBtn.disabled = false;
+        sendBtn.style.opacity = 1;
+        sendBtn.style.cursor = 'pointer';
+      }, 600);
+    }
+  });
+</script>
+{% endblock %}

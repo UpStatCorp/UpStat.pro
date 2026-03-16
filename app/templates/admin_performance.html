@@ -1,0 +1,326 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+.perf-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+    margin: 20px 0;
+}
+
+.perf-card {
+    background: var(--card-bg, #fff);
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.perf-card h3 {
+    margin: 0 0 15px 0;
+    font-size: 18px;
+    color: var(--text-primary, #1f2937);
+}
+
+.perf-stat {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border-color, #e5e7eb);
+}
+
+.perf-stat:last-child {
+    border-bottom: none;
+}
+
+.perf-label {
+    color: var(--text-secondary, #6b7280);
+    font-size: 14px;
+}
+
+.perf-value {
+    font-weight: 600;
+    font-size: 16px;
+    color: var(--text-primary, #1f2937);
+}
+
+.perf-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 15px;
+}
+
+.btn-action {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.btn-action:hover {
+    opacity: 0.8;
+}
+
+.btn-primary {
+    background: #3b82f6;
+    color: white;
+}
+
+.btn-danger {
+    background: #ef4444;
+    color: white;
+}
+
+.btn-success {
+    background: #10b981;
+    color: white;
+}
+
+[data-theme="dark"] .perf-card {
+    background: var(--card-bg, #1f2937);
+}
+
+[data-theme="dark"] .perf-stat {
+    border-bottom-color: var(--border-color, #374151);
+}
+</style>
+
+<h1>Мониторинг производительности</h1>
+
+<div class="perf-grid">
+    <!-- Кеш -->
+    <div class="perf-card">
+        <h3>📦 Кеш</h3>
+        <div id="cache-stats">
+            <div class="perf-stat">
+                <span class="perf-label">Загрузка...</span>
+                <span class="perf-value">-</span>
+            </div>
+        </div>
+        <div class="perf-actions">
+            <button class="btn-action btn-danger" onclick="clearCache()">Очистить кеш</button>
+        </div>
+    </div>
+
+    <!-- База данных -->
+    <div class="perf-card">
+        <h3>🗄️ База данных</h3>
+        <div id="db-stats">
+            <div class="perf-stat">
+                <span class="perf-label">Загрузка...</span>
+                <span class="perf-value">-</span>
+            </div>
+        </div>
+        <div class="perf-actions">
+            <button class="btn-action btn-primary" onclick="optimizeDatabase()">Оптимизировать</button>
+            <button class="btn-action btn-danger" onclick="cleanupDatabase()">Очистить старые</button>
+        </div>
+    </div>
+
+    <!-- Хранилище -->
+    <div class="perf-card">
+        <h3>💾 Хранилище файлов</h3>
+        <div id="storage-stats">
+            <div class="perf-stat">
+                <span class="perf-label">Загрузка...</span>
+                <span class="perf-value">-</span>
+            </div>
+        </div>
+        <div class="perf-actions">
+            <button class="btn-action btn-danger" onclick="cleanupStorage()">Очистить старые файлы</button>
+            <button class="btn-action btn-success" onclick="clearFileCache()">Очистить кеш файлов</button>
+        </div>
+    </div>
+
+    <!-- Система -->
+    <div class="perf-card">
+        <h3>⚙️ Система</h3>
+        <div id="system-stats">
+            <div class="perf-stat">
+                <span class="perf-label">Загрузка...</span>
+                <span class="perf-value">-</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+async function loadStats() {
+    try {
+        // Загружаем кеш статистику
+        const cacheResp = await fetch('/api/performance/cache/stats');
+        if (cacheResp.ok) {
+            const cache = await cacheResp.json();
+            document.getElementById('cache-stats').innerHTML = `
+                <div class="perf-stat">
+                    <span class="perf-label">Тип</span>
+                    <span class="perf-value">${cache.type || 'N/A'}</span>
+                </div>
+                <div class="perf-stat">
+                    <span class="perf-label">Записей</span>
+                    <span class="perf-value">${cache.keys || 0}</span>
+                </div>
+                ${cache.hits !== undefined ? `
+                <div class="perf-stat">
+                    <span class="perf-label">Попадания</span>
+                    <span class="perf-value">${cache.hits}</span>
+                </div>
+                <div class="perf-stat">
+                    <span class="perf-label">Промахи</span>
+                    <span class="perf-value">${cache.misses}</span>
+                </div>
+                ` : ''}
+            `;
+        }
+
+        // Загружаем БД статистику
+        const dbResp = await fetch('/api/performance/database/stats');
+        if (dbResp.ok) {
+            const db = await dbResp.json();
+            document.getElementById('db-stats').innerHTML = `
+                <div class="perf-stat">
+                    <span class="perf-label">Размер</span>
+                    <span class="perf-value">${db.size_mb || 0} МБ</span>
+                </div>
+                <div class="perf-stat">
+                    <span class="perf-label">Всего записей</span>
+                    <span class="perf-value">${db.total_records || 0}</span>
+                </div>
+            `;
+        }
+
+        // Загружаем статистику хранилища
+        const storageResp = await fetch('/api/performance/storage/stats');
+        if (storageResp.ok) {
+            const storage = await storageResp.json();
+            document.getElementById('storage-stats').innerHTML = `
+                <div class="perf-stat">
+                    <span class="perf-label">Файлов</span>
+                    <span class="perf-value">${storage.total_files || 0}</span>
+                </div>
+                <div class="perf-stat">
+                    <span class="perf-label">Размер</span>
+                    <span class="perf-value">${storage.total_size_mb || 0} МБ</span>
+                </div>
+            `;
+        }
+
+        // Загружаем системную информацию
+        const systemResp = await fetch('/api/performance/system/info');
+        if (systemResp.ok) {
+            const system = await systemResp.json();
+            document.getElementById('system-stats').innerHTML = `
+                <div class="perf-stat">
+                    <span class="perf-label">CPU</span>
+                    <span class="perf-value">${system.cpu?.percent || 0}%</span>
+                </div>
+                <div class="perf-stat">
+                    <span class="perf-label">Память</span>
+                    <span class="perf-value">${system.memory?.percent || 0}%</span>
+                </div>
+                <div class="perf-stat">
+                    <span class="perf-label">Диск</span>
+                    <span class="perf-value">${system.disk?.percent || 0}%</span>
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('Failed to load stats:', error);
+    }
+}
+
+async function clearCache() {
+    if (!confirm('Вы уверены, что хотите очистить кеш?')) return;
+    
+    try {
+        const resp = await fetch('/api/performance/cache/clear', {method: 'POST'});
+        if (resp.ok) {
+            window.notifications.success('Кеш очищен', 'Успешно');
+            loadStats();
+        } else {
+            window.notifications.error('Не удалось очистить кеш', 'Ошибка');
+        }
+    } catch (error) {
+        window.notifications.error('Ошибка: ' + error.message, 'Ошибка');
+    }
+}
+
+async function optimizeDatabase() {
+    if (!confirm('Запустить оптимизацию базы данных? Это может занять время.')) return;
+    
+    try {
+        const resp = await fetch('/api/performance/database/optimize', {method: 'POST'});
+        if (resp.ok) {
+            window.notifications.success('База данных оптимизирована', 'Успешно');
+            loadStats();
+        } else {
+            window.notifications.error('Не удалось оптимизировать БД', 'Ошибка');
+        }
+    } catch (error) {
+        window.notifications.error('Ошибка: ' + error.message, 'Ошибка');
+    }
+}
+
+async function cleanupDatabase() {
+    const days = prompt('Удалить записи старше (дней):', '30');
+    if (!days) return;
+    
+    try {
+        const resp = await fetch(`/api/performance/database/cleanup?days_to_keep=${days}`, {method: 'POST'});
+        if (resp.ok) {
+            const result = await resp.json();
+            window.notifications.success(`Удалено записей: ${result.total_deleted}`, 'Успешно');
+            loadStats();
+        } else {
+            window.notifications.error('Не удалось очистить БД', 'Ошибка');
+        }
+    } catch (error) {
+        window.notifications.error('Ошибка: ' + error.message, 'Ошибка');
+    }
+}
+
+async function cleanupStorage() {
+    const days = prompt('Удалить файлы старше (дней):', '7');
+    if (!days) return;
+    
+    try {
+        const resp = await fetch(`/api/performance/storage/cleanup?days_to_keep=${days}`, {method: 'POST'});
+        if (resp.ok) {
+            const result = await resp.json();
+            window.notifications.success(
+                `Удалено файлов: ${result.deleted_files}, освобождено: ${result.freed_space_mb} МБ`,
+                'Успешно'
+            );
+            loadStats();
+        } else {
+            window.notifications.error('Не удалось очистить хранилище', 'Ошибка');
+        }
+    } catch (error) {
+        window.notifications.error('Ошибка: ' + error.message, 'Ошибка');
+    }
+}
+
+async function clearFileCache() {
+    try {
+        const resp = await fetch('/api/performance/storage/clear-cache', {method: 'POST'});
+        if (resp.ok) {
+            window.notifications.success('Кеш файлов очищен', 'Успешно');
+        } else {
+            window.notifications.error('Не удалось очистить кеш', 'Ошибка');
+        }
+    } catch (error) {
+        window.notifications.error('Ошибка: ' + error.message, 'Ошибка');
+    }
+}
+
+// Загружаем статистику при загрузке страницы
+loadStats();
+
+// Обновляем статистику каждые 30 секунд
+setInterval(loadStats, 30000);
+</script>
+{% endblock %}
+

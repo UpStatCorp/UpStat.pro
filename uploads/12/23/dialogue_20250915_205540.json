@@ -1,0 +1,28 @@
+{
+  "speakers": [
+    {
+      "id": "speaker_1",
+      "label": "speaker_1"
+    },
+    {
+      "id": "speaker_2",
+      "label": "speaker_2"
+    }
+  ],
+  "role_map": {
+    "manager": "unknown",
+    "client": "unknown"
+  },
+  "stats_sec": {
+    "speaker_1": 0.0,
+    "speaker_2": 0.0
+  },
+  "turns": [
+    {
+      "speaker": "speaker_1",
+      "start": 0.0,
+      "end": 0.0,
+      "text": "OpenAI API temporarily disabled"
+    }
+  ]
+}

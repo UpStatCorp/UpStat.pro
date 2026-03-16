@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Регистрация - SaaS Оценка</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <link rel="stylesheet" href="/static/auth.css">
+</head>
+<body class="auth-page">
+    <div class="auth-container">
+        <div class="auth-card">
+            <div class="auth-header">
+                <h1>Создать аккаунт</h1>
+                <p>Начните использовать ИИ-анализ для повышения эффективности продаж</p>
+            </div>
+            
+            {% if has_invitation and invited_email %}
+            <div style="background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(29, 78, 216, 0.05)); border: 1px solid rgba(37, 99, 235, 0.2); border-radius: 12px; padding: 16px; margin-bottom: 24px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <svg style="width: 24px; height: 24px; color: #2563eb; flex-shrink: 0;" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"/>
+                        <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"/>
+                    </svg>
+                    <div>
+                        <strong style="color: #2563eb; display: block; margin-bottom: 4px;">Вы приглашены в команду!</strong>
+                        <span style="color: #64748b; font-size: 14px;">Email из приглашения: <strong>{{ invited_email }}</strong></span>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+            
+            <form method="post" action="/register" class="auth-form">
+                {% if error %}
+                <div class="error-message" style="background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), rgba(220, 38, 38, 0.05)); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 12px; padding: 16px; margin-bottom: 20px; display: flex; align-items: center; gap: 12px;">
+                    <svg style="width: 20px; height: 20px; color: #ef4444; flex-shrink: 0;" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                    </svg>
+                    <span style="color: #dc2626; font-weight: 500;">{{ error }}</span>
+                </div>
+                {% endif %}
+                
+                <!-- Google Login Button -->
+                <button type="button" class="google-login-button" onclick="registerWithGoogle()">
+                    <svg class="google-icon" viewBox="0 0 24 24" width="20" height="20">
+                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                    </svg>
+                    Зарегистрироваться через Google
+                </button>
+                
+                <!-- Divider -->
+                <div class="divider">
+                    <span>или</span>
+                </div>
+                
+                <div class="form-group">
+                    <label for="name">Имя</label>
+                    <input 
+                        type="text" 
+                        id="name" 
+                        name="name" 
+                        placeholder="Введите ваше имя"
+                        required
+                        autocomplete="name"
+                    >
+                </div>
+                
+                <div class="form-group">
+                    <label for="email">Email</label>
+                    {% if has_invitation and invited_email %}
+                    <input 
+                        type="email" 
+                        id="email" 
+                        name="email" 
+                        value="{{ invited_email }}"
+                        required
+                        autocomplete="email"
+                        readonly
+                        style="background-color: #f1f5f9; cursor: not-allowed;"
+                    >
+                    <small style="display: block; margin-top: 4px; color: var(--muted, #64748b); font-size: 12px;">
+                        Email указан в приглашении и не может быть изменён
+                    </small>
+                    {% else %}
+                    <input 
+                        type="email" 
+                        id="email" 
+                        name="email" 
+                        placeholder="Введите ваш email"
+                        required
+                        autocomplete="email"
+                        {% if invited_email %}value="{{ invited_email }}"{% endif %}
+                    >
+                    {% endif %}
+                </div>
+                
+                <div class="form-group">
+                    <label for="password">Пароль</label>
+                    <div class="password-input-wrapper">
+                        <input 
+                            type="password" 
+                            id="password" 
+                            name="password" 
+                            placeholder="Минимум 6 символов"
+                            required
+                            minlength="6"
+                            autocomplete="new-password"
+                        >
+                        <button type="button" class="password-toggle" onclick="togglePassword()">
+                            <svg class="eye-icon" viewBox="0 0 24 24" width="20" height="20">
+                                <path fill="currentColor" d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="form-options">
+                    <label class="checkbox-wrapper">
+                        <input type="checkbox" id="terms" required>
+                        <span class="checkmark"></span>
+                        <span class="checkbox-text">Я согласен с <a href="/terms" target="_blank">условиями использования</a> и <a href="/privacy" target="_blank">политикой конфиденциальности</a></span>
+                    </label>
+                </div>
+                
+                <button type="submit" class="auth-button">
+                    Создать аккаунт
+                </button>
+            </form>
+            
+            <div class="auth-footer">
+                <p>Уже есть аккаунт? <a href="/login">Войти</a></p>
+                <div class="back-to-landing">
+                    <a href="/" class="landing-link">
+                        <svg class="back-icon" viewBox="0 0 24 24" width="16" height="16">
+                            <path fill="currentColor" d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/>
+                        </svg>
+                        Вернуться на главную
+                    </a>
+                </div>
+            </div>
+        </div>
+        
+        <div class="auth-sidebar">
+            <div class="sidebar-content">
+                <div class="brand-logo">
+                    <h2>SaaS Оценка</h2>
+                </div>
+                <div class="social-proof">
+                    <h3>Присоединяйтесь к лидерам</h3>
+                    <p>Более <strong>1000+ компаний</strong> уже используют нашу платформу для повышения эффективности продаж</p>
+                </div>
+                <div class="features-list">
+                    <div class="feature-item">
+                        <span class="feature-icon">🎯</span>
+                        <span>ИИ-анализ звонков</span>
+                    </div>
+                    <div class="feature-item">
+                        <span class="feature-icon">📊</span>
+                        <span>Детальная аналитика</span>
+                    </div>
+                    <div class="feature-item">
+                        <span class="feature-icon">🚀</span>
+                        <span>Повышение конверсии</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function togglePassword() {
+            const passwordInput = document.getElementById('password');
+            const toggleButton = document.querySelector('.password-toggle');
+            const eyeIcon = toggleButton.querySelector('.eye-icon');
+            
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                eyeIcon.innerHTML = '<path fill="currentColor" d="M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7zM2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3 2 4.27zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2zm4.31-.78l3.15 3.15.02-.16c0-1.66-1.34-3-3-3l-.17.01z"/>';
+            } else {
+                passwordInput.type = 'password';
+                eyeIcon.innerHTML = '<path fill="currentColor" d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/>';
+            }
+        }
+
+        function registerWithGoogle() {
+            // Сохраняем invite_token в URL, если он есть
+            const urlParams = new URLSearchParams(window.location.search);
+            const inviteToken = urlParams.get('invite_token');
+            let googleUrl = '/auth/google';
+            if (inviteToken) {
+                googleUrl += '?invite_token=' + encodeURIComponent(inviteToken);
+            }
+            window.location.href = googleUrl;
+        }
+    </script>
+</body>
+</html>

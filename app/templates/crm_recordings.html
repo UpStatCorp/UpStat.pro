@@ -1,0 +1,535 @@
+{% extends "_layout_dashboard.html" %}
+{% block title %}Записи из CRM — UpStat{% endblock %}
+{% block content %}
+
+<div class="rec-page">
+  <!-- Header -->
+  <div class="page-header">
+    <div class="page-header-left">
+      <h1>Записи и чаты</h1>
+      <p class="page-subtitle">Звонки и чаты из CRM — выберите для анализа</p>
+    </div>
+    <a href="/crm" class="btn-action btn-outline">
+      <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd"/></svg>
+      К интеграциям
+    </a>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-row">
+    <div class="stat-mini">
+      <div class="stat-mini-val">{{ stats.total }}</div>
+      <div class="stat-mini-lbl">Всего</div>
+    </div>
+    <div class="stat-mini stat-mini-blue">
+      <div class="stat-mini-val">{{ stats.available }}</div>
+      <div class="stat-mini-lbl">Доступно</div>
+    </div>
+    <div class="stat-mini stat-mini-green">
+      <div class="stat-mini-val">{{ stats.completed }}</div>
+      <div class="stat-mini-lbl">Готово</div>
+    </div>
+    <div class="stat-mini stat-mini-amber">
+      <div class="stat-mini-val">{{ stats.analyzing }}</div>
+      <div class="stat-mini-lbl">В обработке</div>
+    </div>
+  </div>
+
+  <!-- Batch progress -->
+  {% if batch_progress %}
+  <div class="batch-bar" id="batchProgressContainer">
+    <div class="batch-bar-top">
+      <strong>Пакетный анализ</strong>
+      <span class="badge-primary">{{ batch_progress.done }} / {{ batch_progress.total }}</span>
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill" id="batchProgressBar" style="width: {{ batch_progress.percent }}%"></div>
+    </div>
+    <span class="batch-text" id="batchProgressText">Обработано {{ batch_progress.done }} из {{ batch_progress.total }} ({{ batch_progress.percent }}%)</span>
+  </div>
+  {% endif %}
+
+  <!-- Filters -->
+  <div class="filter-bar">
+    <form method="get" action="/crm/recordings" class="filter-form">
+      <div class="filter-group">
+        <label>CRM</label>
+        <select name="integration_id" class="filter-ctrl">
+          <option value="">Все</option>
+          {% for integration in integrations %}
+          <option value="{{ integration.id }}" {% if current_integration_id == integration.id %}selected{% endif %}>{{ integration.crm_name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Менеджер</label>
+        <select name="manager" class="filter-ctrl">
+          <option value="">Все</option>
+          {% for m in manager_names %}
+          <option value="{{ m }}" {% if current_manager == m %}selected{% endif %}>{{ m }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Статус</label>
+        <select name="status" class="filter-ctrl">
+          <option value="">Все</option>
+          <option value="available" {% if current_status == "available" %}selected{% endif %}>Доступен</option>
+          <option value="analyzing" {% if current_status == "analyzing" %}selected{% endif %}>Анализируется</option>
+          <option value="completed" {% if current_status == "completed" %}selected{% endif %}>Готово</option>
+          <option value="failed" {% if current_status == "failed" %}selected{% endif %}>Ошибка</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Тип</label>
+        <select name="record_type" class="filter-ctrl">
+          <option value="">Все</option>
+          <option value="call" {% if current_record_type == "call" %}selected{% endif %}>Звонки</option>
+          <option value="chat" {% if current_record_type == "chat" %}selected{% endif %}>Чаты</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>От</label>
+        <input type="date" name="date_from" class="filter-ctrl" value="{{ current_date_from }}">
+      </div>
+      <div class="filter-group">
+        <label>До</label>
+        <input type="date" name="date_to" class="filter-ctrl" value="{{ current_date_to }}">
+      </div>
+      <div class="filter-group filter-group-actions">
+        <button type="submit" class="btn-action btn-primary-action">
+          <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L12 11.414V15a1 1 0 01-.293.707l-2 2A1 1 0 018 17v-5.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd"/></svg>
+          Фильтр
+        </button>
+        <a href="/crm/recordings" class="btn-action btn-outline" title="Сбросить">
+          <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+        </a>
+      </div>
+    </form>
+  </div>
+
+  <!-- Batch actions -->
+  <div class="batch-actions" id="batchActionsBar" style="display:none;">
+    <span class="batch-selected" id="selectedCount">0 выбрано</span>
+    <button class="btn-action btn-primary-action" onclick="startBatchAnalysis()" id="batchAnalyzeBtn">
+      <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path fill-rule="evenodd" d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L10 15.414l2.293 2.293a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 100-2H3zm11.707 4.707a1 1 0 00-1.414-1.414L10 9.586 8.707 8.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+      Анализировать
+    </button>
+    <button class="btn-action btn-outline" onclick="deselectAll()">Снять</button>
+    <span class="batch-hint">Макс. 30 записей</span>
+  </div>
+
+  <!-- Table -->
+  {% if recordings %}
+  <div class="records-table-wrap">
+    <table class="records-table">
+      <thead>
+        <tr>
+          <th class="th-check"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()" class="rec-check"></th>
+          <th>Тип</th>
+          <th>Дата</th>
+          <th>Менеджер</th>
+          <th>Клиент</th>
+          <th>Длит.</th>
+          <th>Напр.</th>
+          <th>Статус</th>
+          <th>Оценка</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for recording in recordings %}
+        <tr class="rec-row" data-id="{{ recording.id }}" data-status="{{ recording.sync_status }}">
+          <td>
+            {% if recording.sync_status in ['available', 'failed'] %}
+            <input type="checkbox" class="rec-check recording-checkbox" value="{{ recording.id }}" onchange="updateSelection()">
+            {% endif %}
+          </td>
+          <td>
+            {% if recording.record_type == 'chat' %}
+            <span class="type-badge type-chat">Чат</span>
+            {% else %}
+            <span class="type-badge type-call">Звонок</span>
+            {% endif %}
+          </td>
+          <td>
+            <span class="date-main">{{ recording.call_date.strftime('%d.%m.%Y') }}</span>
+            <span class="date-time">{{ recording.call_date.strftime('%H:%M') }}</span>
+          </td>
+          <td>{{ recording.manager_name or '—' }}</td>
+          <td>
+            <span>{{ recording.client_name or '—' }}</span>
+            {% if recording.client_company %}
+            <span class="client-company">{{ recording.client_company }}</span>
+            {% endif %}
+          </td>
+          <td class="td-mono">{{ recording.duration_seconds // 60 }}:{{ '%02d' % (recording.duration_seconds % 60) }}</td>
+          <td>
+            {% if recording.direction == "inbound" %}
+            <span class="dir-badge dir-in">Вх</span>
+            {% elif recording.direction == "outbound" %}
+            <span class="dir-badge dir-out">Исх</span>
+            {% else %}
+            <span class="dir-badge">—</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if recording.sync_status == "available" %}
+            <span class="status-tag tag-blue">Доступен</span>
+            {% elif recording.sync_status == "downloading" %}
+            <span class="status-tag tag-amber"><span class="spinner-xs"></span>Скачивается</span>
+            {% elif recording.sync_status == "analyzing" %}
+            <span class="status-tag tag-amber"><span class="spinner-xs"></span>Анализ</span>
+            {% elif recording.sync_status == "completed" %}
+            <span class="status-tag tag-green">Готово</span>
+            {% elif recording.sync_status == "failed" %}
+            <span class="status-tag tag-red" title="{{ recording.error_message or '' }}">Ошибка</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if recording.analysis_score is not none %}
+            <span class="score {% if recording.analysis_score >= 70 %}score-hi{% elif recording.analysis_score >= 40 %}score-mid{% else %}score-lo{% endif %}">
+              {{ recording.analysis_score }}
+            </span>
+            {% else %}
+            <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td>
+            <div class="row-actions">
+              {% if recording.sync_status == "available" %}
+              <button class="btn-analyze" onclick="analyzeRecording({{ recording.id }})" id="btn-{{ recording.id }}" title="Анализировать">
+                <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/><path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm9.707 5.707a1 1 0 00-1.414-1.414L9 12.586l-1.293-1.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+                <span>Анализ</span>
+              </button>
+              {% elif recording.sync_status == "completed" %}
+                {% if recording.conversation_id %}
+                <a href="/chat?conversation_id={{ recording.conversation_id }}" class="btn-icon-sm btn-icon-green" title="Отчёт">
+                  <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/><path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/></svg>
+                </a>
+                {% endif %}
+                {% if recording.training_plan_id %}
+                <a href="/training-plan/by-plan/{{ recording.training_plan_id }}" class="btn-icon-sm btn-icon-purple" title="План">
+                  <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/></svg>
+                </a>
+                {% endif %}
+              {% elif recording.sync_status == "failed" %}
+              <button class="btn-retry" onclick="analyzeRecording({{ recording.id }})" id="btn-{{ recording.id }}" title="Повторить анализ">
+                <svg viewBox="0 0 20 20" fill="currentColor" width="14" height="14"><path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/></svg>
+                <span>Повтор</span>
+              </button>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Pagination -->
+  {% if total_pages > 1 %}
+  <div class="pagination-bar">
+    <span class="page-info">{{ ((page - 1) * per_page) + 1 }}–{{ [page * per_page, total_count] | min }} из {{ total_count }}</span>
+    <div class="page-btns">
+      {% if page > 1 %}
+      <a class="page-btn" href="?page={{ page - 1 }}{% if current_status %}&status={{ current_status }}{% endif %}{% if current_integration_id %}&integration_id={{ current_integration_id }}{% endif %}{% if current_manager %}&manager={{ current_manager }}{% endif %}{% if current_record_type %}&record_type={{ current_record_type }}{% endif %}{% if current_date_from %}&date_from={{ current_date_from }}{% endif %}{% if current_date_to %}&date_to={{ current_date_to }}{% endif %}">&laquo;</a>
+      {% endif %}
+      {% for p in range(1, total_pages + 1) %}
+        {% if p == page %}
+        <span class="page-btn active">{{ p }}</span>
+        {% elif p <= 3 or p > total_pages - 3 or (p >= page - 2 and p <= page + 2) %}
+        <a class="page-btn" href="?page={{ p }}{% if current_status %}&status={{ current_status }}{% endif %}{% if current_integration_id %}&integration_id={{ current_integration_id }}{% endif %}{% if current_manager %}&manager={{ current_manager }}{% endif %}{% if current_record_type %}&record_type={{ current_record_type }}{% endif %}{% if current_date_from %}&date_from={{ current_date_from }}{% endif %}{% if current_date_to %}&date_to={{ current_date_to }}{% endif %}">{{ p }}</a>
+        {% elif p == 4 or p == total_pages - 3 %}
+        <span class="page-btn disabled">…</span>
+        {% endif %}
+      {% endfor %}
+      {% if page < total_pages %}
+      <a class="page-btn" href="?page={{ page + 1 }}{% if current_status %}&status={{ current_status }}{% endif %}{% if current_integration_id %}&integration_id={{ current_integration_id }}{% endif %}{% if current_manager %}&manager={{ current_manager }}{% endif %}{% if current_record_type %}&record_type={{ current_record_type }}{% endif %}{% if current_date_from %}&date_from={{ current_date_from }}{% endif %}{% if current_date_to %}&date_to={{ current_date_to }}{% endif %}">&raquo;</a>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% else %}
+  <!-- Empty state -->
+  <div class="empty-state">
+    <svg viewBox="0 0 20 20" fill="currentColor" width="48" height="48" style="color: var(--muted); opacity:.4;">
+      <path fill-rule="evenodd" d="M5 3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V5a2 2 0 00-2-2H5zm0 2h10v7h-2l-1 2H8l-1-2H5V5z" clip-rule="evenodd"/>
+    </svg>
+    <h3>Записи не найдены</h3>
+    <p>Измените фильтры или синхронизируйте CRM</p>
+    <a href="/crm" class="btn-action btn-primary-action">Перейти к интеграциям</a>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Batch confirm modal -->
+<div class="modal-backdrop" id="batchConfirmModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3>Пакетный анализ</h3>
+      <button class="modal-close" onclick="closeBatchModal()">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p>Будет проанализировано <strong id="confirmCount">0</strong> записей.</p>
+      <div class="tip-box" style="margin-bottom:12px;">
+        Примерное время: <strong id="confirmTime">~0</strong> минут. Анализ продолжится в фоне.
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-action btn-outline" onclick="closeBatchModal()">Отмена</button>
+      <button class="btn-action btn-primary-action" onclick="confirmBatchAnalysis()" id="confirmBatchBtn">Запустить</button>
+    </div>
+  </div>
+</div>
+
+<style>
+.rec-page { padding: 28px 32px; max-width: 1400px; }
+
+/* Header */
+.page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; gap: 16px; flex-wrap: wrap; }
+.page-header h1 { font-size: 26px; font-weight: 700; margin: 0; color: var(--text); }
+.page-subtitle { color: var(--muted); font-size: 14px; margin: 4px 0 0; }
+
+/* Stats */
+.stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+.stat-mini { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; text-align: center; transition: all .2s; }
+.stat-mini:hover { border-color: rgba(37,99,235,.15); }
+.stat-mini-val { font-size: 26px; font-weight: 700; color: var(--text); }
+.stat-mini-lbl { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.stat-mini-blue .stat-mini-val { color: #3b82f6; }
+.stat-mini-green .stat-mini-val { color: #10b981; }
+.stat-mini-amber .stat-mini-val { color: #f59e0b; }
+
+/* Batch progress */
+.batch-bar { background: var(--surface); border: 1px solid rgba(37,99,235,.2); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; }
+.batch-bar-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 14px; }
+.badge-primary { background: var(--primary); color: #fff; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+.progress-track { height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, var(--primary), #8b5cf6); border-radius: 3px; transition: width .5s; }
+.batch-text { font-size: 12px; color: var(--muted); margin-top: 6px; display: block; }
+
+/* Filters */
+.filter-bar { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; }
+.filter-form { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.filter-group { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 110px; }
+.filter-group label { font-size: 11px; font-weight: 500; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+.filter-ctrl { padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 13px; background: var(--bg); color: var(--text); }
+.filter-ctrl:focus { outline: none; border-color: var(--primary); }
+.filter-group-actions { display: flex; flex-direction: row; gap: 6px; flex: 0; min-width: auto; align-items: center; }
+
+/* Batch actions */
+.batch-actions { display: flex; align-items: center; gap: 12px; background: rgba(37,99,235,.06); border: 1px solid rgba(37,99,235,.2); border-radius: 12px; padding: 10px 16px; margin-bottom: 16px; animation: fadeSlide .2s ease; }
+.batch-selected { font-size: 14px; font-weight: 600; color: var(--text); }
+.batch-hint { font-size: 12px; color: var(--muted); margin-left: auto; }
+@keyframes fadeSlide { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* Table */
+.records-table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; margin-bottom: 16px; }
+.records-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.records-table thead { background: var(--surface-hover); }
+body.dark .records-table thead { background: rgba(30,41,59,.5); }
+.records-table th { padding: 10px 12px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); text-align: left; white-space: nowrap; border-bottom: 1px solid var(--border); }
+.th-check { width: 40px; }
+.records-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+.records-table tbody tr:last-child td { border-bottom: none; }
+.rec-row { transition: background .15s; }
+.rec-row:hover { background: rgba(37,99,235,.03); }
+body.dark .rec-row:hover { background: rgba(59,130,246,.05); }
+.rec-row.selected { background: rgba(37,99,235,.06); }
+
+.rec-check { width: 16px; height: 16px; accent-color: var(--primary); cursor: pointer; }
+
+/* Type badges */
+.type-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; font-size: 12px; font-weight: 500; }
+.type-call { background: rgba(100,116,139,.1); color: #64748b; }
+.type-chat { background: rgba(139,92,246,.1); color: #8b5cf6; }
+
+/* Date */
+.date-main { display: block; font-weight: 500; }
+.date-time { font-size: 12px; color: var(--muted); }
+
+.client-company { display: block; font-size: 12px; color: var(--muted); }
+.td-mono { font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, monospace; }
+
+/* Direction */
+.dir-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px; }
+.dir-in { background: rgba(59,130,246,.1); color: #3b82f6; }
+.dir-out { background: rgba(16,185,129,.1); color: #10b981; }
+
+/* Status */
+.status-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 500; padding: 3px 10px; border-radius: 20px; }
+.tag-blue { background: rgba(59,130,246,.1); color: #3b82f6; }
+.tag-green { background: rgba(16,185,129,.1); color: #059669; }
+body.dark .tag-green { color: #34d399; }
+.tag-amber { background: rgba(245,158,11,.1); color: #d97706; }
+.tag-red { background: rgba(239,68,68,.1); color: #dc2626; }
+
+/* Score */
+.score { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; padding: 2px 8px; border-radius: 8px; font-size: 13px; font-weight: 700; }
+.score-hi { background: rgba(16,185,129,.12); color: #059669; }
+.score-mid { background: rgba(245,158,11,.12); color: #d97706; }
+.score-lo { background: rgba(239,68,68,.12); color: #dc2626; }
+
+/* Row action buttons */
+.row-actions { display: flex; gap: 4px; }
+.btn-icon-sm { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border); background: var(--surface); border-radius: 8px; cursor: pointer; color: var(--primary); transition: all .2s; }
+.btn-icon-sm:hover { background: var(--primary); color: #fff; border-color: var(--primary); transform: scale(1.05); }
+.btn-icon-green { color: #059669; border-color: rgba(16,185,129,.2); }
+.btn-icon-green:hover { background: #059669; color: #fff; border-color: #059669; }
+.btn-icon-purple { color: #8b5cf6; border-color: rgba(139,92,246,.2); }
+.btn-icon-purple:hover { background: #8b5cf6; color: #fff; border-color: #8b5cf6; }
+.btn-icon-amber { color: #d97706; border-color: rgba(245,158,11,.2); }
+.btn-icon-amber:hover { background: #d97706; color: #fff; border-color: #d97706; }
+
+/* Analyze & Retry buttons */
+.btn-analyze {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 12px; border-radius: 8px; font-size: 12px; font-weight: 600;
+  background: linear-gradient(135deg, #3b82f6, #2563eb); color: #fff;
+  border: none; cursor: pointer; transition: all .2s; white-space: nowrap;
+}
+.btn-analyze:hover { box-shadow: 0 4px 12px rgba(37,99,235,.35); transform: translateY(-1px); }
+.btn-retry {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 12px; border-radius: 8px; font-size: 12px; font-weight: 600;
+  background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff;
+  border: none; cursor: pointer; transition: all .2s; white-space: nowrap;
+}
+.btn-retry:hover { box-shadow: 0 4px 12px rgba(245,158,11,.35); transform: translateY(-1px); }
+
+/* Spinner */
+.spinner-xs { display: inline-block; width: 10px; height: 10px; border: 1.5px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin .6s linear infinite; }
+.spinner-sm { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Pagination */
+.pagination-bar { display: flex; justify-content: space-between; align-items: center; }
+.page-info { font-size: 13px; color: var(--muted); }
+.page-btns { display: flex; gap: 4px; }
+.page-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; height: 32px; padding: 0 8px; border-radius: 8px; font-size: 13px; font-weight: 500; text-decoration: none; color: var(--text); background: var(--surface); border: 1px solid var(--border); transition: all .2s; }
+.page-btn:hover { border-color: var(--primary); color: var(--primary); }
+.page-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.page-btn.disabled { opacity: .4; cursor: default; pointer-events: none; }
+
+/* Empty state */
+.empty-state { text-align: center; padding: 60px 20px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; }
+.empty-state h3 { font-size: 18px; margin: 16px 0 8px; color: var(--text); }
+.empty-state p { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
+
+/* Buttons */
+.btn-action { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 10px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all .2s; white-space: nowrap; text-decoration: none; }
+.btn-primary-action { background: var(--primary); color: #fff; border-color: var(--primary); }
+.btn-primary-action:hover { background: var(--primary-hover); box-shadow: 0 4px 12px rgba(37,99,235,.25); }
+.btn-outline { background: transparent; color: var(--text); border-color: var(--border); }
+.btn-outline:hover { border-color: var(--primary); color: var(--primary); }
+
+/* Modal */
+.modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 9999; align-items: center; justify-content: center; }
+.modal-backdrop.active { display: flex; }
+.modal-box { background: var(--surface); border-radius: 16px; max-width: 480px; width: 92%; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+.modal-head { display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; border-bottom: 1px solid var(--border); }
+.modal-head h3 { margin: 0; font-size: 17px; font-weight: 600; }
+.modal-close { background: none; border: none; font-size: 24px; color: var(--muted); cursor: pointer; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 8px; }
+.modal-close:hover { background: var(--surface-hover); }
+.modal-body { padding: 20px 24px; }
+.modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px; border-top: 1px solid var(--border); }
+.tip-box { background: rgba(59,130,246,.06); border: 1px solid rgba(59,130,246,.15); color: var(--primary); padding: 10px 14px; border-radius: 10px; font-size: 13px; }
+
+/* Text helpers */
+.text-muted { color: var(--muted); }
+
+/* Responsive */
+@media (max-width: 860px) {
+  .rec-page { padding: 20px 16px; }
+  .stats-row { grid-template-columns: repeat(2, 1fr); }
+  .filter-form { flex-direction: column; }
+  .filter-group { min-width: 100%; }
+  .records-table-wrap { overflow-x: auto; }
+}
+</style>
+
+<script>
+let selectedIds = new Set();
+
+function toggleSelectAll() {
+  const sa = document.getElementById('selectAll');
+  document.querySelectorAll('.recording-checkbox').forEach(cb => cb.checked = sa.checked);
+  updateSelection();
+}
+
+function updateSelection() {
+  selectedIds.clear();
+  document.querySelectorAll('.recording-checkbox:checked').forEach(cb => selectedIds.add(+cb.value));
+  const bar = document.getElementById('batchActionsBar');
+  bar.style.display = selectedIds.size > 0 ? 'flex' : 'none';
+  document.getElementById('selectedCount').textContent = selectedIds.size + ' выбрано';
+  document.querySelectorAll('.rec-row').forEach(r => r.classList.toggle('selected', selectedIds.has(+r.dataset.id)));
+  const all = document.querySelectorAll('.recording-checkbox');
+  const checked = document.querySelectorAll('.recording-checkbox:checked');
+  document.getElementById('selectAll').checked = all.length > 0 && all.length === checked.length;
+}
+
+function deselectAll() {
+  document.querySelectorAll('.recording-checkbox').forEach(cb => cb.checked = false);
+  document.getElementById('selectAll').checked = false;
+  updateSelection();
+}
+
+function startBatchAnalysis() {
+  if (selectedIds.size === 0) return;
+  if (selectedIds.size > 30) { alert('Максимум 30 записей за раз'); return; }
+  document.getElementById('confirmCount').textContent = selectedIds.size;
+  document.getElementById('confirmTime').textContent = '~' + Math.ceil(selectedIds.size * 1.5);
+  document.getElementById('batchConfirmModal').classList.add('active');
+}
+
+function closeBatchModal() { document.getElementById('batchConfirmModal').classList.remove('active'); }
+
+async function confirmBatchAnalysis() {
+  const btn = document.getElementById('confirmBatchBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner-sm"></span> Запуск...';
+  try {
+    const r = await fetch('/crm/recordings/batch-analyze', { method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'recording_ids=' + Array.from(selectedIds).join(',') });
+    if (r.ok) { const d = await r.json(); closeBatchModal(); startBatchPolling(d.batch_id); deselectAll(); setTimeout(() => location.reload(), 1500); }
+    else { const e = await r.json(); alert(e.detail || 'Ошибка'); }
+  } catch (e) { alert(e.message); }
+  finally { btn.disabled = false; btn.innerHTML = 'Запустить'; }
+}
+
+async function analyzeRecording(id) {
+  const b = document.getElementById('btn-' + id);
+  if (!b) return;
+  const orig = b.innerHTML;
+  b.disabled = true; b.innerHTML = '<span class="spinner-xs"></span>';
+  try { const r = await fetch('/crm/recordings/' + id + '/analyze', { method: 'POST' }); if (r.ok) setTimeout(() => location.reload(), 1500); else { alert(await r.text()); b.disabled = false; b.innerHTML = orig; } }
+  catch (e) { alert(e.message); b.disabled = false; b.innerHTML = orig; }
+}
+
+function startBatchPolling(batchId) {
+  const iv = setInterval(async () => {
+    try {
+      const r = await fetch('/crm/batch-progress/' + batchId);
+      if (!r.ok) { clearInterval(iv); return; }
+      const d = await r.json();
+      const bar = document.getElementById('batchProgressBar');
+      const text = document.getElementById('batchProgressText');
+      if (bar) bar.style.width = d.percent + '%';
+      if (text) text.textContent = 'Обработано ' + d.done + ' из ' + d.total + ' (' + d.percent + '%)';
+      if (d.is_finished) { clearInterval(iv); setTimeout(() => location.reload(), 1000); }
+    } catch { clearInterval(iv); }
+  }, 5000);
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  {% if batch_progress and not batch_progress.get('is_finished', True) %}
+  startBatchPolling('{{ batch_progress.batch_id }}');
+  {% endif %}
+  const hasActive = document.querySelector('.tag-amber');
+  if (hasActive && !document.getElementById('batchProgressContainer')) setInterval(() => location.reload(), 30000);
+});
+
+document.addEventListener('click', e => { if (e.target.classList.contains('modal-backdrop')) e.target.classList.remove('active'); });
+</script>
+{% endblock %}

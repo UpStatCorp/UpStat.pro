@@ -1,0 +1,45 @@
+elevenlabs==2.21.0
+httpx==0.27.2
+python-dotenv==1.2.1
+aiohttp==3.9.5
+# AI Agent Service Dependencies
+
+# FastAPI и веб-сервер
+fastapi==0.112.2
+uvicorn[standard]==0.32.1
+pydantic==2.11.7
+pydantic-settings==2.3.2
+
+# HTTP клиент
+# (закреплено выше)
+
+# OpenAI API
+openai==1.40.0
+
+# WebSocket
+websockets==13.0
+
+# Асинхронность
+asyncio-mqtt==0.16.1
+
+# Логирование
+python-json-logger==2.0.7
+
+# Аудио обработка
+pydub==0.25.1
+soundfile==0.12.1
+
+# ElevenLabs TTS
+# (закреплено выше)
+
+# Машинное обучение (для XTTS)
+torch==2.3.1
+torchaudio==2.3.1
+transformers==4.44.2
+
+# Дополнительные утилиты
+python-multipart==0.0.9
+
+# Тестирование
+pytest==8.2.1
+pytest-asyncio==0.24.0

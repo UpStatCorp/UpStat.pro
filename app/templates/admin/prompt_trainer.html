@@ -1,0 +1,155 @@
+{% extends "admin/_layout_admin.html" %}
+{% block title %}Редактор промпта чата тренера — UpStat{% endblock %}
+
+{% block content %}
+<div class="admin-container">
+  <div class="admin-header">
+    <div class="admin-title">
+      <h1>🎯 Редактор промпта чата тренера</h1>
+      <p>Настройте систему анализа тренировок продаж с оценкой по баллам</p>
+    </div>
+    <div class="admin-actions">
+      <a href="/admin/prompts" class="btn btn-secondary">
+        <i class="icon-arrow-left"></i>
+        Назад к промптам
+      </a>
+    </div>
+  </div>
+
+  <div class="admin-card">
+    <div class="card-header">
+      <h2>Система анализа тренировок</h2>
+      <p>Этот промпт определяет, как ИИ будет анализировать тренировки продаж, разбивать их на этапы и оценивать результаты</p>
+    </div>
+
+    <form method="post" class="prompt-form">
+      <div class="form-group">
+        <label for="title">Название версии промпта</label>
+        <input 
+          type="text" 
+          id="title" 
+          name="title" 
+          value="{{ current_prompt.title if current_prompt else 'Анализ тренировок продаж v1.0' }}"
+          placeholder="Например: Анализ тренировок продаж v2.0"
+          required
+        >
+      </div>
+
+      <div class="form-group">
+        <label for="description">Описание изменений</label>
+        <textarea 
+          id="description" 
+          name="description" 
+          rows="3"
+          placeholder="Опишите, что изменилось в этой версии промпта..."
+        >{{ current_prompt.description if current_prompt else '' }}</textarea>
+      </div>
+
+      <div class="form-group">
+        <label for="content">Промпт для анализа тренировок</label>
+        <div class="prompt-editor">
+          <textarea 
+            id="content" 
+            name="content" 
+            rows="50"
+            placeholder="Введите промпт для анализа тренировок..."
+            required
+          >{{ current_prompt.content if current_prompt else '' }}</textarea>
+        </div>
+        <div class="prompt-help">
+          <h4>📋 Структура промпта должна включать:</h4>
+          <ul>
+            <li><strong>Разбивка на тренировки:</strong> Как ИИ должен разделить 40-минутную встречу на отдельные тренировки</li>
+            <li><strong>Определение ролей:</strong> Как определить, кто клиент, а кто продавец</li>
+            <li><strong>Анализ по этапам:</strong> Какие этапы продаж проверять в каждой тренировке</li>
+            <li><strong>Оценка состояний:</strong> Как оценивать эмоциональное состояние клиента и продавца</li>
+            <li><strong>Балльная система:</strong> Критерии оценки от 1 до 10 баллов</li>
+            <li><strong>Ожидаемые результаты:</strong> Какие фразы должны говорить участники после тренировки</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" class="btn btn-primary">
+          <i class="icon-save"></i>
+          Сохранить новую версию
+        </button>
+        <a href="/admin/prompts" class="btn btn-secondary">Отмена</a>
+      </div>
+    </form>
+  </div>
+
+  {% if current_prompt %}
+  <div class="admin-card">
+    <div class="card-header">
+      <h3>Текущая версия</h3>
+      <p>Версия {{ current_prompt.version }} от {{ current_prompt.created_at.strftime('%d.%m.%Y %H:%M') }}</p>
+    </div>
+    <div class="prompt-preview">
+      <pre>{{ current_prompt.content[:500] }}{% if current_prompt.content|length > 500 %}...{% endif %}</pre>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<style>
+.prompt-editor textarea {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 14px;
+  line-height: 1.5;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 16px;
+  resize: vertical;
+  min-height: 600px;
+}
+
+.prompt-help {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 12px;
+}
+
+.prompt-help h4 {
+  margin: 0 0 12px 0;
+  color: #374151;
+  font-size: 14px;
+}
+
+.prompt-help ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.prompt-help li {
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.prompt-help strong {
+  color: #374151;
+}
+
+.prompt-preview {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.prompt-preview pre {
+  margin: 0;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #374151;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+</style>
+{% endblock %}

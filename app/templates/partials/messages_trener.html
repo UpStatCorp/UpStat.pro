@@ -1,0 +1,46 @@
+<div class="messages">
+  {% for m in messages %}
+    <div class="msg {{ 'you' if m.role=='user' else 'bot' }}" data-id="{{ m.id }}">
+      <div class="bubble">
+        <div class="meta">
+          <span class="role">{{ 'Вы' if m.role=='user' else 'Бот' }}</span>
+          <span class="time">{{ m.created_at.strftime('%H:%M') }}</span>
+        </div>
+
+        {% if m.text and m.text.strip() %}
+          <div class="text">{{ m.text | e }}</div>
+        {% endif %}
+
+        {% if m.attachments and m.attachments|length > 0 %}
+          <div class="files">
+            <div class="files-grid">
+            {% for a in m.attachments if a.mime_type.startswith('image/') %}
+              <a href="/attachments_trener/{{ a.id }}" target="_blank" class="file-item image" title="{{ a.file_name }}">
+                <img src="/attachments_trener/{{ a.id }}" alt="{{ a.file_name | e }}" />
+              </a>
+            {% endfor %}
+            </div>
+
+            {% for a in m.attachments if a.mime_type.startswith('audio/') %}
+              <div class="file-item audio">
+                <audio controls preload="metadata">
+                  <source src="/attachments_trener/{{ a.id }}" type="{{ a.mime_type }}">
+                </audio>
+                <a class="name" href="/attachments_trener/{{ a.id }}" download>{{ a.file_name }}</a>
+                <span class="meta">{{ (a.size_bytes/1024/1024)|round(2) }} МБ</span>
+              </div>
+            {% endfor %}
+
+            {% for a in m.attachments if not a.mime_type.startswith('image/') and not a.mime_type.startswith('audio/') %}
+              <a href="/attachments_trener/{{ a.id }}" target="_blank" class="file-item doc" download>
+                <span class="icon">{{ a.file_name.split('.')[-1]|upper }}</span>
+                <span class="name">{{ a.file_name }}</span>
+                <span class="meta">{{ (a.size_bytes/1024/1024)|round(2) }} МБ · {{ a.mime_type }}</span>
+              </a>
+            {% endfor %}
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  {% endfor %}
+</div>

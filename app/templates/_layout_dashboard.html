@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>{% block title %}Личный кабинет — UpStat{% endblock %}</title>
+
+  <!-- базовые стили проекта -->
+  <link rel="stylesheet" href="/static/styles.css?v=14"/>
+
+  <!-- макет: сетка, сайдбар, топбар -->
+  <style>
+    :root{
+      --bg:#f8fafc;
+      --surface:#ffffff;
+      --text:#0f172a;
+      --muted:#64748b;
+      --border:#e5e7eb;
+      --shadow:0 1px 2px rgba(15,23,42,.04),0 8px 24px rgba(15,23,42,.06);
+      --radius:14px;
+      --surface-hover:#f1f5f9;
+      --primary:#2563eb;
+      --primary-hover:#1d4ed8;
+    }
+
+    /* Тёмная тема */
+    body.dark{
+      --bg:#0a0e1a;
+      --surface:#111827;
+      --text:#f1f5f9;
+      --muted:#94a3b8;
+      --border:#1e293b;
+      --shadow:0 1px 2px rgba(0,0,0,.2),0 8px 24px rgba(0,0,0,.4);
+      --surface-hover:#1e293b;
+      --primary:#3b82f6;
+      --primary-hover:#2563eb;
+    }
+
+    html{height:100%}
+    body{
+      min-height: 116vh; margin:0; background:var(--bg); color:var(--text); 
+      font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial;
+      zoom: 0.86;
+      transform: scale(1);
+      transform-origin: 0 0;
+      -moz-transform: scale(1);
+      -moz-transform-origin: 0 0;
+      transition: background-color 0.3s ease, color 0.3s ease;
+    }
+    .app-shell{display:grid; grid-template-columns:260px 1fr; min-height:116vh;}
+
+    /* Sidebar */
+    .sidebar{
+      position:sticky; top:0; height:116vh;
+      background: linear-gradient(180deg, var(--surface) 0%, rgba(37, 99, 235, 0.02) 100%);
+      border-right:1px solid var(--border);
+      padding:24px; display:flex; flex-direction:column; gap:20px;
+      backdrop-filter: blur(10px);
+      transition: background 0.3s ease, border-color 0.3s ease, box-shadow .25s ease;
+    }
+    body.dark .sidebar{
+      background: linear-gradient(180deg, #111827 0%, #0f1623 100%);
+      border-right-color:#1e293b;
+    }
+    .brand{
+      font-weight:800; letter-spacing:.2px; font-size:24px;
+      background: linear-gradient(135deg, var(--primary), #1d4ed8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      padding: 16px 0;
+      text-align: center;
+    }
+    .menu{display:flex; flex-direction:column; gap:8px; margin-top:8px;}
+    .menu a{
+      display:flex; align-items:center; gap:12px;
+      padding:14px 16px; border-radius:12px; text-decoration:none;
+      color:var(--text); transition:all 0.3s ease; font-weight:500;
+      border: 1px solid transparent;
+    }
+    .menu a:hover{
+      background: rgba(37, 99, 235, 0.08);
+      border-color: rgba(37, 99, 235, 0.15);
+      transform: translateX(4px);
+    }
+    body.dark .menu a:hover{
+      background: rgba(59, 130, 246, 0.12);
+      border-color: rgba(59, 130, 246, 0.2);
+    }
+    .menu a.active{
+      background: linear-gradient(135deg, var(--primary), var(--primary-hover));
+      color: white;
+      box-shadow: 0 8px 24px rgba(37, 99, 235, 0.3);
+      transform: translateX(4px);
+    }
+    body.dark .menu a.active{
+      box-shadow: 0 8px 24px rgba(59, 130, 246, 0.4);
+    }
+
+    .sidebar-footer{
+      margin-top:auto; 
+      border-top:1px solid var(--border); 
+      padding-top:20px;
+      transition: border-color 0.3s ease;
+    }
+    .userbox{
+      font-size:14px; color:var(--muted); line-height:1.4;
+      padding: 16px;
+      background: var(--surface);
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      transition: all 0.3s ease;
+    }
+    body.dark .userbox{
+      background: rgba(30, 41, 59, 0.5);
+      border-color:#334155;
+    }
+    .userbox b{color:var(--text); font-weight:600;}
+    .btn{
+      display:inline-flex; align-items:center; gap:8px; 
+      border:1px solid var(--border); background:var(--surface-hover); 
+      color:var(--text); padding:10px 16px; border-radius:12px; 
+      cursor:pointer; font-weight:500; transition: all 0.3s ease;
+    }
+    .btn:hover{
+      background: var(--primary);
+      color: white;
+      border-color: var(--primary);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(37, 99, 235, 0.2);
+    }
+    .btn:focus{outline:2px solid #c7d2fe; outline-offset:2px}
+    .btn.block{width:100%}
+
+    /* Theme switch */
+    .theme-switch{display:inline-flex; align-items:center; justify-content:center}
+    .ts-label{position:relative; display:inline-flex; align-items:center; width:56px; height:32px; padding:0; border-radius:999px; border:1px solid var(--border); background:var(--surface); cursor:pointer; box-shadow: 0 6px 18px rgba(15,23,42,.10) inset; transition: background .25s ease, border-color .25s ease}
+    .ts-input{position:absolute; inset:0; opacity:0; pointer-events:none}
+    .ts-track{position:absolute; inset:0; border-radius:999px; overflow:hidden}
+    .ts-thumb{position:absolute; top:50%; left:3px; width:26px; height:26px; transform:translateY(-50%); border-radius:50%; background:#fff; box-shadow: 0 6px 14px rgba(0,0,0,.18), 0 1px 2px rgba(0,0,0,.06); transition:left .24s ease, box-shadow .24s ease}
+    .ts-icon{position:absolute; top:50%; transform:translateY(-50%); width:16px; height:16px; color:#f59e0b; opacity:.9; transition: opacity .2s ease}
+    .ts-sun{left:10px}
+    .ts-moon{right:10px; color:#60a5fa}
+    .ts-label:has(.ts-input:checked){background: linear-gradient(135deg, var(--primary), #1d4ed8); border-color: transparent}
+    .ts-label:has(.ts-input:checked) .ts-thumb{left:27px}
+    .ts-label:has(.ts-input:checked) .ts-sun{opacity:.0}
+    .ts-label:has(.ts-input:checked) .ts-moon{opacity:1}
+
+    /* Main */
+    .main{display:flex; flex-direction:column; min-width:0;}
+    .topbar{
+      display:flex; align-items:center; justify-content:space-between;
+      padding:16px 24px; background:var(--surface); border-bottom:1px solid var(--border);
+      position:sticky; top:0; z-index:10; backdrop-filter: blur(10px);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      transition: all 0.3s ease;
+    }
+    body.dark .topbar{
+      background: rgba(17, 24, 39, 0.95);
+      border-bottom-color:#1e293b;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+    .topbar-right{display:flex; align-items:center; gap:12px}
+    .content{padding:0; min-width:0;}
+
+    /* Cards, tables – базовый каркас, если вдруг нет в styles.css */
+    .cards{display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:16px}
+    .card{
+      background:var(--surface); 
+      border:1px solid var(--border); 
+      border-radius:var(--radius); 
+      padding:16px; 
+      box-shadow:var(--shadow);
+      transition: all 0.3s ease;
+    }
+    body.dark .card{
+      background: rgba(30, 41, 59, 0.4);
+      border-color:#334155;
+    }
+    body.dark .card:hover{
+      background: rgba(30, 41, 59, 0.6);
+      border-color:#475569;
+    }
+    .card h3{margin:0 0 6px 0; font-size:14px; color:var(--muted); font-weight:600}
+    .metric{font-size:28px; font-weight:800; color:var(--text);}
+    .table{
+      width:100%; 
+      background:var(--surface); 
+      border:1px solid var(--border); 
+      border-radius:12px; 
+      overflow:hidden;
+      transition: all 0.3s ease;
+    }
+    body.dark .table{
+      background: rgba(30, 41, 59, 0.4);
+      border-color:#334155;
+    }
+    .table table{width:100%; border-collapse:collapse}
+    .table th,.table td{
+      padding:12px 14px; 
+      border-bottom:1px solid var(--border); 
+      font-size:14px;
+      transition: background-color 0.3s ease;
+    }
+    .table th{
+      text-align:left; 
+      color:var(--muted); 
+      font-weight:600; 
+      background:var(--surface-hover);
+    }
+    body.dark .table th{
+      background: rgba(30, 41, 59, 0.6);
+    }
+    body.dark .table tr:hover td{
+      background: rgba(59, 130, 246, 0.05);
+    }
+
+    /* Mobile menu button */
+    .mobile-menu-btn {
+      display: none;
+      width: 40px;
+      height: 40px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      border-radius: 10px;
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+      color: var(--text);
+      box-shadow: 0 4px 12px rgba(15,23,42,0.06);
+      transition: transform .15s ease, box-shadow .2s ease, background .2s ease;
+    }
+
+    .mobile-menu-btn svg {
+      width: 22px;
+      height: 22px;
+    }
+
+    .mobile-menu-btn:hover { box-shadow: 0 8px 20px rgba(15,23,42,0.12); }
+    .mobile-menu-btn:active { transform: scale(.98); }
+
+    body.menu-open {
+      overflow: hidden;
+      height: 100vh;
+    }
+
+    /* Mobile overlay */
+    .mobile-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 999;
+      opacity: 0;
+      transition: opacity .25s ease;
+    }
+
+    .mobile-overlay.active { display:block; opacity: 1; }
+
+    /* Responsive */
+    @media (max-width:1100px){ 
+      .cards{grid-template-columns:1fr 1fr;} 
+    }
+    
+    @media (max-width:860px){
+      .app-shell{grid-template-columns:1fr}
+      
+      .mobile-menu-btn {
+        display: flex;
+      }
+      
+      .sidebar{
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: min(320px, 85vw);
+        height: 100vh;
+        z-index: 1000;
+        transform: translateX(-105%);
+        transition: transform 0.3s ease;
+        box-shadow: 0 16px 40px rgba(1,8,30,.7);
+        background: linear-gradient(160deg, rgba(4,10,25,.98) 0%, rgba(20,30,62,.95) 65%, rgba(14,26,61,0.92) 100%);
+        padding: 28px 22px 22px;
+        border-right: none;
+        border-radius: 0;
+        overflow-y: auto;
+        display:flex;
+        flex-direction:column;
+        gap:18px;
+        backdrop-filter: blur(30px);
+      }
+      
+      .sidebar.active {
+        transform: translateX(0);
+      }
+      
+      .sidebar::after {
+        content: "";
+        position:absolute;
+        inset:0;
+        pointer-events:none;
+        border-top-right-radius:0;
+        border-bottom-right-radius:0;
+        border:1px solid rgba(255,255,255,0.05);
+      }
+      
+      .sidebar .brand{
+        text-align:left;
+        font-size:22px;
+        letter-spacing:.6px;
+        font-weight:600;
+        color:#7fc5ff;
+        margin-bottom:14px;
+      }
+      
+      .sidebar .menu{
+        flex:1;
+        display:flex;
+        flex-direction:column;
+        gap:14px;
+      }
+      
+      .sidebar .menu a{
+        padding:14px 16px;
+        border-radius:14px;
+        border:1px solid rgba(255,255,255,0.1);
+        background: rgba(13,20,43,0.45);
+        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
+        font-size:15px;
+        font-weight:500;
+        color:#f8fbff;
+        transition: transform .2s ease, background .2s ease;
+      }
+      
+      .sidebar .menu a:hover{
+        transform: translateY(-1px);
+        background: rgba(37,99,235,0.15);
+      }
+      
+      .sidebar .menu a.active{
+        background: linear-gradient(135deg, #2563eb, #1d4ed8);
+        color:#fff;
+        box-shadow: 0 14px 38px rgba(37,99,235,.35);
+      }
+      
+      .sidebar-footer{
+        margin-top:auto;
+        border-top:0;
+        padding-top:0;
+        width:100%;
+      }
+      
+      .sidebar-footer .userbox{
+        padding:14px 12px;
+        border-radius:16px;
+        background: rgba(255,255,255,0.08);
+        border:1px solid rgba(255,255,255,0.12);
+      }
+      
+      .sidebar-footer form{
+        width:100%;
+      }
+      
+      .sidebar-footer .btn.block{
+        width:100%;
+        border-radius:16px;
+        padding:14px;
+        background:#0b1226;
+        border:1px solid rgba(255,255,255,0.18);
+        color:#fff;
+        font-weight:600;
+        letter-spacing:.5px;
+      }
+      
+      .topbar{position: sticky}
+      .cards{grid-template-columns:1fr}
+    }
+    
+    /* Google Ads-style subscription banner */
+    .subscription-banner{
+      display:flex; align-items:center; justify-content:space-between;
+      padding:10px 24px; font-size:14px; font-weight:500;
+      position:relative; z-index:100;
+      animation: slideDown 0.3s ease;
+    }
+    @keyframes slideDown{
+      from{transform:translateY(-100%); opacity:0}
+      to{transform:translateY(0); opacity:1}
+    }
+    .banner-danger{
+      background: linear-gradient(90deg, #fef2f2, #fee2e2, #fecaca);
+      color:#991b1b; border-bottom:2px solid #ef4444;
+    }
+    body.dark .banner-danger{
+      background: linear-gradient(90deg, rgba(127,29,29,0.3), rgba(153,27,27,0.2));
+      color:#fca5a5; border-bottom-color:#dc2626;
+    }
+    .banner-warning{
+      background: linear-gradient(90deg, #fffbeb, #fef3c7, #fde68a);
+      color:#92400e; border-bottom:2px solid #f59e0b;
+    }
+    body.dark .banner-warning{
+      background: linear-gradient(90deg, rgba(120,53,15,0.3), rgba(146,64,14,0.2));
+      color:#fcd34d; border-bottom-color:#d97706;
+    }
+    .banner-content{
+      display:flex; align-items:center; gap:10px; flex:1;
+    }
+    .banner-icon{font-size:18px;}
+    .banner-text{flex:1;}
+    .banner-text strong{font-weight:700;}
+    .banner-close{
+      background:none; border:none; font-size:20px; cursor:pointer;
+      color:inherit; opacity:0.6; padding:4px 8px; border-radius:4px;
+      transition:opacity 0.2s;
+    }
+    .banner-close:hover{opacity:1;}
+
+    /* Стили для уведомлений */
+    .notification-btn {
+      position: relative;
+    }
+    
+    .notification-badge {
+      position: absolute;
+      top: -6px;
+      right: -6px;
+      background: linear-gradient(135deg, #ef4444, #dc2626);
+      color: white;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 10px;
+      min-width: 18px;
+      height: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4);
+      animation: pulse-badge 2s infinite;
+    }
+    
+    @keyframes pulse-badge {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+    }
+    
+    .notifications-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 9998;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+    
+    .notifications-overlay.active {
+      display: block;
+      opacity: 1;
+    }
+    
+    .notifications-panel {
+      position: fixed;
+      top: 70px;
+      right: 24px;
+      width: 500px;
+      max-height: calc(100vh - 100px);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      z-index: 9999;
+      transform: translateY(-20px);
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .notifications-panel.active {
+      transform: translateY(0);
+      opacity: 1;
+      pointer-events: all;
+    }
+    
+    .notifications-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      background: linear-gradient(135deg, rgba(37, 99, 235, 0.05), rgba(29, 78, 216, 0.02));
+    }
+    
+    .notifications-header h3 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+    }
+    
+    .notifications-header-actions {
+      display: flex;
+      gap: 8px;
+    }
+    
+    .btn-icon {
+      width: 32px;
+      height: 32px;
+      border: none;
+      background: var(--surface);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      color: var(--muted);
+    }
+    
+    .btn-icon:hover {
+      background: var(--surface-hover);
+      color: var(--text);
+      transform: scale(1.05);
+    }
+    
+    .notifications-list {
+      overflow-y: auto;
+      max-height: calc(100vh - 200px);
+      padding: 0;
+    }
+    
+    .notifications-loading {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 60px 20px;
+      color: var(--muted);
+    }
+    
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 16px;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    .notification-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      transition: all 0.2s ease;
+      position: relative;
+    }
+    
+    .notification-item:first-child {
+      border-radius: 12px 12px 0 0;
+    }
+    
+    .notification-item:last-child {
+      border-bottom: none;
+      border-radius: 0 0 12px 12px;
+    }
+    
+    .notification-item:hover {
+      background: rgba(37, 99, 235, 0.03);
+    }
+    
+    .notification-item.unread {
+      background: rgba(37, 99, 235, 0.05);
+      border-left: 3px solid var(--primary);
+      padding-left: 13px;
+    }
+    
+    .notification-main {
+      display: flex;
+      align-items: center;
+      flex: 1;
+      min-width: 0;
+    }
+    
+    .notification-content {
+      flex: 1;
+      min-width: 0;
+    }
+    
+    .notification-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 4px;
+    }
+    
+    .notification-title {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    
+    .notification-time {
+      font-size: 11px;
+      color: var(--muted);
+      flex-shrink: 0;
+    }
+    
+    .notification-link-inline {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 13px;
+      color: var(--primary);
+      text-decoration: none;
+      font-weight: 500;
+      transition: all 0.2s ease;
+    }
+    
+    .notification-link-inline:hover {
+      color: #1d4ed8;
+      gap: 6px;
+    }
+    
+    .notification-delete {
+      flex-shrink: 0;
+      width: 24px;
+      height: 24px;
+      border: none;
+      background: transparent;
+      color: #ef4444;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s ease;
+      padding: 0;
+      margin-left: 8px;
+    }
+    
+    .notification-delete:hover {
+      color: #dc2626;
+      transform: scale(1.15);
+    }
+    
+    .notifications-empty {
+      text-align: center;
+      padding: 60px 20px;
+      color: var(--muted);
+    }
+    
+    @media (max-width: 768px) {
+      body {
+        zoom: 1;
+        transform: scale(1);
+        transform-origin: 0 0;
+        -moz-transform: scale(1);
+        -moz-transform-origin: 0 0;
+      }
+      .notifications-panel {
+        top: 60px;
+        right: 12px;
+        left: 12px;
+        width: auto;
+        max-height: calc(100vh - 80px);
+      }
+    }
+  </style>
+  </style>
+</head>
+<body>
+  <script>
+    (function() {
+      try {
+        if (localStorage.getItem('theme') === 'dark') {
+          document.body.classList.add('dark');
+        }
+      } catch (error) {
+        console.error('Failed to restore theme before paint:', error);
+      }
+    })();
+  </script>
+
+  <!-- Google Ads-style баннер для бесплатных пользователей -->
+  {% if user and not user.is_premium %}
+  {% set remaining_analyses = user.free_analyses_limit - user.analyses_used %}
+  {% if remaining_analyses <= 0 %}
+  <div class="subscription-banner banner-danger" id="subscription-banner">
+    <div class="banner-content">
+      <span class="banner-icon">⚠️</span>
+      <span class="banner-text">
+        <strong>Лимит бесплатных анализов исчерпан.</strong> Для продолжения работы приобретите подписку или обратитесь к менеджеру.
+      </span>
+    </div>
+    <button class="banner-close" onclick="document.getElementById('subscription-banner').style.display='none'" title="Закрыть">×</button>
+  </div>
+  {% elif remaining_analyses <= 2 %}
+  <div class="subscription-banner banner-warning" id="subscription-banner">
+    <div class="banner-content">
+      <span class="banner-icon">📊</span>
+      <span class="banner-text">
+        У вас осталось <strong>{{ remaining_analyses }} из {{ user.free_analyses_limit }}</strong> бесплатных анализов. Для безлимитного доступа обратитесь к менеджеру.
+      </span>
+    </div>
+    <button class="banner-close" onclick="document.getElementById('subscription-banner').style.display='none'" title="Закрыть">×</button>
+  </div>
+  {% endif %}
+  {% endif %}
+
+  <div class="app-shell">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="brand">UpStat</div>
+
+      <nav class="menu" aria-label="Основная навигация">
+        <a href="/dashboard" class="{% if request.url.path.startswith('/dashboard') %}active{% endif %}" aria-label="Перейти на дашборд">Дашборд</a>
+        <a href="/calls" class="{% if request.url.path.startswith('/calls') %}active{% endif %}" aria-label="История звонков">История звонков</a>
+        <a href="/settings" class="{% if request.url.path.startswith('/settings') %}active{% endif %}" aria-label="Настройки">Настройки</a>
+        <a href="/chat" class="{% if request.url.path == '/chat' %}active{% endif %}" aria-label="Чат">Чат</a>
+        <a href="/crm" class="{% if request.url.path.startswith('/crm') %}active{% endif %}" aria-label="CRM Интеграции">CRM</a>
+        {% if user and (user.role == 'manager' or user.role == 'admin' or (user.team_memberships and user.team_memberships|length > 0)) %}
+        <a href="/teams/my" class="{% if request.url.path.startswith('/teams') %}active{% endif %}" aria-label="Моя команда">Моя команда</a>
+        {% endif %}
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="userbox">
+          Вошёл: <b>{{ (user.name or (user.email.split('@')[0] if user else '')) }}</b><br/>
+          <span style="opacity:.8">{{ user.email if user else '' }}</span>
+        </div>
+
+        <!-- Кнопка выхода в сайдбаре (можно удалить, если достаточно в топбаре) -->
+        <form action="/logout" method="post" style="margin-top:10px">
+          <button type="submit" class="btn block" title="Выйти из аккаунта">Выйти</button>
+        </form>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Открыть меню" aria-expanded="false" aria-controls="sidebar">
+            <svg id="hamburger-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path id="hamburger-lines" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+            </svg>
+          </button>
+        </div>
+        <div class="topbar-right">
+          {% if user and user.role == 'admin' %}
+          <a href="/admin" class="btn" style="background: #dc2626; color: white; border-color: #dc2626;" title="Админ-панель">
+            <i class="fas fa-user-shield"></i> Админ
+          </a>
+          {% endif %}
+          {% if user and user.role == 'sale_manager' %}
+          <a href="/sales/" class="btn" style="background: #8b5cf6; color: white; border-color: #8b5cf6;" title="Панель продаж">
+            <i class="fas fa-credit-card"></i> Продажи
+          </a>
+          {% endif %}
+          
+          <!-- Кнопка уведомлений -->
+          <button class="btn notification-btn" id="notification-btn" title="Уведомления" onclick="toggleNotifications()">
+            <svg style="width: 20px; height: 20px;" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M10 2a6 6 0 00-6 6v3.586l-.707.707A1 1 0 004 14h12a1 1 0 00.707-1.707L16 11.586V8a6 6 0 00-6-6zM10 18a3 3 0 01-3-3h6a3 3 0 01-3 3z"/>
+            </svg>
+            <span class="notification-badge" id="notification-badge" style="display: none;">0</span>
+          </button>
+          
+          <div class="theme-switch" title="Тема">
+            <label class="ts-label">
+              <input id="theme-switch" class="ts-input" type="checkbox" aria-label="Переключить тему">
+              <span class="ts-track"></span>
+              <span class="ts-thumb"></span>
+              <svg class="ts-icon ts-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path></svg>
+              <svg class="ts-icon ts-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"></path></svg>
+            </label>
+          </div>
+        </div>
+      </header>
+
+      <section class="content">
+        {% block content %}{% endblock %}
+      </section>
+    </main>
+  </div>
+
+  <!-- Панель уведомлений -->
+  <div class="notifications-panel" id="notifications-panel">
+    <div class="notifications-header">
+      <h3>Уведомления</h3>
+      <div class="notifications-header-actions">
+        <button class="btn-icon" onclick="markAllAsRead()" title="Отметить все как прочитанные">
+          <svg style="width: 18px; height: 18px;" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/>
+          </svg>
+        </button>
+        <button class="btn-icon" onclick="toggleNotifications()" title="Закрыть">
+          <svg style="width: 18px; height: 18px;" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+    
+    <div class="notifications-list" id="notifications-list">
+      <div class="notifications-loading">
+        <div class="spinner"></div>
+        <p>Загрузка уведомлений...</p>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Оверлей для уведомлений -->
+  <div class="notifications-overlay" id="notifications-overlay" onclick="toggleNotifications()"></div>
+
+  <!-- Mobile overlay -->
+  <div class="mobile-overlay" id="mobile-overlay"></div>
+
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script defer>
+    // Mobile menu functionality
+    const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+    const sidebar = document.querySelector('.sidebar');
+    const mobileOverlay = document.getElementById('mobile-overlay');
+
+    function toggleMobileMenu() {
+      if (document.body.classList.contains('menu-open')) {
+        closeMobileMenu();
+        return;
+      }
+      sidebar.classList.add('active');
+      mobileOverlay.classList.add('active');
+      document.body.classList.add('menu-open');
+      mobileMenuBtn.setAttribute('aria-expanded', 'true');
+      const lines = document.getElementById('hamburger-lines');
+      if (lines) {
+        lines.setAttribute('d', 'M6 6L18 18M6 18L18 6');
+      }
+    }
+
+    function closeMobileMenu() {
+      sidebar.classList.remove('active');
+      mobileOverlay.classList.remove('active');
+      document.body.classList.remove('menu-open');
+      mobileMenuBtn.setAttribute('aria-expanded', 'false');
+      const lines = document.getElementById('hamburger-lines');
+      if (lines) {
+        lines.setAttribute('d', 'M4 6h16M4 12h16M4 18h16');
+      }
+    }
+
+    mobileMenuBtn.addEventListener('click', toggleMobileMenu);
+    mobileOverlay.addEventListener('click', closeMobileMenu);
+
+    // Close menu when clicking on navigation links
+    document.querySelectorAll('.menu a').forEach(link => {
+      link.addEventListener('click', closeMobileMenu);
+    });
+
+    // Apply saved theme on load and init switch
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'dark') document.body.classList.add('dark');
+    const themeSwitch = document.getElementById('theme-switch');
+    if (themeSwitch) {
+      themeSwitch.checked = document.body.classList.contains('dark');
+      themeSwitch.addEventListener('change', () => {
+        const isDark = themeSwitch.checked;
+        document.body.classList.toggle('dark', isDark);
+        localStorage.setItem('theme', isDark ? 'dark' : 'light');
+      });
+    }
+    
+    // === Система уведомлений ===
+    let notificationsCache = [];
+    
+    // Переключение панели уведомлений
+    function toggleNotifications() {
+      const panel = document.getElementById('notifications-panel');
+      const overlay = document.getElementById('notifications-overlay');
+      const isActive = panel.classList.contains('active');
+      
+      if (isActive) {
+        panel.classList.remove('active');
+        overlay.classList.remove('active');
+      } else {
+        panel.classList.add('active');
+        overlay.classList.add('active');
+        loadNotifications();
+      }
+    }
+    
+    // Загрузка уведомлений
+    async function loadNotifications() {
+      const listContainer = document.getElementById('notifications-list');
+      listContainer.innerHTML = `
+        <div class="notifications-loading">
+          <div class="spinner"></div>
+          <p>Загрузка уведомлений...</p>
+        </div>
+      `;
+      
+      try {
+        const response = await fetch('/api/notifications');
+        const data = await response.json();
+        
+        if (data.success && data.notifications) {
+          notificationsCache = data.notifications;
+          renderNotifications(data.notifications);
+        } else {
+          showEmptyNotifications();
+        }
+      } catch (error) {
+        console.error('Ошибка загрузки уведомлений:', error);
+        listContainer.innerHTML = `
+          <div class="notifications-empty">
+            <h3>Ошибка загрузки</h3>
+            <p>Не удалось загрузить уведомления</p>
+          </div>
+        `;
+      }
+    }
+    
+    // Отрисовка уведомлений
+    function renderNotifications(notifications) {
+      const listContainer = document.getElementById('notifications-list');
+      
+      if (notifications.length === 0) {
+        showEmptyNotifications();
+        return;
+      }
+      
+      let html = '';
+      notifications.forEach(n => {
+        const isUnread = !n.is_read;
+        const timeAgo = getTimeAgo(new Date(n.created_at));
+        
+        html += `
+          <div class="notification-item ${isUnread ? 'unread' : ''}" data-id="${n.id}">
+            <div class="notification-main">
+              <div class="notification-content">
+                <div class="notification-header">
+                  <h4 class="notification-title">${n.title}</h4>
+                  <span class="notification-time">${timeAgo}</span>
+                </div>
+                ${n.link ? `
+                  <a href="${n.link}" class="notification-link-inline" onclick="markNotificationAsRead(${n.id})">
+                    ${n.link_text || 'Открыть'} →
+                  </a>
+                ` : ''}
+              </div>
+            </div>
+            <button class="notification-delete" onclick="deleteNotification(${n.id}, event)" title="Удалить">
+              <svg style="width: 18px; height: 18px;" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+              </svg>
+            </button>
+          </div>
+        `;
+      });
+      
+      listContainer.innerHTML = html;
+    }
+    
+    // Пустые уведомления
+    function showEmptyNotifications() {
+      const listContainer = document.getElementById('notifications-list');
+      listContainer.innerHTML = `
+        <div class="notifications-empty">
+          <h3>Нет уведомлений</h3>
+          <p>Все уведомления прочитаны</p>
+        </div>
+      `;
+    }
+    
+    // Отметить уведомление как прочитанное
+    async function markNotificationAsRead(notificationId) {
+      try {
+        await fetch(`/api/notifications/${notificationId}/read`, { method: 'POST' });
+        updateBadge();
+      } catch (error) {
+        console.error('Ошибка отметки уведомления:', error);
+      }
+    }
+    
+    // Отметить все как прочитанные
+    async function markAllAsRead() {
+      try {
+        const response = await fetch('/api/notifications/read-all', { method: 'POST' });
+        const data = await response.json();
+        
+        if (data.success) {
+          loadNotifications();
+          updateBadge();
+        }
+      } catch (error) {
+        console.error('Ошибка отметки всех уведомлений:', error);
+      }
+    }
+    
+    // Удалить уведомление
+    async function deleteNotification(notificationId, event) {
+      if (event) event.stopPropagation();
+      
+      try {
+        const response = await fetch(`/api/notifications/${notificationId}`, { method: 'DELETE' });
+        const data = await response.json();
+        
+        if (data.success) {
+          const notificationElement = document.querySelector(`[data-id="${notificationId}"]`);
+          if (notificationElement) {
+            notificationElement.style.transform = 'translateX(100%)';
+            notificationElement.style.opacity = '0';
+            setTimeout(() => {
+              loadNotifications();
+              updateBadge();
+            }, 300);
+          }
+        }
+      } catch (error) {
+        console.error('Ошибка удаления уведомления:', error);
+      }
+    }
+    
+    // Обновление бейджа с количеством непрочитанных
+    async function updateBadge() {
+      try {
+        const response = await fetch('/api/notifications/count');
+        if (!response.ok) {
+          return;
+        }
+        const data = await response.json();
+        
+        const badge = document.getElementById('notification-badge');
+        const count = data.unread_count || 0;
+        if (count > 0) {
+          badge.textContent = count > 99 ? '99+' : count;
+          badge.style.display = 'flex';
+        } else {
+          badge.style.display = 'none';
+        }
+      } catch (error) {
+        console.error('Ошибка обновления бейджа:', error);
+      }
+    }
+    
+    // Форматирование времени
+    function getTimeAgo(date) {
+      const now = new Date();
+      const diffInSeconds = Math.floor((now - date) / 1000);
+      
+      if (diffInSeconds < 60) return 'только что';
+      if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)} мин. назад`;
+      if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)} ч. назад`;
+      if (diffInSeconds < 604800) return `${Math.floor(diffInSeconds / 86400)} дн. назад`;
+      
+      return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+    }
+    
+    // Загрузка бейджа при загрузке страницы
+    updateBadge();
+    
+    // Обновление бейджа каждые 30 секунд
+    setInterval(updateBadge, 30000);
+  </script>
+</body>
+</html>

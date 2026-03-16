@@ -1,0 +1,46 @@
+{
+  "speakers": [
+    {
+      "id": "speaker_0",
+      "label": "speaker_1"
+    },
+    {
+      "id": "speaker_1",
+      "label": "speaker_2"
+    }
+  ],
+  "role_map": {
+    "manager": "unknown",
+    "client": "unknown"
+  },
+  "stats_sec": {
+    "speaker_2": 5.94,
+    "speaker_1": 18.8
+  },
+  "turns": [
+    {
+      "speaker": "speaker_1",
+      "start": 0.12,
+      "end": 17.24,
+      "text": "(гудок телефона)"
+    },
+    {
+      "speaker": "speaker_2",
+      "start": 17.36,
+      "end": 21.1,
+      "text": "Алло, девушка еще на встрече, буквально еще минут пятнадцать-двадцать дайте мне."
+    },
+    {
+      "speaker": "speaker_1",
+      "start": 22.62,
+      "end": 24.3,
+      "text": "Хорошо, принято."
+    },
+    {
+      "speaker": "speaker_2",
+      "start": 24.34,
+      "end": 26.54,
+      "text": "Ага, давайте."
+    }
+  ]
+}

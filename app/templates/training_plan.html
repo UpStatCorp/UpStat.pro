@@ -1,0 +1,426 @@
+{% extends "_layout_dashboard.html" %}
+{% block title %}План тренировок — UpStat{% endblock %}
+{% block content %}
+
+<div class="training-plan-container">
+  <!-- Кнопка назад -->
+  {% if is_viewer_mode %}
+    <a href="javascript:history.back()" class="back-button">
+      <svg style="width: 20px; height: 20px;" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd"/>
+      </svg>
+      <span>Назад к деталям участника</span>
+    </a>
+  {% else %}
+    <a href="/calls" class="back-button">
+      <svg style="width: 20px; height: 20px;" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clip-rule="evenodd"/>
+      </svg>
+      <span>Назад к истории звонков</span>
+    </a>
+  {% endif %}
+
+  <!-- Заголовок -->
+  <div class="plan-header">
+    <div class="plan-info">
+      <h1>🎯 План тренировок{% if is_viewer_mode %} <span style="font-size: 14px; color: var(--muted); font-weight: 400;">(Режим просмотра)</span>{% endif %}</h1>
+      <p>Создан на основе анализа звонка от {{ plan.created_at.strftime("%d.%m.%Y %H:%M") }}</p>
+    </div>
+    <div class="plan-progress">
+      <div class="progress-circle">
+        <svg viewBox="0 0 36 36">
+          <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+          <path class="circle" stroke-dasharray="{{ (plan.completed_trainings / plan.total_trainings * 100)|int }}, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+          <text x="18" y="20.35" class="percentage">{{ (plan.completed_trainings / plan.total_trainings * 100)|int }}%</text>
+        </svg>
+      </div>
+      <div class="progress-text">
+        <span class="progress-label">Прогресс</span>
+        <span class="progress-value">{{ plan.completed_trainings }} / {{ plan.total_trainings }}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Список тренировок -->
+  <div class="trainings-list">
+    {% for training in trainings %}
+    <div class="training-card {% if training.status == 'locked' %}locked{% elif training.status == 'completed' %}completed{% endif %}">
+      <div class="training-number">
+        {% if training.status == 'completed' %}
+          <span class="check-icon">✅</span>
+        {% elif training.status == 'locked' %}
+          <span class="lock-icon">🔒</span>
+        {% else %}
+          <span class="number">{{ training.order }}</span>
+        {% endif %}
+      </div>
+      
+      <div class="training-content">
+        <h3 class="training-title">{{ training.title }}</h3>
+        <p class="training-description">{{ training.description }}</p>
+        
+        {% if training.recommendation %}
+        <div class="training-recommendation">
+          <strong>💡 Рекомендация:</strong> {{ training.recommendation }}
+        </div>
+        {% endif %}
+        
+        {% if training.status != 'locked' %}
+        <div class="training-stats">
+          {% if training.attempts > 0 %}
+          <span class="stat">📊 Попыток: {{ training.attempts }}</span>
+          {% endif %}
+          {% if training.best_score %}
+          <span class="stat">⭐ Лучший результат: {{ training.best_score }}/100</span>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+      
+      <div class="training-actions">
+        {% if is_viewer_mode %}
+          {# Режим просмотра: менеджер смотрит план участника, кнопки начала тренировки скрыты #}
+          {% if training.status == 'locked' %}
+            <div class="training-status-badge locked">
+              🔒 Недоступно
+            </div>
+          {% elif training.status == 'completed' %}
+            <div class="training-status-badge completed">
+              ✅ Завершено
+            </div>
+          {% elif training.status == 'in_progress' %}
+            <div class="training-status-badge in-progress">
+              🔄 В процессе
+            </div>
+          {% else %}
+            <div class="training-status-badge available">
+              ⏳ Доступно
+            </div>
+          {% endif %}
+        {% else %}
+          {# Обычный режим: владелец плана может начинать тренировки #}
+          {% if training.status == 'locked' %}
+            <button class="btn btn-secondary" disabled>
+              🔒 Недоступно
+            </button>
+          {% elif training.status == 'completed' %}
+            <button class="btn btn-outline start-training-btn" data-training-id="{{ training.id }}">
+              🔄 Пройти снова
+            </button>
+          {% else %}
+            <button class="btn btn-primary start-training-btn" data-training-id="{{ training.id }}" style="background: linear-gradient(135deg, #10b981, #059669);">
+              ▶️ Начать тренировку
+            </button>
+          {% endif %}
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  
+  {% if plan.status == 'completed' %}
+  <div class="plan-completed">
+    <div class="completed-icon">🎉</div>
+    <h2>Поздравляем!</h2>
+    <p>Вы завершили все тренировки в этом плане!</p>
+    <a href="/calls" class="btn btn-primary">Вернуться к истории звонков</a>
+  </div>
+  {% endif %}
+</div>
+
+<style>
+/* Стили для страницы плана тренировок */
+.training-plan-container {
+  padding: 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Кнопка назад */
+.back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  margin-bottom: 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.back-button:hover {
+  background: var(--bg);
+  border-color: var(--primary);
+  color: var(--primary);
+  transform: translateX(-4px);
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1);
+}
+
+.back-button svg {
+  transition: transform 0.3s ease;
+}
+
+.back-button:hover svg {
+  transform: translateX(-2px);
+}
+
+.plan-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 32px;
+  padding: 24px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+
+.plan-progress {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.progress-circle {
+  width: 80px;
+  height: 80px;
+}
+
+.progress-circle svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.circle-bg {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 3;
+}
+
+.circle {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 3;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.5s ease;
+}
+
+.percentage {
+  font-size: 8px;
+  font-weight: 700;
+  fill: var(--text);
+  transform: rotate(90deg);
+  transform-origin: center;
+}
+
+.trainings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.training-card {
+  display: flex;
+  gap: 20px;
+  padding: 24px;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  transition: all 0.3s ease;
+}
+
+.training-card:not(.locked):hover {
+  border-color: var(--primary);
+  transform: translateY(-2px);
+  box-shadow: 0 12px 32px rgba(37, 99, 235, 0.15);
+}
+
+.training-card.locked {
+  opacity: 0.6;
+  filter: grayscale(50%);
+}
+
+.training-card.completed {
+  border-color: #10b981;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.05), rgba(5, 150, 105, 0.02));
+}
+
+.training-number {
+  flex-shrink: 0;
+  width: 60px;
+  height: 60px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--primary), #1d4ed8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: 700;
+  color: white;
+}
+
+.training-card.completed .training-number {
+  background: linear-gradient(135deg, #10b981, #059669);
+}
+
+.training-card.locked .training-number {
+  background: var(--border);
+}
+
+.training-content {
+  flex: 1;
+}
+
+.training-title {
+  margin: 0 0 8px 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.training-description {
+  margin: 0 0 12px 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.training-recommendation {
+  padding: 12px;
+  background: var(--bg);
+  border-left: 3px solid var(--primary);
+  border-radius: 8px;
+  margin-top: 12px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.training-stats {
+  display: flex;
+  gap: 16px;
+  margin-top: 12px;
+  font-size: 14px;
+}
+
+.stat {
+  color: var(--muted);
+}
+
+.training-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+/* Стили для бейджей статуса в режиме просмотра (менеджер смотрит план участника) */
+.training-status-badge {
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: center;
+  min-width: 140px;
+}
+
+.training-status-badge.locked {
+  background: rgba(148, 163, 184, 0.1);
+  color: #94a3b8;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.training-status-badge.completed {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.training-status-badge.in-progress {
+  background: rgba(37, 99, 235, 0.1);
+  color: #2563eb;
+  border: 1px solid rgba(37, 99, 235, 0.3);
+}
+
+.training-status-badge.available {
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.plan-completed {
+  text-align: center;
+  padding: 48px;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(5, 150, 105, 0.05));
+  border: 2px solid #10b981;
+  border-radius: 14px;
+  margin-top: 32px;
+}
+
+.completed-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 768px) {
+  .plan-header {
+    flex-direction: column;
+    gap: 20px;
+    text-align: center;
+  }
+  
+  .training-card {
+    flex-direction: column;
+  }
+  
+  .training-actions {
+    width: 100%;
+  }
+  
+  .training-actions button {
+    width: 100%;
+  }
+}
+</style>
+
+<script>
+// Обработка кнопок "Начать тренировку"
+document.querySelectorAll('.start-training-btn').forEach(button => {
+  button.addEventListener('click', async (e) => {
+    e.preventDefault();
+    const trainingId = button.dataset.trainingId;
+    button.disabled = true;
+    button.textContent = '⏳ Загрузка...';
+    
+    try {
+      const response = await fetch(`/training/${trainingId}/start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      const data = await response.json();
+      
+      if (data.success && data.redirect) {
+        window.location.href = data.redirect;
+      } else {
+        throw new Error('Ошибка запуска тренировки');
+      }
+    } catch (error) {
+      console.error('Ошибка:', error);
+      alert('Не удалось начать тренировку. Попробуйте снова.');
+      button.disabled = false;
+      button.textContent = button.dataset.originalText || '▶️ Начать тренировку';
+    }
+  });
+});
+</script>
+{% endblock %}
+
+

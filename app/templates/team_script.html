@@ -1,0 +1,133 @@
+{% extends "_layout_dashboard.html" %}
+{% block title %}Скрипт команды {{ team.name }} — UpStat{% endblock %}
+{% block content %}
+
+<div class="dashboard-container">
+  <div class="dashboard-header">
+    <div class="dashboard-title">
+      <h1>Скрипт команды: {{ team.name }}</h1>
+      <p class="dashboard-subtitle">Управление скриптом продаж команды</p>
+    </div>
+    <div class="dashboard-actions">
+      <a href="/teams/{{ team.id }}/members" class="btn" style="padding: 10px 20px;">
+        ← Назад к участникам
+      </a>
+    </div>
+  </div>
+
+  {% if script %}
+  <!-- Просмотр существующего скрипта -->
+  <div class="card" style="padding: 24px; margin-bottom: 24px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+      <h2 style="margin: 0; font-size: 20px; font-weight: 600;">Текущий скрипт</h2>
+      {% if can_edit %}
+      <span style="color: var(--muted); font-size: 14px;">
+        Обновлён: {{ script.updated_at.strftime('%d.%m.%Y %H:%M') }}
+      </span>
+      {% endif %}
+    </div>
+    
+    <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+      <h3 style="margin: 0 0 12px 0; font-size: 18px; font-weight: 600;">{{ script.title }}</h3>
+      {% if script.description %}
+      <p style="margin: 0 0 16px 0; color: var(--muted);">{{ script.description }}</p>
+      {% endif %}
+      
+      {% if script_data and script_data.blocks %}
+      <div style="margin-top: 20px;">
+        {% for block in script_data.blocks %}
+        <div style="margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--border);">
+          <h4 style="margin: 0 0 12px 0; font-size: 16px; font-weight: 600; color: var(--primary);">
+            {{ block.title }}
+          </h4>
+          {% if block.criteria %}
+          <ul style="margin: 0; padding-left: 20px; list-style-type: disc;">
+            {% for criterion in block.criteria %}
+            <li style="margin-bottom: 8px; color: var(--text);">{{ criterion }}</li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <!-- Сообщение, если скрипта нет -->
+  <div class="card" style="padding: 40px 20px; text-align: center; margin-bottom: 24px;">
+    <p style="margin: 0; color: var(--muted); font-size: 16px;">
+      {% if can_edit %}
+      Скрипт команды ещё не загружен. Загрузите его ниже.
+      {% else %}
+      Скрипт команды ещё не загружен менеджером.
+      {% endif %}
+    </p>
+  </div>
+  {% endif %}
+
+  {% if can_edit %}
+  <!-- Форма загрузки/обновления скрипта -->
+  <div class="card" style="padding: 24px;">
+    <h2 style="margin: 0 0 16px 0; font-size: 20px; font-weight: 600;">
+      {% if script %}Обновить скрипт{% else %}Загрузить скрипт{% endif %}
+    </h2>
+    
+    <form method="POST" action="/teams/{{ team.id }}/script" enctype="multipart/form-data">
+      <div style="margin-bottom: 16px;">
+        <label for="script_file" style="display: block; margin-bottom: 8px; font-weight: 500; color: var(--muted);">
+          Загрузить файл Word (.docx, .doc) или текстовый файл (.txt)
+        </label>
+        <input 
+          type="file" 
+          id="script_file" 
+          name="script_file" 
+          accept=".docx,.doc,.txt,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword,text/plain"
+          style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; background: var(--surface); color: var(--text);"
+        >
+        <small style="display: block; margin-top: 4px; color: var(--muted); font-size: 12px;">
+          Поддерживаются файлы Word (.docx, .doc) или текстовые файлы (.txt)
+        </small>
+      </div>
+      
+      <div style="margin: 20px 0; text-align: center; color: var(--muted); font-size: 14px;">
+        или
+      </div>
+      
+      <div style="margin-bottom: 16px;">
+        <label for="script_text" style="display: block; margin-bottom: 8px; font-weight: 500; color: var(--muted);">
+          Вставить текст скрипта
+        </label>
+        <textarea 
+          id="script_text" 
+          name="script_text" 
+          rows="15"
+          placeholder="Вставьте текст скрипта продаж здесь. Система автоматически преобразует его в формат чеклиста.
+
+Пример:
+БЛОК 1: ПРИВЕТСТВИЕ
+- Менеджер представляется
+- Менеджер уточняет имя клиента
+- Менеджер спрашивает, удобно ли говорить
+
+БЛОК 2: КВАЛИФИКАЦИЯ
+- Менеджер выясняет потребности клиента
+- Менеджер задает открытые вопросы
+- Менеджер слушает ответы клиента"
+          style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; background: var(--surface); color: var(--text); font-family: inherit; resize: vertical;"
+        ></textarea>
+        <small style="display: block; margin-top: 4px; color: var(--muted); font-size: 12px;">
+          Система автоматически преобразует текст в формат чеклиста для анализа звонков
+        </small>
+      </div>
+      
+      <button type="submit" class="btn btn-primary" style="padding: 12px 24px; width: 100%;">
+        {% if script %}Обновить скрипт{% else %}Загрузить скрипт{% endif %}
+      </button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}
+

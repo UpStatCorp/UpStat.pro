@@ -1,0 +1,142 @@
+{% extends "admin/_layout_admin.html" %}
+
+{% block content %}
+<!-- Заголовок -->
+<div style="margin-bottom: 32px;">
+    <h1 style="font-size: 28px; font-weight: 700; color: var(--text); margin: 0 0 8px 0;">
+        <i class="fas fa-edit" style="color: var(--admin-info); margin-right: 12px;"></i>
+        Редактирование финального промпта
+    </h1>
+    <p style="color: var(--muted); margin: 0; font-size: 16px;">
+               {% if current_prompt %}
+               Редактирование текущего финального промпта "{{ current_prompt.title }}". Будет создана новая версия.
+               {% else %}
+               Создание нового финального промпта для итогового отчёта. Промпт будет автоматически активирован после создания.
+               {% endif %}
+    </p>
+</div>
+
+<!-- Форма создания -->
+<div class="admin-table-container">
+    <div class="admin-table-header">
+        <h3 class="admin-table-title">
+            <i class="fas fa-edit" style="color: var(--admin-info); margin-right: 8px;"></i>
+            Параметры промпта
+        </h3>
+    </div>
+    
+    <form method="post" action="/admin/prompts/create" style="padding: 24px;">
+        <div style="display: grid; gap: 24px;">
+            <!-- Человекочитаемое название -->
+            <div>
+                <label for="title" style="display: block; font-weight: 600; margin-bottom: 8px; color: var(--text);">
+                    <i class="fas fa-heading" style="margin-right: 8px; color: var(--admin-info);"></i>
+                    Отображаемое название *
+                </label>
+                <input type="text" 
+                       id="title" 
+                       name="title" 
+                       required 
+                       value="{{ current_prompt.title if current_prompt else 'Финальный отчёт аудита' }}"
+                       style="width: 100%; padding: 12px 16px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; background: white; transition: border-color 0.2s ease;"
+                       onfocus="this.style.borderColor='var(--admin-info)'; this.style.boxShadow='0 0 0 3px rgba(59,130,246,0.1)'"
+                       onblur="this.style.borderColor='#d1d5db'; this.style.boxShadow='none'">
+                <div style="font-size: 12px; color: var(--muted); margin-top: 4px;">
+                    Понятное название для финального промпта отчёта
+                </div>
+            </div>
+
+            <!-- Описание -->
+            <div>
+                <label for="description" style="display: block; font-weight: 600; margin-bottom: 8px; color: var(--text);">
+                    <i class="fas fa-info-circle" style="margin-right: 8px; color: var(--admin-info);"></i>
+                    Описание
+                </label>
+                <textarea id="description" 
+                          name="description" 
+                          rows="3"
+                          style="width: 100%; padding: 12px 16px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; background: white; transition: border-color 0.2s ease; resize: vertical;"
+                          onfocus="this.style.borderColor='var(--admin-info)'; this.style.boxShadow='0 0 0 3px rgba(59,130,246,0.1)'"
+                          onblur="this.style.borderColor='#d1d5db'; this.style.boxShadow='none'">{{ current_prompt.description if current_prompt and current_prompt.description else '' }}</textarea>
+                <div style="font-size: 12px; color: var(--muted); margin-top: 4px;">
+                    Необязательное описание для понимания назначения финального промпта
+                </div>
+            </div>
+
+            <!-- Содержимое промпта -->
+            <div>
+                <label for="content" style="display: block; font-weight: 600; margin-bottom: 8px; color: var(--text);">
+                    <i class="fas fa-code" style="margin-right: 8px; color: var(--admin-info);"></i>
+                    Содержимое промпта *
+                </label>
+                <textarea id="content" 
+                          name="content" 
+                          required 
+                          rows="15"
+                          style="width: 100%; padding: 12px 16px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; background: white; transition: border-color 0.2s ease; resize: vertical; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;"
+                          onfocus="this.style.borderColor='var(--admin-info)'; this.style.boxShadow='0 0 0 3px rgba(59,130,246,0.1)'"
+                          onblur="this.style.borderColor='#d1d5db'; this.style.boxShadow='none'">{{ current_prompt.content if current_prompt else '' }}</textarea>
+                <div style="font-size: 12px; color: var(--muted); margin-top: 4px;">
+                    Основное содержимое финального промпта. Используйте переменные {analyses} и {dialogue_json_str} для подстановки данных.
+                </div>
+            </div>
+        </div>
+
+        <!-- Кнопки действий -->
+        <div style="display: flex; gap: 16px; margin-top: 32px; padding-top: 24px; border-top: 1px solid #e5e7eb;">
+            <button type="submit" 
+                    style="display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; background: var(--admin-success); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s ease;"
+                    onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 8px 24px rgba(16,185,129,0.3)'"
+                    onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                    <i class="fas fa-save"></i> {% if current_prompt %}Сохранить новую версию{% else %}Создать финальный промпт{% endif %}
+            </button>
+            
+            <a href="/admin/prompts" 
+               style="display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; background: #6b7280; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; text-decoration: none; transition: all 0.2s ease;"
+               onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 8px 24px rgba(107,114,128,0.3)'"
+               onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                <i class="fas fa-arrow-left"></i> Отмена
+            </a>
+        </div>
+    </form>
+</div>
+
+<!-- Справка -->
+<div class="admin-table-container" style="margin-top: 24px;">
+    <div class="admin-table-header">
+        <h3 class="admin-table-title">
+            <i class="fas fa-question-circle" style="color: var(--admin-secondary); margin-right: 8px;"></i>
+            Справка по созданию промптов
+        </h3>
+    </div>
+    <div style="padding: 24px;">
+        <div style="display: grid; gap: 16px;">
+            <div>
+                <h4 style="color: var(--text); margin: 0 0 8px 0; font-size: 16px;">
+                    <i class="fas fa-lightbulb" style="color: var(--admin-secondary); margin-right: 8px;"></i>
+                    Советы по написанию промптов
+                </h4>
+                <ul style="color: var(--muted); margin: 0; padding-left: 20px;">
+                    <li>Будьте конкретными и четкими в инструкциях</li>
+                    <li>Используйте примеры для лучшего понимания</li>
+                    <li>Указывайте формат ожидаемого ответа</li>
+                    <li>Тестируйте промпт перед активацией</li>
+                </ul>
+            </div>
+            
+            <div>
+                <h4 style="color: var(--text); margin: 0 0 8px 0; font-size: 16px;">
+                    <i class="fas fa-code" style="color: var(--admin-info); margin-right: 8px;"></i>
+                    Переменные в промптах
+                </h4>
+                <div style="background: #f8fafc; padding: 12px; border-radius: 8px; font-family: monospace; font-size: 12px; color: var(--text);">
+                    {data} - данные чек-листа<br>
+                    {dialogue_json_str} - JSON диалога<br>
+                    {user_name} - имя пользователя<br>
+                    {timestamp} - текущее время
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

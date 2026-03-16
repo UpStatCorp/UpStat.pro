@@ -1,0 +1,143 @@
+{% extends "_layout_dashboard.html" %}
+{% block title %}Участники команды {{ team.name }} — UpStat{% endblock %}
+{% block content %}
+
+<div class="dashboard-container">
+  <div class="dashboard-header">
+    <div class="dashboard-title">
+      <h1>{{ team.name }}</h1>
+      <p class="dashboard-subtitle">Управление участниками команды</p>
+    </div>
+    <div class="dashboard-actions">
+      <a href="/teams/my" class="btn" style="padding: 10px 20px; margin-right: 10px;">
+        ← Назад к командам
+      </a>
+      <a href="/teams/{{ team.id }}/analytics" class="btn btn-primary" style="padding: 10px 20px; margin-right: 10px;">
+        📊 Аналитика команды
+      </a>
+      <a href="/teams/{{ team.id }}/script" class="btn btn-primary" style="padding: 10px 20px;">
+        📝 Скрипт команды
+      </a>
+    </div>
+  </div>
+
+  <!-- Участники команды -->
+  <div style="margin-bottom: 32px;">
+    <h2 style="margin: 0 0 16px 0; font-size: 20px; font-weight: 600;">Участники ({{ members|length }})</h2>
+    <div class="table">
+      <table>
+        <thead>
+          <tr>
+            <th>Имя</th>
+            <th>Email</th>
+            <th>Роль в команде</th>
+            <th>Присоединился</th>
+            <th>Действия</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for member in members %}
+          <tr>
+            <td><strong>{{ member.user.name }}</strong></td>
+            <td>{{ member.user.email }}</td>
+            <td>
+              <span style="padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 500; 
+                           {% if member.role_in_team == 'manager' %}background: rgba(37, 99, 235, 0.1); color: #2563eb;
+                           {% else %}background: rgba(100, 116, 139, 0.1); color: #64748b;{% endif %}">
+                {% if member.role_in_team == 'manager' %}Менеджер{% else %}Участник{% endif %}
+              </span>
+            </td>
+            <td>{{ member.joined_at.strftime('%d.%m.%Y') }}</td>
+            <td>
+              <a href="/teams/{{ team.id }}/member/{{ member.user_id }}/report" class="btn" style="padding: 6px 12px; font-size: 12px;">
+                📊 Посмотреть детали
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Приглашения -->
+  <div style="margin-bottom: 32px;">
+    <h2 style="margin: 0 0 16px 0; font-size: 20px; font-weight: 600;">Приглашения</h2>
+    
+    <!-- Форма отправки приглашений -->
+    <div class="card" style="padding: 24px; margin-bottom: 24px;">
+      <h3 style="margin: 0 0 16px 0; font-size: 16px; font-weight: 600;">Пригласить участников</h3>
+      <form method="POST" action="/teams/{{ team.id }}/invitations">
+        <div style="margin-bottom: 16px;">
+          <label for="emails" style="display: block; margin-bottom: 8px; font-weight: 500; color: var(--muted);">
+            Email адреса (по одному на строку или через запятую)
+          </label>
+          <textarea 
+            id="emails" 
+            name="emails" 
+            required 
+            rows="5"
+            placeholder="user1@example.com&#10;user2@example.com&#10;user3@example.com"
+            style="width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: 8px; font-size: 14px; background: var(--surface); color: var(--text); font-family: inherit; resize: vertical;"
+          ></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary" style="padding: 12px 24px;">
+          Отправить приглашения
+        </button>
+      </form>
+    </div>
+
+    <!-- Список приглашений -->
+    {% if invitations %}
+    <div class="table">
+      <table>
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Статус</th>
+            <th>Отправлено</th>
+            <th>Истекает</th>
+            <th>Принято</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for inv in invitations %}
+          <tr>
+            <td>{{ inv.invited_email }}</td>
+            <td>
+              <span style="padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 500;
+                           {% if inv.status == 'PENDING' %}background: rgba(251, 191, 36, 0.1); color: #f59e0b;
+                           {% elif inv.status == 'ACCEPTED' %}background: rgba(34, 197, 94, 0.1); color: #22c55e;
+                           {% elif inv.status == 'EXPIRED' %}background: rgba(239, 68, 68, 0.1); color: #ef4444;
+                           {% else %}background: rgba(100, 116, 139, 0.1); color: #64748b;{% endif %}">
+                {% if inv.status == 'PENDING' %}Ожидает
+                {% elif inv.status == 'ACCEPTED' %}Принято
+                {% elif inv.status == 'EXPIRED' %}Истекло
+                {% elif inv.status == 'CANCELED' %}Отменено
+                {% else %}{{ inv.status }}{% endif %}
+              </span>
+            </td>
+            <td>{{ inv.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+            <td>{{ inv.expires_at.strftime('%d.%m.%Y') }}</td>
+            <td>
+              {% if inv.accepted_at %}
+                {{ inv.accepted_at.strftime('%d.%m.%Y %H:%M') }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="card" style="padding: 40px 20px; text-align: center;">
+      <p style="margin: 0; color: var(--muted);">Нет отправленных приглашений</p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}
+

@@ -1,0 +1,149 @@
+{% extends "admin/_layout_admin.html" %}
+
+{% block content %}
+<!-- Заголовок -->
+<div style="margin-bottom: 32px;">
+    <h1 style="font-size: 28px; font-weight: 700; color: var(--text); margin: 0 0 8px 0;">
+        <i class="fas fa-edit" style="color: var(--admin-info); margin-right: 12px;"></i>
+        Редактирование промпта
+    </h1>
+    <p style="color: var(--muted); margin: 0; font-size: 16px;">
+        Редактирование промпта "{{ prompt.title }}". Будет создана новая версия промпта.
+    </p>
+</div>
+
+<!-- Информация о текущей версии -->
+<div class="admin-table-container" style="margin-bottom: 24px;">
+    <div class="admin-table-header">
+        <h3 class="admin-table-title">
+            <i class="fas fa-info-circle" style="color: var(--admin-info); margin-right: 8px;"></i>
+            Текущая версия
+        </h3>
+    </div>
+    <div style="padding: 24px;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+            <div>
+                <div style="font-size: 12px; color: var(--muted); margin-bottom: 4px;">Системное название</div>
+                <div style="font-weight: 600; font-family: monospace;">{{ prompt.name }}</div>
+            </div>
+            <div>
+                <div style="font-size: 12px; color: var(--muted); margin-bottom: 4px;">Текущая версия</div>
+                <div style="font-weight: 600;">
+                    <span style="display: inline-flex; align-items: center; gap: 4px; background: var(--admin-info); color: white; padding: 4px 8px; border-radius: 6px; font-size: 12px;">
+                        <i class="fas fa-tag"></i> v{{ prompt.version }}
+                    </span>
+                </div>
+            </div>
+            <div>
+                <div style="font-size: 12px; color: var(--muted); margin-bottom: 4px;">Создан</div>
+                <div style="font-weight: 600;">{{ prompt.created_at.strftime('%d.%m.%Y %H:%M') if prompt.created_at else '-' }}</div>
+            </div>
+            <div>
+                <div style="font-size: 12px; color: var(--muted); margin-bottom: 4px;">Автор</div>
+                <div style="font-weight: 600;">{{ prompt.creator.name if prompt.creator else 'Неизвестно' }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Форма редактирования -->
+<div class="admin-table-container">
+    <div class="admin-table-header">
+        <h3 class="admin-table-title">
+            <i class="fas fa-edit" style="color: var(--admin-info); margin-right: 8px;"></i>
+            Новая версия промпта
+        </h3>
+    </div>
+    
+    <form method="post" action="/admin/prompts/{{ prompt.name }}/edit" style="padding: 24px;">
+        <div style="display: grid; gap: 24px;">
+            <!-- Человекочитаемое название -->
+            <div>
+                <label for="title" style="display: block; font-weight: 600; margin-bottom: 8px; color: var(--text);">
+                    <i class="fas fa-heading" style="margin-right: 8px; color: var(--admin-info);"></i>
+                    Отображаемое название *
+                </label>
+                <input type="text" 
+                       id="title" 
+                       name="title" 
+                       required 
+                       value="{{ prompt.title }}"
+                       style="width: 100%; padding: 12px 16px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; background: white; transition: border-color 0.2s ease;"
+                       onfocus="this.style.borderColor='var(--admin-info)'; this.style.boxShadow='0 0 0 3px rgba(59,130,246,0.1)'"
+                       onblur="this.style.borderColor='#d1d5db'; this.style.boxShadow='none'">
+            </div>
+
+            <!-- Описание -->
+            <div>
+                <label for="description" style="display: block; font-weight: 600; margin-bottom: 8px; color: var(--text);">
+                    <i class="fas fa-info-circle" style="margin-right: 8px; color: var(--admin-info);"></i>
+                    Описание
+                </label>
+                <textarea id="description" 
+                          name="description" 
+                          rows="3"
+                          style="width: 100%; padding: 12px 16px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; background: white; transition: border-color 0.2s ease; resize: vertical;"
+                          onfocus="this.style.borderColor='var(--admin-info)'; this.style.boxShadow='0 0 0 3px rgba(59,130,246,0.1)'"
+                          onblur="this.style.borderColor='#d1d5db'; this.style.boxShadow='none'">{{ prompt.description or '' }}</textarea>
+            </div>
+
+            <!-- Содержимое промпта -->
+            <div>
+                <label for="content" style="display: block; font-weight: 600; margin-bottom: 8px; color: var(--text);">
+                    <i class="fas fa-code" style="margin-right: 8px; color: var(--admin-info);"></i>
+                    Содержимое промпта *
+                </label>
+                <textarea id="content" 
+                          name="content" 
+                          required 
+                          rows="15"
+                          style="width: 100%; padding: 12px 16px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 14px; background: white; transition: border-color 0.2s ease; resize: vertical; font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;"
+                          onfocus="this.style.borderColor='var(--admin-info)'; this.style.boxShadow='0 0 0 3px rgba(59,130,246,0.1)'"
+                          onblur="this.style.borderColor='#d1d5db'; this.style.boxShadow='none'">{{ prompt.content }}</textarea>
+                <div style="font-size: 12px; color: var(--muted); margin-top: 4px;">
+                    Основное содержимое промпта. Используйте переменные в формате {variable_name} для динамических значений.
+                </div>
+            </div>
+        </div>
+
+        <!-- Кнопки действий -->
+        <div style="display: flex; gap: 16px; margin-top: 32px; padding-top: 24px; border-top: 1px solid #e5e7eb;">
+            <button type="submit" 
+                    style="display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; background: var(--admin-success); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s ease;"
+                    onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 8px 24px rgba(16,185,129,0.3)'"
+                    onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                <i class="fas fa-save"></i> Сохранить новую версию
+            </button>
+            
+            <a href="/admin/prompts/{{ prompt.name }}/versions" 
+               style="display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; background: var(--admin-secondary); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; text-decoration: none; transition: all 0.2s ease;"
+               onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 8px 24px rgba(245,158,11,0.3)'"
+               onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                <i class="fas fa-history"></i> История версий
+            </a>
+            
+            <a href="/admin/prompts" 
+               style="display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; background: #6b7280; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; text-decoration: none; transition: all 0.2s ease;"
+               onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 8px 24px rgba(107,114,128,0.3)'"
+               onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                <i class="fas fa-arrow-left"></i> Назад к списку
+            </a>
+        </div>
+    </form>
+</div>
+
+<!-- Предупреждение -->
+<div class="admin-table-container" style="margin-top: 24px; border-left: 4px solid var(--admin-secondary);">
+    <div style="padding: 24px;">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+            <i class="fas fa-exclamation-triangle" style="color: var(--admin-secondary); font-size: 20px;"></i>
+            <h4 style="color: var(--text); margin: 0; font-size: 16px;">Важно!</h4>
+        </div>
+        <p style="color: var(--muted); margin: 0; line-height: 1.5;">
+            При сохранении будет создана <strong>новая версия</strong> промпта, которая автоматически станет активной. 
+            Предыдущие версии сохранятся в истории и могут быть восстановлены при необходимости.
+        </p>
+    </div>
+</div>
+{% endblock %}
+

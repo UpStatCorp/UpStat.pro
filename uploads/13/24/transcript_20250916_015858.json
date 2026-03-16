@@ -1,0 +1,80 @@
+{
+  "language_code": "rus",
+  "language_probability": 0.9286048412322998,
+  "text": "Привет! Сейчас будет тренировка. (звуки ритмичной музыки)",
+  "words": [
+    {
+      "text": "Привет!",
+      "start": 0.099,
+      "end": 1.018,
+      "type": "word",
+      "speaker_id": "speaker_0",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 1.018,
+      "end": 1.08,
+      "type": "spacing",
+      "speaker_id": "speaker_0",
+      "logprob": 0.0
+    },
+    {
+      "text": "Сейчас",
+      "start": 1.08,
+      "end": 1.32,
+      "type": "word",
+      "speaker_id": "speaker_0",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 1.32,
+      "end": 1.319,
+      "type": "spacing",
+      "speaker_id": "speaker_0",
+      "logprob": 0.0
+    },
+    {
+      "text": "будет",
+      "start": 1.319,
+      "end": 1.479,
+      "type": "word",
+      "speaker_id": "speaker_0",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 1.479,
+      "end": 1.499,
+      "type": "spacing",
+      "speaker_id": "speaker_0",
+      "logprob": 0.0
+    },
+    {
+      "text": "тренировка.",
+      "start": 1.5,
+      "end": 2.019,
+      "type": "word",
+      "speaker_id": "speaker_0",
+      "logprob": 0.0
+    },
+    {
+      "text": " ",
+      "start": 2.019,
+      "end": 2.019,
+      "type": "spacing",
+      "speaker_id": "speaker_0",
+      "logprob": 0.0
+    },
+    {
+      "text": "(звуки ритмичной музыки)",
+      "start": 2.019,
+      "end": 2.319,
+      "type": "audio_event",
+      "speaker_id": "speaker_1",
+      "logprob": 0.0
+    }
+  ],
+  "transcription_id": "immpcKxH2IO45qq6tLHO"
+}

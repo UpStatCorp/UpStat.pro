@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Управление подписками — UpStat</title>
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;600;700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg: #f8f9fa;
+      --surface: #ffffff;
+      --text-primary: #202124;
+      --text-secondary: #5f6368;
+      --text-muted: #80868b;
+      --border: #dadce0;
+      --border-light: #e8eaed;
+      --blue: #1a73e8;
+      --blue-hover: #1557b0;
+      --blue-light: #e8f0fe;
+      --green: #1e8e3e;
+      --green-light: #e6f4ea;
+      --red: #d93025;
+      --red-light: #fce8e6;
+      --orange: #f9ab00;
+      --orange-light: #fef7e0;
+      --radius: 8px;
+      --shadow-sm: 0 1px 2px 0 rgba(60,64,67,0.3), 0 1px 3px 1px rgba(60,64,67,0.15);
+      --shadow-md: 0 1px 3px 0 rgba(60,64,67,0.3), 0 4px 8px 3px rgba(60,64,67,0.15);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: 'Google Sans', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg);
+      color: var(--text-primary);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .app-layout {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    /* Sidebar */
+    .sidebar {
+      width: 256px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      top: 0;
+      left: 0;
+      height: 100vh;
+      z-index: 100;
+    }
+
+    .sidebar-header {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border-light);
+    }
+
+    .sidebar-logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 18px;
+      font-weight: 500;
+      color: var(--text-primary);
+      text-decoration: none;
+    }
+
+    .sidebar-logo-icon {
+      width: 36px;
+      height: 36px;
+      background: var(--blue);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 16px;
+    }
+
+    .sidebar-nav {
+      flex: 1;
+      padding: 8px 12px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 16px;
+      border-radius: 24px;
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-weight: 500;
+      transition: background 0.15s, color 0.15s;
+      margin-bottom: 4px;
+    }
+
+    .nav-item:hover {
+      background: var(--border-light);
+      color: var(--text-primary);
+    }
+
+    .nav-item.active {
+      background: var(--blue-light);
+      color: var(--blue);
+    }
+
+    .nav-item i {
+      width: 20px;
+      text-align: center;
+      font-size: 16px;
+    }
+
+    .sidebar-footer {
+      padding: 16px;
+      border-top: 1px solid var(--border-light);
+    }
+
+    .user-card {
+      padding: 12px;
+      background: var(--bg);
+      border-radius: var(--radius);
+    }
+
+    .user-card-name {
+      font-weight: 500;
+      color: var(--text-primary);
+      margin-bottom: 2px;
+    }
+
+    .user-card-email {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      word-break: break-all;
+    }
+
+    .user-card-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      background: var(--blue-light);
+      color: var(--blue);
+      font-size: 11px;
+      font-weight: 500;
+      border-radius: 4px;
+    }
+
+    .btn-logout {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      margin-top: 12px;
+      padding: 10px 16px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-secondary);
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .btn-logout:hover {
+      background: var(--bg);
+      border-color: var(--text-muted);
+    }
+
+    /* Main content */
+    .main-content {
+      flex: 1;
+      margin-left: 256px;
+      min-height: 100vh;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      padding: 16px 32px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .topbar-title {
+      font-size: 22px;
+      font-weight: 400;
+      color: var(--text-primary);
+      margin: 0;
+    }
+
+    .topbar-time {
+      font-size: 14px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .content {
+      padding: 24px 32px;
+      max-width: 1400px;
+    }
+
+    /* Stats */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .stat-info h3 {
+      margin: 0 0 4px 0;
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .stat-info .value {
+      font-size: 28px;
+      font-weight: 400;
+      color: var(--text-primary);
+    }
+
+    .stat-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+
+    .stat-icon.total {
+      background: var(--blue-light);
+      color: var(--blue);
+    }
+
+    .stat-icon.premium {
+      background: var(--green-light);
+      color: var(--green);
+    }
+
+    .stat-icon.free {
+      background: var(--orange-light);
+      color: var(--orange);
+    }
+
+    /* Search */
+    .search-section {
+      margin-bottom: 24px;
+    }
+
+    .search-form {
+      display: flex;
+      gap: 12px;
+      max-width: 600px;
+    }
+
+    .search-input {
+      flex: 1;
+      padding: 12px 16px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-family: inherit;
+      color: var(--text-primary);
+      background: var(--surface);
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    .search-input:focus {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 2px var(--blue-light);
+    }
+
+    .search-input::placeholder {
+      color: var(--text-muted);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 24px;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.15s, box-shadow 0.15s;
+      text-decoration: none;
+      border: none;
+    }
+
+    .btn-primary {
+      background: var(--blue);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--blue-hover);
+      box-shadow: var(--shadow-sm);
+    }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--blue);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      background: var(--blue-light);
+      border-color: var(--blue-light);
+    }
+
+    /* Table */
+    .table-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .table-header {
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border-light);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .table-header h2 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .table-count {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .data-table th,
+    .data-table td {
+      padding: 14px 24px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-light);
+    }
+
+    .data-table th {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      background: var(--bg);
+    }
+
+    .data-table tbody tr:hover {
+      background: #f1f3f4;
+    }
+
+    .data-table tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    .user-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .user-name {
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .user-email {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .badge-premium {
+      background: var(--green-light);
+      color: var(--green);
+    }
+
+    .badge-free {
+      background: var(--bg);
+      color: var(--text-muted);
+      border: 1px solid var(--border);
+    }
+
+    .badge-rop {
+      background: var(--blue-light);
+      color: var(--blue);
+    }
+
+    .badge-user {
+      background: var(--bg);
+      color: var(--text-muted);
+    }
+
+    /* Analyses progress */
+    .analyses-cell {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .analyses-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .progress-bar {
+      width: 80px;
+      height: 4px;
+      background: var(--border-light);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      border-radius: 2px;
+      transition: width 0.3s;
+    }
+
+    .progress-fill.low { background: var(--green); }
+    .progress-fill.medium { background: var(--orange); }
+    .progress-fill.high { background: var(--red); }
+
+    .analyses-text {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .analyses-unlimited {
+      color: var(--green);
+      font-weight: 500;
+      font-size: 13px;
+    }
+
+    .btn-reset {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 11px;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+
+    .btn-reset:hover {
+      background: var(--bg);
+      color: var(--text-secondary);
+    }
+
+    /* Action buttons */
+    .btn-action {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+    }
+
+    .btn-grant {
+      background: var(--green);
+      color: white;
+    }
+
+    .btn-grant:hover {
+      background: #1a7431;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .btn-revoke {
+      background: var(--red);
+      color: white;
+    }
+
+    .btn-revoke:hover {
+      background: #c5221f;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .date-cell {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .date-cell .sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    /* Empty state */
+    .empty-state {
+      padding: 60px 24px;
+      text-align: center;
+    }
+
+    .empty-state-icon {
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 16px;
+      background: var(--bg);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-muted);
+      font-size: 24px;
+    }
+
+    .empty-state h3 {
+      margin: 0 0 8px;
+      font-size: 16px;
+      font-weight: 500;
+      color: var(--text-primary);
+    }
+
+    .empty-state p {
+      margin: 0;
+      color: var(--text-muted);
+    }
+
+    /* Mobile menu */
+    .mobile-menu-btn {
+      display: none;
+      width: 40px;
+      height: 40px;
+      border: none;
+      background: transparent;
+      border-radius: 50%;
+      cursor: pointer;
+      color: var(--text-secondary);
+      transition: background 0.15s;
+    }
+
+    .mobile-menu-btn:hover {
+      background: var(--border-light);
+    }
+
+    .mobile-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.4);
+      z-index: 99;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .mobile-overlay.active {
+      display: block;
+      opacity: 1;
+    }
+
+    /* Responsive */
+    @media (max-width: 1024px) {
+      .stats-row {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+
+    @media (max-width: 768px) {
+      .sidebar {
+        transform: translateX(-100%);
+        transition: transform 0.2s ease;
+      }
+
+      .sidebar.open {
+        transform: translateX(0);
+      }
+
+      .main-content {
+        margin-left: 0;
+      }
+
+      .mobile-menu-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .content {
+        padding: 16px;
+      }
+
+      .stats-row {
+        grid-template-columns: 1fr;
+      }
+
+      .search-form {
+        flex-direction: column;
+        max-width: none;
+      }
+
+      .data-table {
+        font-size: 13px;
+      }
+
+      .data-table th,
+      .data-table td {
+        padding: 12px 16px;
+      }
+
+      .topbar {
+        padding: 12px 16px;
+      }
+
+      .topbar-title {
+        font-size: 18px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <a href="/sales/" class="sidebar-logo">
+          <div class="sidebar-logo-icon">
+            <i class="fas fa-chart-line"></i>
+          </div>
+          <span>Панель продаж</span>
+        </a>
+      </div>
+
+      <nav class="sidebar-nav">
+        <a href="/sales/" class="nav-item active">
+          <i class="fas fa-users"></i>
+          <span>Пользователи</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer">
+        <div class="user-card">
+          <div class="user-card-name">{{ current_user.name }}</div>
+          <div class="user-card-email">{{ current_user.email }}</div>
+          <span class="user-card-badge">Менеджер продаж</span>
+        </div>
+
+        <form action="/logout" method="post">
+          <button type="submit" class="btn-logout">
+            <i class="fas fa-sign-out-alt"></i>
+            <span>Выйти</span>
+          </button>
+        </form>
+      </div>
+    </aside>
+
+    <!-- Mobile overlay -->
+    <div class="mobile-overlay" id="mobile-overlay"></div>
+
+    <!-- Main -->
+    <main class="main-content">
+      <header class="topbar">
+        <div style="display: flex; align-items: center; gap: 16px;">
+          <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Меню">
+            <i class="fas fa-bars" style="font-size: 20px;"></i>
+          </button>
+          <h1 class="topbar-title">Управление подписками</h1>
+        </div>
+        <div class="topbar-time">
+          <i class="far fa-clock"></i>
+          <span id="current-time"></span>
+        </div>
+      </header>
+
+      <div class="content">
+        <!-- Stats -->
+        <div class="stats-row">
+          <div class="stat-card">
+            <div class="stat-info">
+              <h3>Всего пользователей</h3>
+              <div class="value">{{ total_users }}</div>
+            </div>
+            <div class="stat-icon total">
+              <i class="fas fa-users"></i>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-info">
+              <h3>С безлимитом</h3>
+              <div class="value">{{ premium_users }}</div>
+            </div>
+            <div class="stat-icon premium">
+              <i class="fas fa-infinity"></i>
+            </div>
+          </div>
+
+          <div class="stat-card">
+            <div class="stat-info">
+              <h3>Бесплатный план</h3>
+              <div class="value">{{ free_users }}</div>
+            </div>
+            <div class="stat-icon free">
+              <i class="fas fa-hourglass-half"></i>
+            </div>
+          </div>
+        </div>
+
+        <!-- Search -->
+        <div class="search-section">
+          <form class="search-form" method="get" action="/sales/">
+            <input type="text" name="search" class="search-input" placeholder="Поиск по имени или email..." value="{{ search or '' }}">
+            <button type="submit" class="btn btn-primary">
+              <i class="fas fa-search"></i>
+              Найти
+            </button>
+            {% if search %}
+            <a href="/sales/" class="btn btn-secondary">
+              <i class="fas fa-times"></i>
+              Сбросить
+            </a>
+            {% endif %}
+          </form>
+        </div>
+
+        <!-- Table -->
+        <div class="table-card">
+          <div class="table-header">
+            <h2>Пользователи</h2>
+            <span class="table-count">Найдено: {{ users|length }}</span>
+          </div>
+
+          {% if users %}
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Пользователь</th>
+                <th>Роль</th>
+                <th>Подписка</th>
+                <th>Анализы</th>
+                <th>Регистрация</th>
+                <th>Действия</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for u in users %}
+              <tr>
+                <td>
+                  <div class="user-cell">
+                    <span class="user-name">{{ u.name }}</span>
+                    <span class="user-email">{{ u.email }}</span>
+                  </div>
+                </td>
+                <td>
+                  {% if u.role == 'manager' %}
+                  <span class="badge badge-rop"><i class="fas fa-user-tie"></i> РОП</span>
+                  {% elif u.role == 'admin' %}
+                  <span class="badge badge-rop"><i class="fas fa-shield-alt"></i> Админ</span>
+                  {% elif u.role == 'sale_manager' %}
+                  <span class="badge badge-rop"><i class="fas fa-chart-line"></i> Продажи</span>
+                  {% else %}
+                  <span class="badge badge-user"><i class="fas fa-user"></i> Пользователь</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if u.is_premium %}
+                  <span class="badge badge-premium"><i class="fas fa-check-circle"></i> Безлимит</span>
+                  {% else %}
+                  <span class="badge badge-free">Бесплатный</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <div class="analyses-cell">
+                    {% if u.is_premium %}
+                    <span class="analyses-unlimited"><i class="fas fa-infinity"></i> Безлимит</span>
+                    {% else %}
+                    <div class="analyses-info">
+                      <div class="progress-bar">
+                        {% set pct = ((u.analyses_used / u.free_analyses_limit) * 100) if u.free_analyses_limit > 0 else 0 %}
+                        {% if pct > 80 %}
+                        <div class="progress-fill high" style="width: {{ pct }}%;"></div>
+                        {% elif pct > 50 %}
+                        <div class="progress-fill medium" style="width: {{ pct }}%;"></div>
+                        {% else %}
+                        <div class="progress-fill low" style="width: {{ pct }}%;"></div>
+                        {% endif %}
+                      </div>
+                      <span class="analyses-text">{{ u.analyses_used }}/{{ u.free_analyses_limit }}</span>
+                    </div>
+                    <form method="post" action="/sales/reset-analyses/{{ u.id }}" style="margin: 0;">
+                      <button type="submit" class="btn-reset">
+                        <i class="fas fa-redo"></i> Сбросить
+                      </button>
+                    </form>
+                    {% endif %}
+                  </div>
+                </td>
+                <td>
+                  <div class="date-cell">
+                    {{ u.created_at.strftime('%d.%m.%Y') if u.created_at else '—' }}
+                    {% if u.last_login_at %}
+                    <div class="sub">Вход: {{ u.last_login_at.strftime('%d.%m.%Y %H:%M') }}</div>
+                    {% endif %}
+                  </div>
+                </td>
+                <td>
+                  <form method="post" action="/sales/toggle-premium/{{ u.id }}" style="margin: 0;">
+                    {% if u.is_premium %}
+                    <button type="submit" class="btn-action btn-revoke" onclick="return confirm('Убрать безлимит у {{ u.name }}?')">
+                      <i class="fas fa-times"></i> Убрать безлимит
+                    </button>
+                    {% else %}
+                    <button type="submit" class="btn-action btn-grant" onclick="return confirm('Дать безлимит для {{ u.name }}?')">
+                      <i class="fas fa-crown"></i> Дать безлимит
+                    </button>
+                    {% endif %}
+                  </form>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% else %}
+          <div class="empty-state">
+            <div class="empty-state-icon">
+              <i class="fas fa-users"></i>
+            </div>
+            <h3>Пользователи не найдены</h3>
+            <p>{% if search %}Попробуйте изменить критерии поиска{% else %}Пока нет зарегистрированных пользователей{% endif %}</p>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // Time
+    function updateTime() {
+      const el = document.getElementById('current-time');
+      if (el) {
+        el.textContent = new Date().toLocaleString('ru-RU', {
+          day: '2-digit', month: '2-digit', year: 'numeric',
+          hour: '2-digit', minute: '2-digit'
+        });
+      }
+    }
+    updateTime();
+    setInterval(updateTime, 60000);
+
+    // Mobile menu
+    const menuBtn = document.getElementById('mobile-menu-btn');
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('mobile-overlay');
+
+    function toggleMenu() {
+      sidebar.classList.toggle('open');
+      overlay.classList.toggle('active');
+    }
+
+    menuBtn?.addEventListener('click', toggleMenu);
+    overlay?.addEventListener('click', toggleMenu);
+  </script>
+</body>
+</html>

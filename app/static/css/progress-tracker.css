@@ -1,0 +1,219 @@
+/**
+ * Стили для компонента отслеживания прогресса
+ */
+
+.progress-tracker-container {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 400px;
+    pointer-events: none;
+}
+
+.progress-tracker {
+    background: var(--card-bg, #fff);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    padding: 16px;
+    pointer-events: auto;
+    opacity: 0;
+    transform: translateY(20px);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    min-width: 320px;
+    border-left: 4px solid var(--progress-color, #3b82f6);
+}
+
+.progress-tracker.show {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* Цвета статусов */
+.progress-tracker-pending {
+    --progress-color: #6b7280;
+}
+
+.progress-tracker-in_progress {
+    --progress-color: #3b82f6;
+}
+
+.progress-tracker-completed {
+    --progress-color: #10b981;
+}
+
+.progress-tracker-failed {
+    --progress-color: #ef4444;
+}
+
+.progress-tracker-cancelled {
+    --progress-color: #f59e0b;
+}
+
+/* Заголовок */
+.progress-tracker-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.progress-tracker-title {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-primary, #1f2937);
+    flex: 1;
+}
+
+.progress-tracker-percentage {
+    font-weight: 700;
+    font-size: 16px;
+    color: var(--progress-color);
+    margin-left: 12px;
+}
+
+/* Прогресс-бар */
+.progress-tracker-bar-container {
+    height: 6px;
+    background: var(--progress-bg, #e5e7eb);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 12px;
+}
+
+.progress-tracker-bar {
+    height: 100%;
+    background: var(--progress-color);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+/* Детали */
+.progress-tracker-details {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
+.progress-tracker-stage {
+    font-size: 13px;
+    color: var(--text-secondary, #6b7280);
+    flex: 1;
+}
+
+.progress-tracker-time {
+    font-size: 12px;
+    color: var(--text-tertiary, #9ca3af);
+    white-space: nowrap;
+}
+
+/* Ошибка */
+.progress-tracker-error {
+    margin-top: 12px;
+    padding: 8px 12px;
+    background: #fee2e2;
+    border-radius: 4px;
+    color: #991b1b;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+/* Анимация для in_progress */
+.progress-tracker-in_progress .progress-tracker-bar {
+    position: relative;
+    overflow: hidden;
+}
+
+.progress-tracker-in_progress .progress-tracker-bar::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.3),
+        transparent
+    );
+    animation: progress-shimmer 1.5s infinite;
+}
+
+@keyframes progress-shimmer {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+/* Темная тема */
+[data-theme="dark"] .progress-tracker {
+    background: var(--card-bg, #1f2937);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .progress-tracker-title {
+    color: var(--text-primary, #f9fafb);
+}
+
+[data-theme="dark"] .progress-tracker-stage {
+    color: var(--text-secondary, #d1d5db);
+}
+
+[data-theme="dark"] .progress-tracker-time {
+    color: var(--text-tertiary, #9ca3af);
+}
+
+[data-theme="dark"] .progress-tracker-bar-container {
+    background: var(--progress-bg, #374151);
+}
+
+[data-theme="dark"] .progress-tracker-error {
+    background: #7f1d1d;
+    color: #fca5a5;
+}
+
+/* Адаптивность */
+@media (max-width: 640px) {
+    .progress-tracker-container {
+        bottom: 10px;
+        right: 10px;
+        left: 10px;
+        max-width: none;
+    }
+
+    .progress-tracker {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .progress-tracker-details {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+    }
+
+    .progress-tracker-time {
+        align-self: flex-end;
+    }
+}
+
+/* Интеграция с уведомлениями */
+/* Сдвигаем уведомления вверх если есть прогресс-трекер */
+.progress-tracker-container:not(:empty) ~ .notification-container {
+    bottom: calc(20px + var(--progress-tracker-height, 0px));
+}
+
+@media (max-width: 640px) {
+    .progress-tracker-container:not(:empty) ~ .notification-container {
+        bottom: calc(10px + var(--progress-tracker-height, 0px));
+    }
+}
+

@@ -1,0 +1,10 @@
+{
+    "widget": {
+      "name": "UpStat AI",
+      "description": "Автоматический анализ звонков и чатов с помощью ИИ",
+      "short_description": "Анализ звонков ИИ"
+    },
+    "settings": {
+      "domain": "Домен UpStat"
+    }
+  }

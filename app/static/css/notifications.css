@@ -1,0 +1,244 @@
+/**
+ * Стили для системы уведомлений
+ */
+
+.notification-container {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 10000;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 400px;
+    pointer-events: none;
+}
+
+.notification {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px;
+    background: var(--card-bg, #fff);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    border-left: 4px solid var(--notification-color);
+    pointer-events: auto;
+    opacity: 0;
+    transform: translateX(calc(100% + 20px));
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    max-width: 100%;
+    min-width: 300px;
+}
+
+.notification.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+/* Типы уведомлений */
+.notification-success {
+    --notification-color: #10b981;
+}
+
+.notification-error {
+    --notification-color: #ef4444;
+}
+
+.notification-warning {
+    --notification-color: #f59e0b;
+}
+
+.notification-info {
+    --notification-color: #3b82f6;
+}
+
+.notification-progress {
+    --notification-color: #8b5cf6;
+}
+
+/* Иконка */
+.notification-icon {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    color: var(--notification-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.notification-progress .notification-icon svg {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Контент */
+.notification-content {
+    flex: 1;
+    min-width: 0;
+}
+
+.notification-title {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-primary, #1f2937);
+    margin-bottom: 4px;
+}
+
+.notification-message {
+    font-size: 14px;
+    color: var(--text-secondary, #6b7280);
+    line-height: 1.5;
+    word-wrap: break-word;
+}
+
+/* Действие */
+.notification-action {
+    margin-top: 12px;
+}
+
+.notification-action-btn {
+    background: var(--notification-color);
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.notification-action-btn:hover {
+    opacity: 0.9;
+}
+
+.notification-action-btn:active {
+    opacity: 0.8;
+}
+
+/* Кнопка закрытия */
+.notification-close {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary, #9ca3af);
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+
+.notification-close:hover {
+    background: var(--hover-bg, #f3f4f6);
+    color: var(--text-primary, #1f2937);
+}
+
+.notification-close:active {
+    transform: scale(0.95);
+}
+
+/* Темная тема */
+[data-theme="dark"] .notification {
+    background: var(--card-bg, #1f2937);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+[data-theme="dark"] .notification-title {
+    color: var(--text-primary, #f9fafb);
+}
+
+[data-theme="dark"] .notification-message {
+    color: var(--text-secondary, #d1d5db);
+}
+
+[data-theme="dark"] .notification-close {
+    color: var(--text-secondary, #9ca3af);
+}
+
+[data-theme="dark"] .notification-close:hover {
+    background: var(--hover-bg, #374151);
+    color: var(--text-primary, #f9fafb);
+}
+
+/* Адаптивность */
+@media (max-width: 640px) {
+    .notification-container {
+        top: 10px;
+        right: 10px;
+        left: 10px;
+        max-width: none;
+    }
+
+    .notification {
+        min-width: 0;
+        width: 100%;
+    }
+}
+
+/* Анимация для прогресс-бара */
+.notification-progress-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: var(--notification-color);
+    opacity: 0.3;
+    transform-origin: left;
+    animation: progress-shrink var(--duration, 5000ms) linear forwards;
+}
+
+@keyframes progress-shrink {
+    from {
+        transform: scaleX(1);
+    }
+    to {
+        transform: scaleX(0);
+    }
+}
+
+/* Интеграция с существующими стилями */
+.notification {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+/* Для длинных сообщений */
+.notification-message {
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.notification-message::-webkit-scrollbar {
+    width: 4px;
+}
+
+.notification-message::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.notification-message::-webkit-scrollbar-thumb {
+    background: var(--text-secondary, #9ca3af);
+    border-radius: 2px;
+}
+
+[data-theme="dark"] .notification-message::-webkit-scrollbar-thumb {
+    background: var(--text-secondary, #6b7280);
+}
+

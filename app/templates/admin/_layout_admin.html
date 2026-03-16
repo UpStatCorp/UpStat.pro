@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>{% block title %}Админ-панель — UpStat{% endblock %}</title>
+
+  <!-- базовые стили проекта -->
+  <link rel="stylesheet" href="/static/styles.css?v=10"/>
+  
+  <!-- Font Awesome для иконок -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+  <!-- макет: сетка, сайдбар, топбар -->
+  <style>
+    :root{
+      --bg:#f8fafc;
+      --surface:#ffffff;
+      --text:#0f172a;
+      --muted:#64748b;
+      --border:#e5e7eb;
+      --shadow:0 1px 2px rgba(15,23,42,.04),0 8px 24px rgba(15,23,42,.06);
+      --radius:14px;
+      --surface-hover:#f1f5f9;
+      --admin-primary:#dc2626;
+      --admin-secondary:#f59e0b;
+      --admin-success:#10b981;
+      --admin-info:#3b82f6;
+    }
+
+    html{font-size:50%; height:100%}
+    body{height:100%; margin:0; background:var(--bg); color:var(--text); font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial;}
+    .app-shell{display:grid; grid-template-columns:280px 1fr; min-height:100vh;}
+
+    /* Admin Sidebar */
+    .admin-sidebar{
+      position:sticky; top:0; height:100vh;
+      background: linear-gradient(180deg, #1f2937 0%, #111827 100%);
+      border-right:1px solid #374151;
+      padding:24px; display:flex; flex-direction:column; gap:20px;
+      backdrop-filter: blur(10px);
+      transition: box-shadow .25s ease;
+    }
+    
+    .admin-brand{
+      font-weight:800; letter-spacing:.2px; font-size:24px;
+      background: linear-gradient(135deg, var(--admin-primary), #ef4444);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      padding: 16px 0;
+      text-align: center;
+      border-bottom: 1px solid #374151;
+      margin-bottom: 20px;
+    }
+    
+    .admin-menu{display:flex; flex-direction:column; gap:8px; margin-top:8px;}
+    .admin-menu a{
+      display:flex; align-items:center; gap:12px;
+      padding:14px 16px; border-radius:12px; text-decoration:none;
+      color:#d1d5db; transition:all 0.3s ease; font-weight:500;
+      border: 1px solid transparent;
+    }
+    .admin-menu a:hover{
+      background: rgba(220, 38, 38, 0.1);
+      border-color: rgba(220, 38, 38, 0.2);
+      color: #ffffff;
+      transform: translateX(4px);
+    }
+    .admin-menu a.active{
+      background: linear-gradient(135deg, var(--admin-primary), #ef4444);
+      color: white;
+      box-shadow: 0 8px 24px rgba(220, 38, 38, 0.3);
+      transform: translateX(4px);
+    }
+
+    .admin-sidebar-footer{margin-top:auto; border-top:1px solid #374151; padding-top:20px;}
+    .admin-userbox{
+      font-size:14px; color:#9ca3af; line-height:1.4;
+      padding: 16px;
+      background: #1f2937;
+      border-radius: 12px;
+      border: 1px solid #374151;
+    }
+    .admin-userbox b{color:#ffffff; font-weight:600;}
+    .admin-userbox .role-badge{
+      display: inline-block;
+      background: var(--admin-primary);
+      color: white;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      margin-top: 4px;
+    }
+    
+    .btn{
+      display:inline-flex; align-items:center; gap:8px; 
+      border:1px solid var(--border); background:var(--surface-hover); 
+      color:var(--text); padding:10px 16px; border-radius:12px; 
+      cursor:pointer; font-weight:500; transition: all 0.3s ease;
+    }
+    .btn:hover{
+      background: var(--admin-primary);
+      color: white;
+      border-color: var(--admin-primary);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(220, 38, 38, 0.2);
+    }
+    .btn:focus{outline:2px solid #fecaca; outline-offset:2px}
+    .btn.block{width:100%}
+
+    /* Main */
+    .main{display:flex; flex-direction:column; min-width:0;}
+    .admin-topbar{
+      display:flex; align-items:center; justify-content:space-between;
+      padding:16px 24px; background:var(--surface); border-bottom:1px solid var(--border);
+      position:sticky; top:0; z-index:10; backdrop-filter: blur(10px);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .admin-topbar-right{display:flex; align-items:center; gap:12px}
+    .content{padding:24px; min-width:0;}
+
+    /* Admin Cards */
+    .admin-cards{display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:20px; margin-bottom:24px}
+    .admin-card{
+      background:var(--surface); border:1px solid var(--border); 
+      border-radius:var(--radius); padding:24px; box-shadow:var(--shadow);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .admin-card:hover{
+      transform: translateY(-2px);
+      box-shadow: 0 8px 32px rgba(15,23,42,.12);
+    }
+    .admin-card-header{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .admin-card-title{
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .admin-card-icon{
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      color: white;
+    }
+    .admin-card-icon.users{background: linear-gradient(135deg, var(--admin-info), #2563eb);}
+    .admin-card-icon.conversations{background: linear-gradient(135deg, var(--admin-success), #059669);}
+    .admin-card-icon.meetings{background: linear-gradient(135deg, var(--admin-secondary), #d97706);}
+    .admin-card-icon.system{background: linear-gradient(135deg, #8b5cf6, #7c3aed);}
+    
+    .admin-metric{
+      font-size: 32px;
+      font-weight: 800;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+    .admin-metric-change{
+      font-size: 12px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .admin-metric-change.positive{color: var(--admin-success);}
+    .admin-metric-change.negative{color: var(--admin-primary);}
+
+    /* Admin Tables */
+    .admin-table-container{
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+    .admin-table-header{
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--border);
+      background: #fafafa;
+    }
+    .admin-table-title{
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text);
+      margin: 0;
+    }
+    .admin-table{
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .admin-table th,
+    .admin-table td{
+      padding: 16px 24px;
+      text-align: left;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .admin-table th{
+      background: #f8fafc;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .admin-table td{
+      color: var(--text);
+    }
+    .admin-table tbody tr:hover{
+      background: #f8fafc;
+    }
+
+    /* Badges */
+    .badge{
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .badge.admin{
+      background: rgba(220, 38, 38, 0.1);
+      color: var(--admin-primary);
+      border: 1px solid rgba(220, 38, 38, 0.2);
+    }
+    .badge.user{
+      background: rgba(107, 114, 128, 0.1);
+      color: #6b7280;
+      border: 1px solid rgba(107, 114, 128, 0.2);
+    }
+
+    /* Mobile menu button */
+    .mobile-menu-btn {
+      display: none;
+      width: 40px;
+      height: 40px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      border-radius: 10px;
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+      color: var(--text);
+      box-shadow: 0 4px 12px rgba(15,23,42,0.06);
+      transition: transform .15s ease, box-shadow .2s ease, background .2s ease;
+    }
+
+    .mobile-menu-btn svg {
+      width: 22px;
+      height: 22px;
+    }
+
+    .mobile-menu-btn:hover { box-shadow: 0 8px 20px rgba(15,23,42,0.12); }
+    .mobile-menu-btn:active { transform: scale(.98); }
+
+    /* Mobile overlay */
+    .mobile-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 999;
+      opacity: 0;
+      transition: opacity .25s ease;
+    }
+
+    .mobile-overlay.active { display:block; opacity: 1; }
+
+    /* Responsive */
+    @media (max-width:1100px){ 
+      .admin-cards{grid-template-columns:1fr 1fr;} 
+    }
+    
+    @media (max-width:860px){
+      .app-shell{grid-template-columns:1fr}
+      
+      .mobile-menu-btn {
+        display: flex;
+      }
+      
+      .admin-sidebar{
+        position: fixed;
+        top: 0;
+        left: -300px;
+        width: 280px;
+        height: 100vh;
+        z-index: 1000;
+        transition: left 0.25s ease, box-shadow .25s ease;
+        box-shadow: 0 6px 24px rgba(15,23,42,.10);
+      }
+      
+      .admin-sidebar.active {
+        left: 0;
+        box-shadow: 12px 0 30px rgba(15,23,42,.18);
+      }
+      
+      .admin-topbar{position: sticky}
+      .admin-cards{grid-template-columns:1fr}
+      .content{padding: 16px;}
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Admin Sidebar -->
+    <aside class="admin-sidebar">
+      <div class="admin-brand">
+        <i class="fas fa-user-shield"></i> Админ-панель
+      </div>
+
+      <nav class="admin-menu" aria-label="Административная навигация">
+        <a href="/admin" class="{% if request.url.path == '/admin' %}active{% endif %}" aria-label="Главная админ-панели">
+          <i class="fas fa-tachometer-alt"></i> Дашборд
+        </a>
+        <a href="/admin/users" class="{% if request.url.path.startswith('/admin/users') %}active{% endif %}" aria-label="Управление пользователями">
+          <i class="fas fa-users"></i> Пользователи
+        </a>
+        <a href="/admin/analytics" class="{% if request.url.path.startswith('/admin/analytics') %}active{% endif %}" aria-label="Аналитика">
+          <i class="fas fa-chart-line"></i> Аналитика
+        </a>
+        <a href="/admin/prompts" class="{% if request.url.path.startswith('/admin/prompts') %}active{% endif %}" aria-label="Управление промптами">
+          <i class="fas fa-code"></i> Промпты
+        </a>
+        <a href="/admin/settings" class="{% if request.url.path.startswith('/admin/settings') %}active{% endif %}" aria-label="Настройки системы">
+          <i class="fas fa-cog"></i> Настройки
+        </a>
+        <a href="/admin/logs" class="{% if request.url.path.startswith('/admin/logs') %}active{% endif %}" aria-label="Логи системы">
+          <i class="fas fa-file-alt"></i> Логи
+        </a>
+      </nav>
+
+      <div class="admin-sidebar-footer">
+        <div class="admin-userbox">
+          <i class="fas fa-user-shield"></i> <b>{{ current_user.name }}</b><br/>
+          <span style="opacity:.8">{{ current_user.email }}</span>
+          <div class="role-badge">Администратор</div>
+        </div>
+
+        <div style="margin-top: 16px;">
+          <a href="/dashboard" class="btn block" style="margin-bottom: 8px; background: #374151; color: #d1d5db; border-color: #4b5563;">
+            <i class="fas fa-arrow-left"></i> К основному интерфейсу
+          </a>
+          <form action="/logout" method="post" style="margin: 0;">
+            <button type="submit" class="btn block" style="background: var(--admin-primary); color: white; border-color: var(--admin-primary);">
+              <i class="fas fa-sign-out-alt"></i> Выйти
+            </button>
+          </form>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="main">
+      <header class="admin-topbar">
+        <div class="topbar-left">
+          <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Открыть меню" aria-expanded="false" aria-controls="admin-sidebar">
+            <svg id="hamburger-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path id="hamburger-lines" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+            </svg>
+          </button>
+        </div>
+        <div class="admin-topbar-right">
+          <div style="font-size: 14px; color: var(--muted);">
+            <i class="fas fa-clock"></i> <span id="current-time"></span>
+          </div>
+        </div>
+      </header>
+
+      <section class="content">
+        {% block content %}{% endblock %}
+      </section>
+    </main>
+  </div>
+
+  <!-- Mobile overlay -->
+  <div class="mobile-overlay" id="mobile-overlay"></div>
+
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <script defer>
+    // Mobile menu functionality
+    const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+    const sidebar = document.querySelector('.admin-sidebar');
+    const mobileOverlay = document.getElementById('mobile-overlay');
+
+    function toggleMobileMenu() {
+      sidebar.classList.toggle('active');
+      mobileOverlay.classList.toggle('active');
+      const isOpen = sidebar.classList.contains('active');
+      mobileMenuBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      // Анимация иконки гамбургера → крестик
+      const icon = document.getElementById('hamburger-icon');
+      const lines = document.getElementById('hamburger-lines');
+      if (isOpen) {
+        lines.setAttribute('d', 'M6 6L18 18M6 18L18 6');
+      } else {
+        lines.setAttribute('d', 'M4 6h16M4 12h16M4 18h16');
+      }
+    }
+
+    function closeMobileMenu() {
+      sidebar.classList.remove('active');
+      mobileOverlay.classList.remove('active');
+    }
+
+    mobileMenuBtn.addEventListener('click', toggleMobileMenu);
+    mobileOverlay.addEventListener('click', closeMobileMenu);
+
+    // Close menu when clicking on navigation links
+    document.querySelectorAll('.admin-menu a').forEach(link => {
+      link.addEventListener('click', closeMobileMenu);
+    });
+
+    // Update current time
+    function updateTime() {
+      const now = new Date();
+      const timeString = now.toLocaleString('ru-RU', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+      const timeElement = document.getElementById('current-time');
+      if (timeElement) {
+        timeElement.textContent = timeString;
+      }
+    }
+
+    // Update time immediately and then every minute
+    updateTime();
+    setInterval(updateTime, 60000);
+  </script>
+</body>
+</html>

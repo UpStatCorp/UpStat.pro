@@ -1,0 +1,34 @@
+{
+  "speakers": [
+    {
+      "id": "speaker_0",
+      "label": "speaker_1"
+    },
+    {
+      "id": "speaker_1",
+      "label": "speaker_2"
+    }
+  ],
+  "role_map": {
+    "manager": "unknown",
+    "client": "unknown"
+  },
+  "stats_sec": {
+    "speaker_2": 0.3,
+    "speaker_1": 1.92
+  },
+  "turns": [
+    {
+      "speaker": "speaker_1",
+      "start": 0.1,
+      "end": 2.02,
+      "text": "Привет! Сейчас будет тренировка."
+    },
+    {
+      "speaker": "speaker_2",
+      "start": 2.02,
+      "end": 2.32,
+      "text": "(звуки ритмичной музыки)"
+    }
+  ]
+}

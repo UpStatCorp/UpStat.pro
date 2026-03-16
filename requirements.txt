@@ -1,0 +1,50 @@
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+sqlalchemy==2.0.23
+alembic==1.12.1
+python-multipart==0.0.6
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+python-dotenv==1.0.0
+jinja2==3.1.2
+aiofiles==23.2.1
+httpx==0.25.2
+pydantic>=2.5.0,<3.0.0
+psycopg2-binary==2.9.9
+redis==5.0.1
+itsdangerous==2.1.2
+openai>=1.12.0
+requests==2.31.0
+PyJWT==2.8.0
+websockets==11.0.3
+
+# Голосовой ассистент - зависимости (используются только если USE_AZURE_VOICE_LIVE=false)
+# Если используете Azure Voice Live API, эти зависимости не нужны:
+# faster-whisper>=1.0.0  # Не нужен при USE_AZURE_VOICE_LIVE=true
+# webrtcvad>=2.0.10      # Не нужен при USE_AZURE_VOICE_LIVE=true (Azure имеет свой VAD)
+# elevenlabs>=1.0.0      # Не нужен при USE_AZURE_VOICE_LIVE=true (используется только в ai_agent_service и pipeline_trener)
+# pydub>=0.25.1          # Не нужен при USE_AZURE_VOICE_LIVE=true (используется только в tts_response.py для конвертации форматов)
+# sounddevice>=0.4.6     # Не нужен (используется только в utils/audio_utils.py для утилит)
+
+# Azure Voice Live API
+azure-identity>=1.22.0
+azure-core>=1.34.0
+
+# Обработка документов
+python-docx>=1.1.0
+
+# Шифрование для CRM токенов
+cryptography>=41.0.0
+
+# Валидация файлов (если не используете - можно удалить)
+# python-magic>=0.4.27   # Не найдено использований в коде
+
+# OAuth библиотека (если не используете OAuth - можно удалить)
+# authlib==1.2.1         # Не найдено использований в коде
+
+# Мониторинг производительности
+psutil>=5.9.0
+
+# NumPy (используется для обработки аудио)
+numpy>=1.24.0

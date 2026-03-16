@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>{{ title or "SaaS MVP" }}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="/static/styles.css?v=10">
+  <link rel="stylesheet" href="/static/css/notifications.css?v=1">
+  <link rel="stylesheet" href="/static/css/progress-tracker.css?v=1">
+  <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
+  <script src="/static/js/notifications.js?v=1" defer></script>
+  <script src="/static/js/progress-tracker.js?v=1" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="container">
+      <a href="/chat" class="brand" aria-label="Перейти в чат">SaaS MVP</a>
+      <div class="actions">
+        <button id="theme-toggle" class="link" type="button" aria-label="Переключить тему">🌙</button>
+        <form action="/logout" method="post" aria-label="Форма выхода"><button class="link" aria-label="Выйти из аккаунта">Выйти</button></form>
+      </div>
+    </div>
+  </header>
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+  <script>
+    const themeToggle = document.getElementById('theme-toggle');
+    const storedTheme = localStorage.getItem('theme');
+    if (storedTheme === 'dark') document.body.classList.add('dark');
+    updateIcon();
+
+    themeToggle.addEventListener('click', () => {
+      document.body.classList.toggle('dark');
+      const isDark = document.body.classList.contains('dark');
+      localStorage.setItem('theme', isDark ? 'dark' : 'light');
+      updateIcon();
+    });
+
+    function updateIcon(){
+      themeToggle.textContent = document.body.classList.contains('dark') ? '☀️' : '🌙';
+    }
+  </script>
+</body>
+</html>

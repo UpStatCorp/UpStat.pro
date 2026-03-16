@@ -1,0 +1,196 @@
+{% extends "admin/_layout_admin.html" %}
+
+{% block content %}
+<!-- Заголовок -->
+<div style="margin-bottom: 32px;">
+    <h1 style="font-size: 28px; font-weight: 700; color: var(--text); margin: 0 0 8px 0;">
+        <i class="fas fa-users" style="color: var(--admin-info); margin-right: 12px;"></i>
+        Управление пользователями
+    </h1>
+    <p style="color: var(--muted); margin: 0; font-size: 16px;">
+        Просмотр, редактирование и управление пользователями системы. Всего пользователей: {{ users|length }}
+    </p>
+</div>
+
+<!-- Статистика пользователей -->
+<div class="admin-cards" style="margin-bottom: 32px;">
+    <div class="admin-card">
+        <div class="admin-card-header">
+            <div class="admin-card-title">Всего пользователей</div>
+            <div class="admin-card-icon users">
+                <i class="fas fa-users"></i>
+            </div>
+        </div>
+        <div class="admin-metric">{{ users|length }}</div>
+        <div class="admin-metric-change positive">
+            <i class="fas fa-arrow-up"></i>
+            <span>Активные пользователи</span>
+        </div>
+    </div>
+
+    <div class="admin-card">
+        <div class="admin-card-header">
+            <div class="admin-card-title">Администраторы</div>
+            <div class="admin-card-icon system">
+                <i class="fas fa-user-shield"></i>
+            </div>
+        </div>
+        <div class="admin-metric">{{ users|selectattr('role', 'equalto', 'admin')|list|length }}</div>
+        <div class="admin-metric-change">
+            <i class="fas fa-shield-alt"></i>
+            <span>Права администратора</span>
+        </div>
+    </div>
+
+    <div class="admin-card">
+        <div class="admin-card-header">
+            <div class="admin-card-title">Менеджеры продаж</div>
+            <div class="admin-card-icon" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);">
+                <i class="fas fa-user-tie"></i>
+            </div>
+        </div>
+        <div class="admin-metric">{{ users|selectattr('role', 'equalto', 'sale_manager')|list|length }}</div>
+        <div class="admin-metric-change">
+            <i class="fas fa-credit-card"></i>
+            <span>Управление подписками</span>
+        </div>
+    </div>
+
+    <div class="admin-card">
+        <div class="admin-card-header">
+            <div class="admin-card-title">Обычные пользователи</div>
+            <div class="admin-card-icon conversations">
+                <i class="fas fa-user"></i>
+            </div>
+        </div>
+        <div class="admin-metric">{{ users|selectattr('role', 'equalto', 'user')|list|length }}</div>
+        <div class="admin-metric-change">
+            <i class="fas fa-users"></i>
+            <span>Стандартные права</span>
+        </div>
+    </div>
+</div>
+
+<!-- Таблица пользователей -->
+<div class="admin-table-container">
+    <div class="admin-table-header">
+        <h3 class="admin-table-title">
+            <i class="fas fa-list" style="color: var(--admin-info); margin-right: 8px;"></i>
+            Список пользователей
+        </h3>
+    </div>
+    
+    {% if users %}
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>Пользователь</th>
+                <th>Email</th>
+                <th>Роль</th>
+                <th>Телефон</th>
+                <th>Дата регистрации</th>
+                <th>Действия</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user in users %}
+            <tr{% if user.role == 'admin' %} style="background: rgba(220, 38, 38, 0.02);"{% elif user.role == 'sale_manager' %} style="background: rgba(139, 92, 246, 0.02);"{% endif %}>
+                <td>
+                    <div style="display: flex; align-items: center; gap: 12px;">
+                        {% if user.avatar %}
+                        <img src="{{ user.avatar }}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;" alt="Avatar">
+                        {% else %}
+                        <div style="width: 40px; height: 40px; background: #e5e7eb; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #6b7280;">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        {% endif %}
+                        <div>
+                            <div style="font-weight: 600; margin-bottom: 2px;">{{ user.name }}</div>
+                            <div style="font-size: 12px; color: var(--muted);">ID: {{ user.id }}</div>
+                            {% if user.id == current_user.id %}
+                            <span style="display: inline-block; background: var(--admin-info); color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-top: 2px;">Это вы</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </td>
+                <td>
+                    <div style="font-weight: 500;">{{ user.email }}</div>
+                </td>
+                <td>
+                    {% if user.role == 'admin' %}
+                    <span class="badge admin">
+                        <i class="fas fa-user-shield"></i> Администратор
+                    </span>
+                    {% elif user.role == 'sale_manager' %}
+                    <span class="badge" style="background: rgba(139, 92, 246, 0.1); color: #8b5cf6; border: 1px solid rgba(139, 92, 246, 0.2);">
+                        <i class="fas fa-user-tie"></i> Менеджер продаж
+                    </span>
+                    {% elif user.role == 'manager' %}
+                    <span class="badge" style="background: rgba(59, 130, 246, 0.1); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.2);">
+                        <i class="fas fa-user-cog"></i> РОП
+                    </span>
+                    {% else %}
+                    <span class="badge user">
+                        <i class="fas fa-user"></i> Пользователь
+                    </span>
+                    {% endif %}
+                </td>
+                <td>
+                    <span style="color: var(--muted);">{{ user.phone or '-' }}</span>
+                </td>
+                <td>
+                    <div style="font-weight: 500;">{{ user.created_at.strftime('%d.%m.%Y') if user.created_at else '-' }}</div>
+                    <div style="font-size: 12px; color: var(--muted);">{{ user.created_at.strftime('%H:%M') if user.created_at else '' }}</div>
+                </td>
+                <td>
+                    {% if user.id != current_user.id %}
+                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                        <!-- Смена роли -->
+                        <form method="post" action="/admin/users/{{ user.id }}/set-role" style="margin: 0; display: flex; gap: 6px; align-items: center;">
+                            <select name="role"
+                                    style="padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 12px; font-weight: 500; cursor: pointer; background: white; color: #374151; outline: none; transition: border-color 0.2s;"
+                                    onfocus="this.style.borderColor='#6366f1'" onblur="this.style.borderColor='#d1d5db'">
+                                <option value="user" {% if user.role == 'user' %}selected{% endif %}>👤 Пользователь</option>
+                                <option value="manager" {% if user.role == 'manager' %}selected{% endif %}>📋 РОП</option>
+                                <option value="sale_manager" {% if user.role == 'sale_manager' %}selected{% endif %}>💼 Менеджер продаж</option>
+                                <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>🛡️ Администратор</option>
+                            </select>
+                            <button type="submit"
+                                    style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: none; border-radius: 8px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.2s ease; background: #6366f1; color: white;"
+                                    onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(99,102,241,0.3)'"
+                                    onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'"
+                                    onclick="return confirm('Изменить роль пользователя {{ user.name }}?')">
+                                <i class="fas fa-save"></i> Сохранить
+                            </button>
+                        </form>
+                        
+                        <!-- Удаление пользователя -->
+                        <form method="post" action="/admin/users/{{ user.id }}/delete" style="margin: 0;">
+                            <button type="submit" 
+                                    style="display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border: none; border-radius: 8px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.2s ease; background: var(--admin-primary); color: white;"
+                                    onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(220,38,38,0.3)'"
+                                    onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'"
+                                    onclick="return confirm('Вы уверены, что хотите удалить пользователя {{ user.name }}? Это действие нельзя отменить!')">
+                                <i class="fas fa-trash"></i> Удалить
+                            </button>
+                        </form>
+                    </div>
+                    {% else %}
+                    <span style="color: var(--muted); font-style: italic;">—</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div style="padding: 48px 24px; text-align: center;">
+        <div style="width: 80px; height: 80px; background: #f3f4f6; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; color: #9ca3af;">
+            <i class="fas fa-users" style="font-size: 32px;"></i>
+        </div>
+        <h3 style="color: var(--muted); margin: 0 0 8px 0;">Пользователи не найдены</h3>
+        <p style="color: var(--muted); margin: 0;">В системе пока нет зарегистрированных пользователей.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

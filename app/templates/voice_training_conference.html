@@ -1,0 +1,787 @@
+{% extends "_layout_dashboard.html" %}
+{% block title %}Голосовая тренировка: {{ training.topic if training else "Новая тренировка" }} — UpStat{% endblock %}
+
+{% block head %}
+<style>
+  /* Дополнительные стили для правильного отображения страницы тренировки */
+  body {
+    overflow-x: hidden;
+  }
+  
+  /* Скрываем боковое меню на странице тренировки - аккуратный подход */
+  body .app-shell {
+    grid-template-columns: 1fr !important;
+  }
+  
+  body .sidebar,
+  body aside.sidebar {
+    display: none !important;
+  }
+  
+  /* Убираем дефолтные отступы для страницы тренировки */
+  .dashboard-content {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+  
+  /* Фикс для корректного z-index */
+  .voice-training-container {
+    isolation: isolate;
+    width: 100%;
+    min-height: 100vh;
+  }
+  
+  /* Убеждаемся что main занимает всю ширину */
+  body .main {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+</style>
+<script>
+  // Защита от закрытия страницы во время тренировки
+  // Активируем защиту сразу при загрузке страницы
+  window.isTrainingActive = true;
+  window.hasUnsavedChanges = true;
+  
+  console.log('🔒 Защита от закрытия страницы активирована при загрузке');
+  
+  // Отслеживаем начало тренировки
+  document.addEventListener('DOMContentLoaded', function() {
+    console.log('📄 DOM загружен, настраиваем защиту');
+    
+    // Добавляем состояние в историю для предотвращения навигации назад
+    history.pushState(null, null, window.location.href);
+    
+    // Защита от закрытия страницы
+    window.addEventListener('beforeunload', function(e) {
+      if (window.isTrainingActive || window.hasUnsavedChanges) {
+        console.log('⚠️ Попытка закрыть страницу - блокируем');
+        // Стандартное сообщение для браузера
+        e.preventDefault();
+        // Для современных браузеров нужно вернуть строку
+        e.returnValue = 'Вы уверены, что хотите выйти? Незавершенная тренировка будет потеряна.';
+        return e.returnValue;
+      }
+    });
+    
+    // Защита от навигации назад/вперед
+    window.addEventListener('popstate', function(e) {
+      if (window.isTrainingActive || window.hasUnsavedChanges) {
+        console.log('⚠️ Попытка навигации назад - блокируем');
+        if (!confirm('Вы уверены, что хотите выйти? Незавершенная тренировка будет потеряна.')) {
+          // Восстанавливаем состояние истории
+          history.pushState(null, null, window.location.href);
+        } else {
+          window.isTrainingActive = false;
+          window.hasUnsavedChanges = false;
+        }
+      }
+    });
+    
+    // Обработка завершения тренировки
+    window.addEventListener('trainingEnded', function() {
+      window.isTrainingActive = false;
+      window.hasUnsavedChanges = false;
+      console.log('✅ Защита от закрытия страницы отключена');
+    });
+    
+    // Принудительно скрываем сайдбар через JavaScript
+    setTimeout(function() {
+      const sidebar = document.querySelector('.sidebar');
+      const appShell = document.querySelector('.app-shell');
+      if (sidebar) {
+        sidebar.style.display = 'none';
+        sidebar.style.visibility = 'hidden';
+        sidebar.style.width = '0';
+        console.log('✅ Сайдбар скрыт через JavaScript');
+      }
+      if (appShell) {
+        appShell.style.gridTemplateColumns = '0 1fr';
+        console.log('✅ Сетка обновлена через JavaScript');
+      }
+    }, 100);
+  });
+  
+  // Также активируем защиту до загрузки DOM
+  window.addEventListener('beforeunload', function(e) {
+    if (window.isTrainingActive || window.hasUnsavedChanges) {
+      e.preventDefault();
+      e.returnValue = 'Вы уверены, что хотите выйти? Незавершенная тренировка будет потеряна.';
+      return e.returnValue;
+    }
+  });
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="voice-training-container" 
+     data-user-id="{% if user and user.id %}{{ user.id }}{% endif %}"
+     data-training-id="{% if training and training.id %}{{ training.id }}{% endif %}"
+     data-session-id="{% if training and training.session_id %}{{ training.session_id }}{% endif %}">
+  <!-- Header с информацией о тренировке -->
+  <div class="training-header">
+    <div class="training-info-row">
+      <div class="training-info">
+        <h1 class="training-title">{{ training.topic if training else "Тренировка с ИИ" }}</h1>
+        <div class="training-meta">
+          <span class="training-status status-active" id="training-status">
+            <span class="status-dot"></span>
+            Активна
+          </span>
+          <span class="training-time" id="training-time">
+            <svg class="icon" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/>
+            </svg>
+            00:00
+          </span>
+          <span class="training-participants" id="participants-count">
+            <svg class="icon" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"/>
+            </svg>
+            1 участник
+          </span>
+        </div>
+      </div>
+      
+      <button class="btn-icon-action" id="checklist-toggle" title="Открыть чеклист">
+        <svg class="icon" viewBox="0 0 20 20" fill="currentColor">
+          <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/>
+          <path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"/>
+        </svg>
+      </button>
+    </div>
+    
+    <!-- Прогресс тренировки -->
+    <div class="training-progress">
+      <div class="progress-header">
+        <span class="progress-label" id="progress-text">Начало тренировки</span>
+        <span class="progress-percent" id="progress-percent">0%</span>
+      </div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Основная область: Чат + Участники -->
+  <div class="training-main">
+    <!-- Чат с ИИ -->
+    <div class="training-chat">
+      <div class="chat-header">
+        <h3>
+          <svg class="icon" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M18 10c0 3.866-3.582 7-8 7a8.841 8.841 0 01-4.083-.98L2 17l1.338-3.123C2.493 12.767 2 11.434 2 10c0-3.866 3.582-7 8-7s8 3.134 8 7zM7 9H5v2h2V9zm8 0h-2v2h2V9zM9 9h2v2H9V9z" clip-rule="evenodd"/>
+          </svg>
+          Диалог с ИИ-тренером
+        </h3>
+        <div class="chat-actions">
+          <button class="icon-btn" id="export-transcript" title="Экспорт транскрипта">
+            <svg class="icon" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/>
+            </svg>
+          </button>
+          <button class="icon-btn" id="clear-chat" title="Очистить чат">
+            <svg class="icon" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      
+      <div class="chat-messages" id="chat-messages">
+        <!-- Приветственное сообщение -->
+        <div class="message-group ai-message-group">
+          <div class="message-avatar">
+            <div class="avatar-circle ai-avatar">
+              <svg class="icon" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"/>
+              </svg>
+            </div>
+          </div>
+          <div class="message-content">
+            <div class="message-bubble ai-message">
+              <p>👋 Привет! Я ваш ИИ-тренер.</p>
+              <p>🎤 <strong>Как использовать:</strong></p>
+              <p>1. Нажмите кнопку микрофона<br>
+              2. Говорите - я буду слушать<br>
+              3. После ответа продолжайте говорить<br>
+              4. Для остановки нажмите снова</p>
+            </div>
+            <span class="message-time">Сейчас</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Индикатор печати ИИ -->
+      <div class="ai-typing-indicator" id="ai-typing" style="display: none;">
+        <div class="typing-animation">
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+          <div class="typing-dot"></div>
+        </div>
+        <span class="typing-text">ИИ-тренер думает...</span>
+      </div>
+      
+      <!-- Индикатор проигрывания аудио -->
+      <div class="ai-speaking-indicator" id="ai-speaking-main" style="display: none;">
+        <div class="speaking-animation">
+          <div class="sound-bar"></div>
+          <div class="sound-bar"></div>
+          <div class="sound-bar"></div>
+          <div class="sound-bar"></div>
+          <div class="sound-bar"></div>
+        </div>
+        <span class="speaking-text">ИИ-тренер говорит...</span>
+      </div>
+    </div>
+
+    <!-- Панель участников -->
+    <div class="training-participants">
+      <h3 class="participants-title">
+        <svg class="icon" viewBox="0 0 20 20" fill="currentColor">
+          <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-3a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v3h-3zM4.75 12.094A5.973 5.973 0 004 15v3H1v-3a3 3 0 013.75-2.906z"/>
+        </svg>
+        Участники
+      </h3>
+      
+      <!-- Пользователь -->
+      <div class="participant-card user-participant">
+        <div class="participant-header">
+          <div class="participant-avatar">
+            <div class="avatar-circle user-avatar">
+              <svg class="icon" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/>
+              </svg>
+            </div>
+            <div class="participant-status status-active"></div>
+          </div>
+          <div class="participant-info">
+            <div class="participant-name">Вы</div>
+            <div class="participant-role">Ученик</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ИИ-тренер -->
+      <div class="participant-card ai-participant" id="ai-participant">
+        <div class="participant-header">
+          <div class="participant-avatar">
+            <div class="avatar-circle ai-avatar-circle">
+              <svg class="icon" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"/>
+              </svg>
+            </div>
+            <div class="participant-status status-online" id="ai-status"></div>
+            <div class="speaking-indicator" id="ai-speaking" style="display: none;">
+              <div class="sound-waves">
+                <span class="wave"></span>
+                <span class="wave"></span>
+                <span class="wave"></span>
+              </div>
+            </div>
+          </div>
+          <div class="participant-info">
+            <div class="participant-name">ИИ-тренер</div>
+            <div class="participant-role">Тренер</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Достижения -->
+      <div class="achievements-section">
+        <h4 class="achievements-title">🏆 Достижения</h4>
+        <div class="achievements-list" id="achievements-list">
+          <div class="achievement locked">
+            <span class="achievement-icon">🎯</span>
+            <span class="achievement-name">Первый шаг</span>
+          </div>
+          <div class="achievement locked">
+            <span class="achievement-icon">🔥</span>
+            <span class="achievement-name">В ударе</span>
+          </div>
+          <div class="achievement locked">
+            <span class="achievement-icon">💎</span>
+            <span class="achievement-name">Мастер</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Панель управления -->
+  <div class="training-controls">
+    <div class="control-panel">
+      <!-- Большая кнопка микрофона -->
+      <button class="mic-button" id="mic-button" title="Нажмите чтобы активировать непрерывное прослушивание" disabled>
+        <div class="mic-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+            <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+          </svg>
+        </div>
+        <div class="mic-label">Активировать</div>
+        <div class="mic-status" id="mic-status">Подключение...</div>
+      </button>
+      
+      <!-- Дополнительные кнопки -->
+      <div class="control-buttons">
+        <button class="control-btn" id="pause-btn" title="Пауза" disabled>
+          <span class="btn-icon">
+            <svg viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/>
+            </svg>
+          </span>
+          <span class="btn-text">Пауза</span>
+        </button>
+        <button class="control-btn danger-btn" id="stop-btn" title="Завершить тренировку">
+          <span class="btn-icon">
+            <svg viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8 7a1 1 0 00-1 1v4a1 1 0 001 1h4a1 1 0 001-1V8a1 1 0 00-1-1H8z" clip-rule="evenodd"/>
+            </svg>
+          </span>
+          <span class="btn-text">Завершить</span>
+        </button>
+        <button class="control-btn" id="settings-btn" title="Настройки">
+          <span class="btn-icon">
+            <svg viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/>
+            </svg>
+          </span>
+          <span class="btn-text">Настройки</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Статус и индикаторы -->
+    <div class="status-panel">
+      <div class="status-indicators">
+        <div class="status-item">
+          <span class="status-dot connecting" id="connection-dot"></span>
+          <span class="status-text" id="connection-status">Подключение к серверу...</span>
+        </div>
+        <div class="status-item recording-status" id="recording-container" style="display: none;">
+          <span class="recording-pulse"></span>
+          <span class="status-text">Запись...</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Боковая панель с чеклистом -->
+<div class="checklist-sidebar" id="checklist-sidebar">
+  <div class="sidebar-header">
+    <h3>
+      <svg class="icon" viewBox="0 0 20 20" fill="currentColor">
+        <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/>
+        <path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"/>
+      </svg>
+      Чеклист тренировки
+    </h3>
+    <button class="sidebar-close" id="close-checklist">
+      <svg viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+      </svg>
+    </button>
+  </div>
+  <div class="checklist-items" id="checklist-items">
+    <!-- Примеры чеклиста -->
+    <div class="checklist-category">
+      <h4 class="category-title">Приветствие</h4>
+      <div class="checklist-item">
+        <input type="checkbox" id="check-1" class="checklist-checkbox">
+        <label for="check-1" class="checklist-label">
+          <span class="checkbox-custom"></span>
+          <span class="item-text">Представиться клиенту</span>
+        </label>
+      </div>
+      <div class="checklist-item">
+        <input type="checkbox" id="check-2" class="checklist-checkbox">
+        <label for="check-2" class="checklist-label">
+          <span class="checkbox-custom"></span>
+          <span class="item-text">Узнать имя клиента</span>
+        </label>
+      </div>
+    </div>
+    
+    <div class="checklist-category">
+      <h4 class="category-title">Выявление потребностей</h4>
+      <div class="checklist-item">
+        <input type="checkbox" id="check-3" class="checklist-checkbox">
+        <label for="check-3" class="checklist-label">
+          <span class="checkbox-custom"></span>
+          <span class="item-text">Задать открытый вопрос</span>
+        </label>
+      </div>
+      <div class="checklist-item">
+        <input type="checkbox" id="check-4" class="checklist-checkbox">
+        <label for="check-4" class="checklist-label">
+          <span class="checkbox-custom"></span>
+          <span class="item-text">Активно слушать клиента</span>
+        </label>
+      </div>
+    </div>
+    
+    <div class="checklist-category">
+      <h4 class="category-title">Презентация</h4>
+      <div class="checklist-item">
+        <input type="checkbox" id="check-5" class="checklist-checkbox">
+        <label for="check-5" class="checklist-label">
+          <span class="checkbox-custom"></span>
+          <span class="item-text">Рассказать о продукте</span>
+        </label>
+      </div>
+      <div class="checklist-item">
+        <input type="checkbox" id="check-6" class="checklist-checkbox">
+        <label for="check-6" class="checklist-label">
+          <span class="checkbox-custom"></span>
+          <span class="item-text">Упомянуть преимущества</span>
+        </label>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Модальное окно подтверждения завершения тренировки -->
+<div class="modal-overlay" id="confirm-stop-modal" style="display: none;">
+  <div class="modal-content confirm-modal">
+    <div class="modal-header">
+      <h3>⚠️ Завершить тренировку?</h3>
+    </div>
+    <div class="modal-body">
+      <p style="text-align: center; font-size: 16px; color: var(--text); margin: 20px 0;">
+        Вы уверены, что хотите завершить тренировку?<br>
+        <span style="color: var(--muted); font-size: 14px;">Все результаты будут сохранены автоматически.</span>
+      </p>
+    </div>
+    <div class="modal-footer" style="display: flex; gap: 12px; justify-content: center;">
+      <button class="btn btn-secondary" id="cancel-stop-btn" style="min-width: 120px;">Отмена</button>
+      <button class="btn btn-danger" id="confirm-stop-btn" style="min-width: 120px;">Да, завершить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Модальное окно настроек -->
+<div class="modal-overlay" id="settings-modal" style="display: none;">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>⚙️ Настройки тренировки</h3>
+      <button class="modal-close" id="close-settings-modal">
+        <svg viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
+        </svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="settings-section">
+        <h4>Аудио</h4>
+        <div class="setting-item">
+          <label for="audio-input">Микрофон:</label>
+          <select id="audio-input" class="setting-select">
+            <option value="default">По умолчанию</option>
+          </select>
+        </div>
+        <div class="setting-item">
+          <label for="audio-volume">Громкость:</label>
+          <input type="range" id="audio-volume" min="0" max="100" value="80" class="setting-range">
+          <span id="volume-value">80%</span>
+        </div>
+      </div>
+      
+      <div class="settings-section">
+        <h4>Тренировка</h4>
+        <div class="setting-item">
+          <label for="training-difficulty">Сложность:</label>
+          <select id="training-difficulty" class="setting-select">
+            <option value="easy">Легкий</option>
+            <option value="medium" selected>Средний</option>
+            <option value="hard">Сложный</option>
+          </select>
+        </div>
+        <div class="setting-item">
+          <label for="feedback-level">Обратная связь:</label>
+          <select id="feedback-level" class="setting-select">
+            <option value="minimal">Минимальная</option>
+            <option value="normal" selected>Нормальная</option>
+            <option value="detailed">Подробная</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" id="apply-settings">Применить</button>
+      <button class="btn btn-secondary" id="cancel-settings">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<!-- Уведомления -->
+<div id="notifications-container" class="notifications-container"></div>
+
+<!-- Модальное окно с рекомендациями -->
+<div class="modal-overlay welcome-modal-overlay" id="welcome-modal" style="display: none;">
+  <div class="modal-content welcome-modal-content">
+    <div class="welcome-modal-header">
+      <div class="welcome-icon">🎯</div>
+      <h2 class="welcome-title">Добро пожаловать на тренировку с ИИ-тренером!</h2>
+    </div>
+    <div class="welcome-modal-body">
+      <div class="recommendations-list">
+        <div class="recommendation-item">
+          <div class="recommendation-icon">🎤</div>
+          <div class="recommendation-text">
+            <strong>Используйте качественный микрофон</strong>
+            <p>Для лучшего распознавания речи используйте гарнитуру или внешний микрофон</p>
+          </div>
+        </div>
+        <div class="recommendation-item">
+          <div class="recommendation-icon">🔇</div>
+          <div class="recommendation-text">
+            <strong>Найдите тихое место</strong>
+            <p>Убедитесь, что вас не будут отвлекать посторонние звуки</p>
+          </div>
+        </div>
+        <div class="recommendation-item">
+          <div class="recommendation-icon">💬</div>
+          <div class="recommendation-text">
+            <strong>Говорите естественно</strong>
+            <p>ИИ-тренер понимает естественную речь, не нужно говорить медленно или по слогам</p>
+          </div>
+        </div>
+        <div class="recommendation-item">
+          <div class="recommendation-icon">⏸️</div>
+          <div class="recommendation-text">
+            <strong>Делайте паузы</strong>
+            <p>После ответа ИИ-тренера подождите пару секунд перед тем, как начать говорить</p>
+          </div>
+        </div>
+        <div class="recommendation-item">
+          <div class="recommendation-icon">📋</div>
+          <div class="recommendation-text">
+            <strong>Следите за чеклистом</strong>
+            <p>Используйте боковую панель с чеклистом для отслеживания прогресса</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="welcome-modal-footer">
+      <button class="btn btn-primary btn-large" id="start-training-btn">
+        <span>Поехали!</span>
+        <svg class="icon" viewBox="0 0 20 20" fill="currentColor">
+          <path fill-rule="evenodd" d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z" clip-rule="evenodd"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Подключение стилей -->
+<link rel="stylesheet" href="/static/css/voice-training.css">
+
+<!-- Подключение скриптов -->
+<script src="/static/js/voice-training.js"></script>
+
+<script>
+// Инициализация при загрузке страницы
+document.addEventListener('DOMContentLoaded', function() {
+    // Показываем модальное окно с рекомендациями
+    showWelcomeModal();
+    
+    // Получаем данные из data-атрибутов контейнера
+    const container = document.querySelector('.voice-training-container');
+    if (!container) {
+        console.error('❌ Контейнер тренировки не найден');
+        return;
+    }
+    
+    // ID пользователя из data-атрибута
+    const userIdStr = container.getAttribute('data-user-id');
+    window.currentUserId = userIdStr ? parseInt(userIdStr, 10) : null;
+    if (!window.currentUserId) {
+        console.warn('⚠️ User ID не найден');
+    }
+    
+    // ID тренировки и сессии из data-атрибутов
+    const trainingIdStr = container.getAttribute('data-training-id');
+    const sessionIdStr = container.getAttribute('data-session-id');
+    const trainingId = trainingIdStr ? parseInt(trainingIdStr, 10) : null;
+    const sessionId = sessionIdStr ? parseInt(sessionIdStr, 10) : null;
+    
+    console.log('🎯 Инициализация тренировки:', { trainingId: trainingId, sessionId: sessionId, userId: window.currentUserId });
+    
+    // Инициализация тренировки
+    if (window.VoiceTraining) {
+        // Убеждаемся, что не создаем несколько экземпляров
+        if (window.trainingInstance) {
+            console.log('⚠️ Обнаружен существующий экземпляр VoiceTraining, закрываем его...');
+            if (window.trainingInstance.ws) {
+                window.trainingInstance.ws.close();
+            }
+            window.trainingInstance = null;
+        }
+        window.trainingInstance = new VoiceTraining(trainingId, sessionId);
+    } else {
+        console.error('❌ VoiceTraining класс не найден');
+    }
+});
+
+// Функция показа модального окна с рекомендациями
+function showWelcomeModal() {
+    const welcomeModal = document.getElementById('welcome-modal');
+    const startBtn = document.getElementById('start-training-btn');
+    
+    if (!welcomeModal || !startBtn) {
+        console.warn('⚠️ Элементы модального окна не найдены');
+        return;
+    }
+    
+    // Показываем модальное окно с небольшой задержкой для плавности
+    setTimeout(() => {
+        welcomeModal.style.display = 'flex';
+        // Принудительно запускаем анимацию
+        requestAnimationFrame(() => {
+            welcomeModal.style.opacity = '1';
+            welcomeModal.querySelector('.welcome-modal-content').style.transform = 'scale(1)';
+        });
+    }, 100);
+    
+    // Обработчик кнопки "Поехали!"
+    startBtn.addEventListener('click', function() {
+        closeWelcomeModal();
+    });
+    
+    // Закрытие по клику на overlay
+    welcomeModal.addEventListener('click', function(e) {
+        if (e.target === welcomeModal) {
+            closeWelcomeModal();
+        }
+    });
+    
+    // Закрытие по нажатию Escape
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape' && welcomeModal.style.display === 'flex') {
+            closeWelcomeModal();
+        }
+    });
+}
+
+// Функция закрытия модального окна
+function closeWelcomeModal() {
+    const welcomeModal = document.getElementById('welcome-modal');
+    if (!welcomeModal) return;
+    
+    const modalContent = welcomeModal.querySelector('.welcome-modal-content');
+    
+    // Плавно скрываем модальное окно
+    welcomeModal.style.opacity = '0';
+    if (modalContent) {
+        modalContent.style.transform = 'scale(0.95)';
+    }
+    
+    setTimeout(() => {
+        welcomeModal.style.display = 'none';
+        // Сбрасываем transform для следующего показа
+        if (modalContent) {
+            modalContent.style.transform = '';
+        }
+        welcomeModal.style.opacity = '';
+    }, 300);
+}
+</script>
+
+<!-- Дополнительный скрипт для скрытия меню и защиты - выполняется после загрузки DOM -->
+<script>
+(function() {
+  'use strict';
+  
+  console.log('🚀 Запуск скрипта скрытия меню и защиты');
+  
+  // Функция для скрытия сайдбара
+  function hideSidebar() {
+    const sidebar = document.querySelector('.sidebar');
+    const appShell = document.querySelector('.app-shell');
+    
+    if (sidebar) {
+      sidebar.style.display = 'none';
+      sidebar.style.visibility = 'hidden';
+      console.log('✅ Сайдбар скрыт через JavaScript (inline)');
+    } else {
+      console.log('⚠️ Сайдбар не найден');
+    }
+    
+    if (appShell) {
+      appShell.style.gridTemplateColumns = '1fr';
+      console.log('✅ Сетка обновлена через JavaScript (inline)');
+    } else {
+      console.log('⚠️ app-shell не найден');
+    }
+  }
+  
+  // Выполняем сразу
+  hideSidebar();
+  
+  // Выполняем после загрузки DOM
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+      console.log('📄 DOM загружен (inline script), скрываем меню');
+      hideSidebar();
+      setTimeout(hideSidebar, 50);
+      setTimeout(hideSidebar, 200);
+      setTimeout(hideSidebar, 500);
+    });
+  } else {
+    console.log('📄 DOM уже загружен (inline script), скрываем меню');
+    setTimeout(hideSidebar, 50);
+    setTimeout(hideSidebar, 200);
+    setTimeout(hideSidebar, 500);
+  }
+  
+  // Используем MutationObserver для отслеживания появления элементов
+  const observer = new MutationObserver(function(mutations) {
+    const sidebar = document.querySelector('.sidebar');
+    if (sidebar && sidebar.style.display !== 'none') {
+      console.log('🔍 Обнаружен сайдбар через MutationObserver, скрываем');
+      hideSidebar();
+    }
+  });
+  
+  // Начинаем наблюдение за изменениями в body
+  if (document.body) {
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['style', 'class']
+    });
+    console.log('👁️ MutationObserver запущен');
+  } else {
+    document.addEventListener('DOMContentLoaded', function() {
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['style', 'class']
+      });
+      console.log('👁️ MutationObserver запущен (после DOMContentLoaded)');
+    });
+  }
+  
+  // Также проверяем периодически на случай если элементы появляются позже
+  let checkCount = 0;
+  const checkInterval = setInterval(function() {
+    checkCount++;
+    const sidebar = document.querySelector('.sidebar');
+    if (sidebar && sidebar.style.display !== 'none') {
+      console.log('🔄 Периодическая проверка: сайдбар виден, скрываем');
+      hideSidebar();
+    }
+    if (checkCount > 30) { // Останавливаем через 3 секунды
+      clearInterval(checkInterval);
+      console.log('⏹️ Периодическая проверка остановлена');
+    }
+  }, 100);
+})();
+</script>
+{% endblock %}

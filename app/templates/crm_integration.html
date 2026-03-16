@@ -1,0 +1,505 @@
+{% extends "_layout_dashboard.html" %}
+{% block title %}CRM Интеграции — UpStat{% endblock %}
+{% block content %}
+
+<div class="crm-page">
+  <!-- Header -->
+  <div class="page-header">
+    <div class="page-header-left">
+      <h1>CRM Интеграции</h1>
+      <p class="page-subtitle">Подключите CRM для автоматического анализа звонков и чатов</p>
+    </div>
+    <div class="page-header-right">
+      <a href="/crm/recordings" class="btn-action btn-outline">
+        <svg viewBox="0 0 20 20" fill="currentColor" width="18" height="18"><path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd"/></svg>
+        Записи
+      </a>
+    </div>
+  </div>
+
+  {% if request.url.query and "success=connected" in request.url.query %}
+  <div class="alert alert-success">
+    <svg viewBox="0 0 20 20" fill="currentColor" width="20" height="20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+    CRM успешно подключена! Нажмите «Синхронизировать» чтобы загрузить записи.
+  </div>
+  {% endif %}
+
+  <!-- Stats -->
+  {% if total_recordings > 0 %}
+  <div class="stats-row">
+    <div class="stat-card-crm">
+      <div class="stat-icon-crm stat-blue">
+        <svg viewBox="0 0 20 20" fill="currentColor" width="22" height="22"><path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z"/></svg>
+      </div>
+      <div>
+        <div class="stat-num">{{ total_recordings }}</div>
+        <div class="stat-lbl">Всего записей</div>
+      </div>
+    </div>
+    <div class="stat-card-crm">
+      <div class="stat-icon-crm stat-green">
+        <svg viewBox="0 0 20 20" fill="currentColor" width="22" height="22"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+      </div>
+      <div>
+        <div class="stat-num">{{ analyzed_recordings }}</div>
+        <div class="stat-lbl">Проанализировано</div>
+      </div>
+    </div>
+    <div class="stat-card-crm">
+      <div class="stat-icon-crm stat-purple">
+        <svg viewBox="0 0 20 20" fill="currentColor" width="22" height="22"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg>
+      </div>
+      <div>
+        <div class="stat-num">{{ avg_score or '—' }}</div>
+        <div class="stat-lbl">Средняя оценка</div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Connected integrations -->
+  {% if integrations %}
+  <div class="section">
+    <h2 class="section-title">Подключённые системы</h2>
+    <div class="integrations-grid">
+      {% for integration in integrations %}
+      <div class="integration-card">
+        <div class="integration-header">
+          <div class="integration-name">
+            <span class="crm-icon">{% if integration.crm_type == "amocrm" %}🟢{% else %}🔵{% endif %}</span>
+            <span>{{ integration.crm_name }}</span>
+          </div>
+          <span class="status-dot {% if integration.is_active %}active{% endif %}">
+            {{ 'Активна' if integration.is_active else 'Не активна' }}
+          </span>
+        </div>
+
+        <div class="integration-meta">
+          <div class="meta-row"><span>Записей</span><strong>{{ integration.recordings_count }}</strong></div>
+          <div class="meta-row"><span>Проанализировано</span><strong>{{ integration.analyzed_count }}</strong></div>
+          {% if integration.last_sync_at %}
+          <div class="meta-row"><span>Последняя синхр.</span><span class="text-muted">{{ integration.last_sync_at.strftime('%d.%m %H:%M') }}</span></div>
+          {% endif %}
+        </div>
+
+        <div class="integration-actions">
+          {% if integration.is_active %}
+          <button class="btn-action btn-primary-action" onclick="syncCRM({{ integration.id }})" id="syncBtn-{{ integration.id }}">
+            <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/></svg>
+            Синхронизировать
+          </button>
+          {% if 'bitrix24' in integration.crm_type %}
+          <button class="btn-action btn-chat-action" onclick="syncChats({{ integration.id }})" id="syncChatsBtn-{{ integration.id }}">
+            <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path d="M2 5a2 2 0 012-2h7a2 2 0 012 2v4a2 2 0 01-2 2H9l-3 3v-3H4a2 2 0 01-2-2V5z"/><path d="M15 7v2a4 4 0 01-4 4H9.5l-1.5 1.5V13H6a4 4 0 01-4-4V7h13z"/></svg>
+            Загрузить чаты
+          </button>
+          {% endif %}
+          <a href="/crm/recordings?integration_id={{ integration.id }}" class="btn-action btn-outline">
+            <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/><path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5z" clip-rule="evenodd"/></svg>
+            Записи
+          </a>
+          {% endif %}
+          <button class="btn-action btn-danger-action" onclick="deleteCRM({{ integration.id }})" title="Удалить">
+            <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+          </button>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Add new CRM -->
+  <div class="section">
+    <h2 class="section-title">Добавить интеграцию</h2>
+    <div class="add-crm-grid">
+      {% for crm in supported_crms %}
+      <div class="add-crm-card">
+        <div class="add-crm-icon">{{ crm.icon }}</div>
+        <h3>{{ crm.name }}</h3>
+        {% if crm.type == "amocrm" %}
+        <button class="btn-action btn-primary-action" onclick="openModal('amocrmModal')">Подключить</button>
+        {% elif crm.type == "bitrix24" %}
+        <button class="btn-action btn-primary-action" onclick="openModal('bitrix24Modal')">Подключить</button>
+        {% else %}
+        <button class="btn-action btn-outline" disabled>Скоро</button>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- How it works -->
+  <div class="how-it-works">
+    <h3>Как это работает</h3>
+    <div class="steps-grid">
+      <div class="step"><span class="step-num">1</span><span>Подключите CRM через вебхук или OAuth</span></div>
+      <div class="step"><span class="step-num">2</span><span>Синхронизируйте звонки и чаты</span></div>
+      <div class="step"><span class="step-num">3</span><span>Запустите анализ — ИИ создаст отчёт и план</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: AmoCRM -->
+<div class="modal-backdrop" id="amocrmModal">
+  <div class="modal-box">
+    <div class="modal-head">
+      <h3>🟢 Подключение AmoCRM</h3>
+      <button class="modal-close" onclick="closeModal('amocrmModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <label class="field-label">Домен аккаунта</label>
+      <div class="input-row">
+        <input type="text" id="amocrmDomain" placeholder="example" class="field-input" required>
+        <span class="input-hint">.amocrm.ru</span>
+      </div>
+      <p class="field-help">Например: https://<strong>example</strong>.amocrm.ru</p>
+      {% if not amocrm_client_id %}
+      <div class="alert alert-warn">Для подключения AmoCRM настройте OAuth. Добавьте AMOCRM_CLIENT_ID и AMOCRM_CLIENT_SECRET в .env</div>
+      {% endif %}
+    </div>
+    <div class="modal-foot">
+      <button class="btn-action btn-outline" onclick="closeModal('amocrmModal')">Отмена</button>
+      <button class="btn-action btn-primary-action" onclick="connectAmoCRM()" {% if not amocrm_client_id %}disabled{% endif %}>Подключить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Bitrix24 -->
+<div class="modal-backdrop" id="bitrix24Modal">
+  <div class="modal-box modal-wide">
+    <div class="modal-head">
+      <h3>🔵 Подключение Bitrix24</h3>
+      <button class="modal-close" onclick="closeModal('bitrix24Modal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="method-tabs">
+        <button class="method-tab active" data-tab="webhook" onclick="switchTab(this, 'webhook')">Вебхук</button>
+        <button class="method-tab" data-tab="oauth" onclick="switchTab(this, 'oauth')">OAuth</button>
+      </div>
+
+      <div id="webhookForm" class="tab-content active">
+        <div class="tip-box">Вебхук — самый простой способ. Не требует приложения.</div>
+        <label class="field-label">URL входящего вебхука</label>
+        <input type="text" id="webhookUrl" placeholder="https://portal.bitrix24.ru/rest/1/abc123.../" class="field-input" required>
+        <p class="field-help">Bitrix24 → Приложения → Вебхуки → Добавить входящий вебхук. Права: CRM, telephony, im, imopenlines, user</p>
+      </div>
+
+      <div id="oauthForm" class="tab-content">
+        <label class="field-label">Домен портала</label>
+        <div class="input-row">
+          <input type="text" id="bitrix24Domain" placeholder="example" class="field-input">
+          <span class="input-hint">.bitrix24.ru</span>
+        </div>
+        {% if not bitrix24_client_id %}
+        <div class="alert alert-warn">Для OAuth необходимо приложение. Добавьте BITRIX24_CLIENT_ID и BITRIX24_CLIENT_SECRET в .env</div>
+        {% endif %}
+      </div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn-action btn-outline" onclick="closeModal('bitrix24Modal')">Отмена</button>
+      <button class="btn-action btn-primary-action" id="bitrix24ConnectBtn" onclick="connectBitrix24Selected()">Подключить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Sync progress modal -->
+<div class="sync-modal-backdrop" id="syncModal">
+  <div class="sync-modal">
+    <div class="sync-modal-icon" id="syncIcon">
+      <div class="sync-spinner"></div>
+    </div>
+    <h3 class="sync-modal-title" id="syncTitle">Синхронизация</h3>
+    <p class="sync-modal-desc" id="syncDesc">Подключаемся к CRM...</p>
+    <div class="sync-progress-track">
+      <div class="sync-progress-fill" id="syncProgress" style="width: 0%"></div>
+    </div>
+    <span class="sync-modal-detail" id="syncDetail"></span>
+    <button class="btn-action btn-primary-action sync-done-btn" id="syncDoneBtn" style="display:none;">
+      Готово
+    </button>
+  </div>
+</div>
+
+<style>
+.crm-page { padding: 28px 32px; max-width: 1200px; }
+
+/* Header */
+.page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 28px; gap: 16px; flex-wrap: wrap; }
+.page-header h1 { font-size: 26px; font-weight: 700; margin: 0; color: var(--text); }
+.page-subtitle { color: var(--muted); font-size: 14px; margin: 4px 0 0; }
+
+/* Stats */
+.stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 32px; }
+.stat-card-crm { display: flex; align-items: center; gap: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; transition: all .2s; }
+.stat-card-crm:hover { border-color: rgba(37,99,235,.2); }
+.stat-icon-crm { width: 48px; height: 48px; border-radius: 12px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.stat-blue { background: rgba(59,130,246,.1); color: #3b82f6; }
+.stat-green { background: rgba(16,185,129,.1); color: #10b981; }
+.stat-purple { background: rgba(139,92,246,.1); color: #8b5cf6; }
+.stat-num { font-size: 24px; font-weight: 700; color: var(--text); }
+.stat-lbl { font-size: 13px; color: var(--muted); }
+
+/* Sections */
+.section { margin-bottom: 32px; }
+.section-title { font-size: 18px; font-weight: 600; margin: 0 0 16px; color: var(--text); }
+
+/* Integration cards */
+.integrations-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+.integration-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 20px; transition: all .2s; }
+.integration-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.06); border-color: rgba(37,99,235,.15); }
+body.dark .integration-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.3); }
+.integration-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.integration-name { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 15px; }
+.crm-icon { font-size: 18px; }
+.status-dot { font-size: 12px; font-weight: 500; padding: 4px 10px; border-radius: 20px; background: var(--surface-hover); color: var(--muted); }
+.status-dot.active { background: rgba(16,185,129,.1); color: #059669; }
+body.dark .status-dot.active { color: #34d399; }
+.integration-meta { margin-bottom: 16px; }
+.meta-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; color: var(--muted); }
+.meta-row strong { color: var(--text); }
+.integration-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* Add CRM */
+.add-crm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+.add-crm-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 28px 20px; text-align: center; transition: all .25s; }
+.add-crm-card:hover { transform: translateY(-4px); box-shadow: 0 8px 24px rgba(0,0,0,.08); }
+body.dark .add-crm-card:hover { box-shadow: 0 8px 24px rgba(0,0,0,.3); }
+.add-crm-icon { font-size: 40px; margin-bottom: 8px; }
+.add-crm-card h3 { font-size: 16px; font-weight: 600; margin: 0 0 16px; }
+
+/* How it works */
+.how-it-works { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px; }
+.how-it-works h3 { font-size: 15px; font-weight: 600; margin: 0 0 16px; color: var(--text); }
+.steps-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.step { display: flex; align-items: center; gap: 12px; font-size: 14px; color: var(--muted); }
+.step-num { width: 28px; height: 28px; border-radius: 8px; background: linear-gradient(135deg, var(--primary), var(--primary-hover)); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex-shrink: 0; }
+
+/* Buttons */
+.btn-action { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 10px; font-size: 13px; font-weight: 500; cursor: pointer; border: 1px solid transparent; transition: all .2s; white-space: nowrap; }
+.btn-primary-action { background: var(--primary); color: #fff; border-color: var(--primary); }
+.btn-primary-action:hover { background: var(--primary-hover); box-shadow: 0 4px 12px rgba(37,99,235,.25); transform: translateY(-1px); }
+.btn-chat-action { background: #8b5cf6; color: #fff; border-color: #8b5cf6; }
+.btn-chat-action:hover { background: #7c3aed; box-shadow: 0 4px 12px rgba(139,92,246,.25); transform: translateY(-1px); }
+.btn-outline { background: transparent; color: var(--text); border-color: var(--border); }
+.btn-outline:hover { border-color: var(--primary); color: var(--primary); }
+.btn-outline:disabled { opacity: .5; cursor: not-allowed; }
+.btn-danger-action { background: transparent; color: #ef4444; border-color: rgba(239,68,68,.2); }
+.btn-danger-action:hover { background: rgba(239,68,68,.08); border-color: #ef4444; }
+
+/* Alerts */
+.alert { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-radius: 12px; font-size: 14px; margin-bottom: 20px; }
+.alert-success { background: rgba(16,185,129,.08); border: 1px solid rgba(16,185,129,.2); color: #059669; }
+body.dark .alert-success { color: #34d399; }
+.alert-warn { background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.2); color: #d97706; padding: 12px; border-radius: 10px; margin-top: 12px; font-size: 13px; }
+body.dark .alert-warn { color: #fcd34d; }
+
+/* Modal */
+.modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 9999; align-items: center; justify-content: center; }
+.modal-backdrop.active { display: flex; }
+.modal-box { background: var(--surface); border-radius: 16px; max-width: 480px; width: 92%; box-shadow: 0 20px 60px rgba(0,0,0,.25); }
+.modal-wide { max-width: 560px; }
+.modal-head { display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; border-bottom: 1px solid var(--border); }
+.modal-head h3 { margin: 0; font-size: 17px; font-weight: 600; }
+.modal-close { background: none; border: none; font-size: 24px; color: var(--muted); cursor: pointer; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border-radius: 8px; }
+.modal-close:hover { background: var(--surface-hover); }
+.modal-body { padding: 20px 24px; }
+.modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px; border-top: 1px solid var(--border); }
+
+/* Fields */
+.field-label { display: block; font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 6px; }
+.field-input { width: 100%; padding: 10px 14px; border: 1px solid var(--border); border-radius: 10px; font-size: 14px; background: var(--bg); color: var(--text); }
+.field-input:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(37,99,235,.1); }
+.field-help { font-size: 12px; color: var(--muted); margin-top: 6px; }
+.input-row { display: flex; align-items: center; gap: 8px; }
+.input-row .field-input { flex: 1; }
+.input-hint { color: var(--muted); font-weight: 500; font-size: 14px; white-space: nowrap; }
+
+/* Tabs */
+.method-tabs { display: flex; gap: 4px; background: var(--bg); border-radius: 10px; padding: 4px; margin-bottom: 20px; }
+.method-tab { flex: 1; padding: 10px; border: none; background: transparent; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; color: var(--muted); transition: all .2s; }
+.method-tab.active { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+.tip-box { background: rgba(59,130,246,.06); border: 1px solid rgba(59,130,246,.15); color: var(--primary); padding: 10px 14px; border-radius: 10px; font-size: 13px; margin-bottom: 16px; }
+
+/* Spinner */
+.spinner-sm { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Sync modal */
+.sync-modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); backdrop-filter: blur(4px); z-index: 10000; align-items: center; justify-content: center; }
+.sync-modal-backdrop.active { display: flex; }
+.sync-modal { background: var(--surface); border-radius: 20px; padding: 40px 36px; max-width: 420px; width: 90%; text-align: center; box-shadow: 0 24px 80px rgba(0,0,0,.3); animation: syncModalIn .3s ease; }
+@keyframes syncModalIn { from { opacity: 0; transform: scale(.92) translateY(12px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+.sync-modal-icon { width: 80px; height: 80px; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; background: rgba(37,99,235,.08); border-radius: 50%; }
+.sync-spinner { width: 40px; height: 40px; border: 3px solid rgba(37,99,235,.2); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
+.sync-modal-title { margin: 0 0 8px; font-size: 20px; font-weight: 700; color: var(--text); }
+.sync-modal-desc { margin: 0 0 20px; font-size: 14px; color: var(--muted); line-height: 1.5; }
+.sync-progress-track { width: 100%; height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; margin-bottom: 10px; }
+.sync-progress-fill { height: 100%; background: linear-gradient(90deg, var(--primary), #8b5cf6); border-radius: 4px; transition: width .5s ease, background .3s; }
+.sync-modal-detail { display: block; font-size: 12px; color: var(--muted); margin-bottom: 16px; }
+.sync-done-btn { margin-top: 4px; }
+
+/* Responsive */
+@media (max-width: 768px) {
+  .crm-page { padding: 20px 16px; }
+  .stats-row { grid-template-columns: 1fr; }
+  .integrations-grid { grid-template-columns: 1fr; }
+  .add-crm-grid { grid-template-columns: 1fr 1fr; }
+  .steps-grid { grid-template-columns: 1fr; }
+  .integration-actions { flex-direction: column; }
+}
+</style>
+
+<script>
+function openModal(id) { document.getElementById(id)?.classList.add('active'); }
+function closeModal(id) { document.getElementById(id)?.classList.remove('active'); }
+document.addEventListener('click', e => { if (e.target.classList.contains('modal-backdrop')) e.target.classList.remove('active'); });
+
+function switchTab(btn, tab) {
+  document.querySelectorAll('.method-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(tab === 'webhook' ? 'webhookForm' : 'oauthForm').classList.add('active');
+}
+
+async function syncCRM(id) {
+  const btn = document.getElementById('syncBtn-' + id);
+  btn.disabled = true;
+  showSyncModal();
+  try {
+    const r = await fetch('/crm/sync/' + id, { method: 'POST' });
+    if (r.ok) { pollSyncStatus(id); }
+    else { closeSyncModal(); alert('Ошибка запуска синхронизации'); btn.disabled = false; }
+  } catch (e) { closeSyncModal(); alert(e.message); btn.disabled = false; }
+}
+
+function showSyncModal() {
+  const modal = document.getElementById('syncModal');
+  modal.classList.add('active');
+  updateSyncUI('starting', 0, 0);
+}
+
+function closeSyncModal() {
+  document.getElementById('syncModal').classList.remove('active');
+}
+
+function updateSyncUI(phase, found, saved) {
+  const icon = document.getElementById('syncIcon');
+  const title = document.getElementById('syncTitle');
+  const desc = document.getElementById('syncDesc');
+  const prog = document.getElementById('syncProgress');
+  const detail = document.getElementById('syncDetail');
+  const doneBtn = document.getElementById('syncDoneBtn');
+
+  doneBtn.style.display = 'none';
+
+  if (phase === 'starting' || phase === 'fetching') {
+    icon.innerHTML = '<div class="sync-spinner"></div>';
+    title.textContent = 'Загрузка данных из CRM';
+    desc.textContent = 'Получаем записи звонков из AmoCRM...';
+    prog.style.width = '30%';
+    detail.textContent = 'Запрашиваем API...';
+  } else if (phase === 'saving') {
+    icon.innerHTML = '<div class="sync-spinner"></div>';
+    title.textContent = 'Сохранение записей';
+    desc.textContent = `Найдено ${found} записей, сохраняем...`;
+    prog.style.width = '70%';
+    detail.textContent = `Новых: ${saved} из ${found}`;
+  } else if (phase === 'done') {
+    icon.innerHTML = '<svg viewBox="0 0 20 20" fill="#10b981" width="48" height="48"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>';
+    title.textContent = 'Синхронизация завершена';
+    desc.textContent = saved > 0 ? `Добавлено ${saved} новых записей` : 'Новых записей не найдено';
+    prog.style.width = '100%';
+    prog.style.background = 'linear-gradient(90deg, #10b981, #059669)';
+    detail.textContent = `Всего в базе: загрузка...`;
+    doneBtn.style.display = 'inline-flex';
+  } else if (phase === 'error') {
+    icon.innerHTML = '<svg viewBox="0 0 20 20" fill="#ef4444" width="48" height="48"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>';
+    title.textContent = 'Ошибка синхронизации';
+    desc.textContent = 'Попробуйте ещё раз';
+    prog.style.width = '100%';
+    prog.style.background = '#ef4444';
+    detail.textContent = '';
+    doneBtn.style.display = 'inline-flex';
+    doneBtn.textContent = 'Закрыть';
+  }
+}
+
+function pollSyncStatus(id) {
+  const iv = setInterval(async () => {
+    try {
+      const r = await fetch('/crm/sync-status/' + id);
+      if (!r.ok) { clearInterval(iv); return; }
+      const d = await r.json();
+      updateSyncUI(d.phase, d.found, d.saved);
+      if (d.done) {
+        clearInterval(iv);
+        const detail = document.getElementById('syncDetail');
+        if (d.recordings_count) detail.textContent = `Всего записей: ${d.recordings_count}`;
+        document.getElementById('syncDoneBtn').onclick = () => { closeSyncModal(); location.reload(); };
+      }
+    } catch { clearInterval(iv); }
+  }, 2000);
+}
+
+async function syncChats(id) {
+  const btn = document.getElementById('syncChatsBtn-' + id);
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-sm"></span> Загрузка чатов...';
+  try {
+    const r = await fetch('/crm/sync-chats/' + id, { method: 'POST' });
+    if (r.ok) { btn.innerHTML = '✓ Запущено'; setTimeout(() => location.reload(), 5000); }
+    else { const err = await r.json(); alert(err.detail || 'Ошибка'); btn.disabled = false; btn.innerHTML = orig; }
+  } catch (e) { alert(e.message); btn.disabled = false; btn.innerHTML = orig; }
+}
+
+async function connectAmoCRM() {
+  const d = document.getElementById('amocrmDomain').value.trim();
+  if (!d) { alert('Введите домен'); return; }
+  closeModal('amocrmModal');
+  try {
+    const r = await fetch('/crm/connect/amocrm', { method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'domain=' + encodeURIComponent(d) });
+    if (r.ok) { const data = await r.json(); window.location.href = data.oauth_url; }
+    else alert('Ошибка подключения');
+  } catch (e) { alert(e.message); }
+}
+
+function connectBitrix24Selected() {
+  const tab = document.querySelector('.method-tab.active').dataset.tab;
+  tab === 'webhook' ? connectBitrix24Webhook() : connectBitrix24OAuth();
+}
+
+async function connectBitrix24Webhook() {
+  const url = document.getElementById('webhookUrl').value.trim();
+  if (!url) { alert('Введите URL вебхука'); return; }
+  const btn = document.getElementById('bitrix24ConnectBtn');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner-sm"></span> Подключение...';
+  try {
+    const r = await fetch('/crm/connect/bitrix24/webhook', { method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'webhook_url=' + encodeURIComponent(url) });
+    if (r.ok) { closeModal('bitrix24Modal'); location.reload(); }
+    else { const data = await r.json(); alert(data.detail || 'Ошибка'); }
+  } catch (e) { alert(e.message); }
+  finally { btn.disabled = false; btn.innerHTML = 'Подключить'; }
+}
+
+async function connectBitrix24OAuth() {
+  const d = document.getElementById('bitrix24Domain').value.trim();
+  if (!d) { alert('Введите домен'); return; }
+  closeModal('bitrix24Modal');
+  try {
+    const r = await fetch('/crm/connect/bitrix24', { method: 'POST', headers: {'Content-Type': 'application/x-www-form-urlencoded'}, body: 'domain=' + encodeURIComponent(d) });
+    if (r.ok) { const data = await r.json(); window.location.href = data.oauth_url; }
+    else alert('Ошибка подключения');
+  } catch (e) { alert(e.message); }
+}
+
+async function deleteCRM(id) {
+  if (!confirm('Удалить интеграцию? Все связанные записи будут удалены.')) return;
+  try { const r = await fetch('/crm/integrations/' + id, { method: 'DELETE' }); if (r.ok) location.reload(); else alert('Ошибка'); }
+  catch (e) { alert(e.message); }
+}
+</script>
+{% endblock %}

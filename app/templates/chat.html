@@ -1,0 +1,638 @@
+{% extends "_layout_dashboard.html" %}
+{% block title %}Чат — UpStat{% endblock %}
+
+{% block content %}
+<div class="chat-container">
+  <!-- Заголовок чата -->
+  <div class="chat-header">
+    <div class="chat-title">
+      <h1>💬 Чат с ИИ-аналитиком</h1>
+      <p>✨ Загружайте аудиофайлы или скриншоты переписок и получайте детальный анализ</p>
+    </div>
+    <div style="display:flex; align-items:center; gap:16px;">
+      {% if user and not user.is_premium %}
+      <div style="display:flex; align-items:center; gap:8px; padding:8px 14px; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.2); border-radius:10px;">
+        <span style="font-size:18px;">📊</span>
+        <div>
+          <div style="font-size:12px; color:#92400e; font-weight:600;">Бесплатный план</div>
+          <div style="font-size:14px; font-weight:700; color:#d97706;">
+            {% set remaining = user.free_analyses_limit - user.analyses_used %}
+            {% if remaining > 0 %}
+              Осталось: {{ remaining }} из {{ user.free_analyses_limit }}
+            {% else %}
+              <span style="color:#ef4444;">Лимит исчерпан</span>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      {% elif user and user.is_premium %}
+      <div style="display:flex; align-items:center; gap:8px; padding:8px 14px; background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.2); border-radius:10px;">
+        <span style="font-size:18px;">👑</span>
+        <div>
+          <div style="font-size:12px; color:#065f46; font-weight:600;">Безлимитный план</div>
+          <div style="font-size:14px; font-weight:700; color:#059669;">∞ Анализы без ограничений</div>
+        </div>
+      </div>
+      {% endif %}
+      <div class="chat-status">
+        <div class="status-indicator online"></div>
+        <span>🤖 ИИ готов к работе</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Селектор участника команды для менеджера -->
+  {% if is_manager and team_members %}
+  <div style="background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(29, 78, 216, 0.05)); border: 1px solid rgba(37, 99, 235, 0.2); border-radius: 12px; padding: 16px; margin-bottom: 20px;">
+    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+      <label for="team-member-select" style="font-weight: 600; color: #2563eb; display: flex; align-items: center; gap: 8px;">
+        <svg style="width: 20px; height: 20px;" viewBox="0 0 20 20" fill="currentColor">
+          <path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z"/>
+        </svg>
+        Загрузить для участника:
+      </label>
+      <select 
+        id="team-member-select" 
+        name="target_user_id"
+        style="flex: 1; min-width: 200px; padding: 10px 14px; border: 1px solid rgba(37, 99, 235, 0.3); border-radius: 8px; background: white; font-size: 14px; color: #1e293b; cursor: pointer;"
+      >
+        <option value="">Себя ({{ user.name }})</option>
+        {% for member in team_members %}
+        <option value="{{ member.id }}">{{ member.name }} ({{ member.team_name }})</option>
+        {% endfor %}
+      </select>
+      <div id="selected-member-info" style="font-size: 13px; color: #2563eb; font-weight: 500; display: none; padding: 8px 12px; background: rgba(37, 99, 235, 0.1); border-radius: 6px; margin-top: 8px; width: 100%;">
+        <span style="display: flex; align-items: center; gap: 6px;">
+          <svg style="width: 16px; height: 16px;" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+          </svg>
+          <span id="selected-member-text"></span>
+        </span>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Основной чат -->
+  <section class="chat-card">
+    <div id="analysis-progress" class="analysis-progress hidden" role="status" aria-live="polite">
+      <span id="analysis-progress-label">GPT анализирует звонок…</span>
+      <div class="analysis-progress-track">
+        <div class="analysis-progress-fill"></div>
+      </div>
+    </div>
+    <!-- Лента сообщений -->
+    <div id="messages" class="chat-scroll">
+      {% include "partials/messages.html" %}
+    </div>
+
+    <!-- Композер -->
+    <form id="chat-form" class="composer" action="/chat/send" method="post" enctype="multipart/form-data">
+      {% if is_manager and team_members %}
+      <input type="hidden" id="target-user-id-input" name="target_user_id" value="">
+      {% endif %}
+      <label class="attach-btn" title="Прикрепить файл" id="attach-label" style="position:relative;">
+        <input type="file" name="files" id="file-input" multiple hidden />
+        <svg width="18" height="18" viewBox="0 0 24 24">
+          <path d="M21.44 11.05l-8.49 8.49a6 6 0 01-8.49-8.49l8.49-8.49a4 4 0 015.66 5.66l-8.49 8.49a2 2 0 01-2.83-2.83l7.78-7.78" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span id="attach-badge" class="badge hidden"></span>
+      </label>
+
+      <textarea name="text" id="text" placeholder="Напишите сообщение, загрузите аудио или скриншоты переписки..." rows="1"></textarea>
+
+      <button class="send-btn" type="submit" title="Отправить">
+        <svg width="18" height="18" viewBox="0 0 24 24">
+          <path d="M22 2L11 13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <path d="M22 2L15 22L11 13L2 9L22 2Z" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </form>
+
+    <!-- Превью выбранных файлов -->
+    <div id="file-chips" class="chips hidden"></div>
+
+    <!-- Прогресс загрузки -->
+    <div id="progress" class="progress hidden">
+      <div class="bar" id="progress-bar" style="width:0%;"></div>
+      <div class="label" id="progress-label">Загрузка…</div>
+    </div>
+  </section>
+
+  <!-- Дисклеймер о персональных данных -->
+  <div style="margin-top:12px; padding:12px 16px; background:rgba(100,116,139,0.06); border:1px solid rgba(100,116,139,0.12); border-radius:10px; display:flex; align-items:flex-start; gap:10px;">
+    <span style="font-size:16px; flex-shrink:0; margin-top:1px;">🔒</span>
+    <p style="margin:0; font-size:12px; line-height:1.6; color:#64748b;">
+      Загружая запись звонка/разговора, пользователь подтверждает, что запись сделана с соблюдением закона о защите персональных данных, включая уведомление клиента о возможной записи разговора.
+    </p>
+  </div>
+</div>
+
+<script>
+  // ===== базовые ссылки
+  const scroller = document.getElementById('messages');
+  const form = document.getElementById('chat-form');
+  const textEl = document.getElementById('text');
+  const fileInput = document.getElementById('file-input');
+  const sendBtn = form.querySelector('.send-btn');
+
+  const progress = document.getElementById('progress');
+  const bar = document.getElementById('progress-bar');
+  const label = document.getElementById('progress-label');
+
+  const analysisProgress = document.getElementById('analysis-progress');
+  const analysisLabel = analysisProgress?.querySelector('.analysis-progress-label');
+  const analysisFill = analysisProgress?.querySelector('.analysis-progress-fill');
+  const analysisKeywordsStart = ['делаю анализ', 'анализ по чек-листам', 'анализ по чек листам'];
+  const analysisKeywordsDone = ['готово', 'отчёт', 'отчет'];
+  const conversationId = {{ conversation.id if conversation and conversation.id else 0 }};
+  const operationPrefix = conversationId > 0 ? `audio_analysis_${conversationId}_` : 'audio_analysis_unknown_';
+  const ANALYSIS_STORAGE_KEY = 'saas_analysis_active_operation';
+  const SIMULATION_BUFFER = 5;
+  const SIMULATION_INCREMENT = 0.6;
+  let isAnalysisProgressVisible = false;
+  let analysisWatcherInterval = null;
+  let analysisStopTimeout = null;
+  let storedOperationId = localStorage.getItem(ANALYSIS_STORAGE_KEY);
+  let displayProgress = 0;
+  let animationTarget = 0;
+  let lastStageMessage = 'GPT анализирует звонок…';
+  let progressAnimator = null;
+  let latestActualPercentage = 0;
+  let latestOperationStatus = null;
+
+  function showAnalysisProgress() {
+    if (!analysisProgress || isAnalysisProgressVisible) return;
+    isAnalysisProgressVisible = true;
+    analysisProgress.classList.remove('hidden');
+  }
+
+  function hideAnalysisProgress() {
+    if (!analysisProgress || !isAnalysisProgressVisible) return;
+    isAnalysisProgressVisible = false;
+    analysisProgress.classList.add('hidden');
+  }
+
+  function updateAnalysisUI(operation) {
+    if (!analysisProgress) return;
+    const percentage = Math.max(0, Math.min(100, operation.percentage || 0));
+    latestActualPercentage = percentage;
+    latestOperationStatus = operation.status;
+    if (['completed', 'failed'].includes(latestOperationStatus)) {
+      animationTarget = 100;
+    } else {
+      animationTarget = Math.max(animationTarget, Math.min(99, latestActualPercentage + SIMULATION_BUFFER));
+    }
+    lastStageMessage = operation.stage_message || 'GPT анализирует звонок…';
+    applyDisplayProgress(Math.max(displayProgress, percentage));
+    renderAnalysisLabel(lastStageMessage);
+    showAnalysisProgress();
+    startProgressAnimator();
+  }
+
+  function stopAnalysisWatcher() {
+    if (analysisWatcherInterval) {
+      clearInterval(analysisWatcherInterval);
+      analysisWatcherInterval = null;
+    }
+    if (analysisStopTimeout) {
+      clearTimeout(analysisStopTimeout);
+      analysisStopTimeout = null;
+    }
+    if (analysisFill) {
+      analysisFill.style.width = '0%';
+    }
+    hideAnalysisProgress();
+    clearStoredOperation();
+    stopProgressAnimator();
+    latestOperationStatus = null;
+    latestActualPercentage = 0;
+  }
+
+  function ensureAnalysisWatcher() {
+    if (analysisWatcherInterval) return;
+    analysisWatcherInterval = setInterval(refreshAnalysisProgress, 2000);
+  }
+
+  function startProgressAnimator() {
+    if (progressAnimator) return;
+    progressAnimator = setInterval(() => {
+      if (!analysisProgress || displayProgress >= animationTarget) {
+        if (latestOperationStatus === 'in_progress' && animationTarget < 99) {
+          animationTarget = Math.min(99, animationTarget + 0.8);
+        }
+        if (displayProgress >= animationTarget) {
+          return;
+        }
+      }
+      const next = Math.min(animationTarget, displayProgress + SIMULATION_INCREMENT);
+      if (next <= displayProgress) return;
+      applyDisplayProgress(next);
+      renderAnalysisLabel(lastStageMessage);
+    }, 900);
+  }
+
+  function stopProgressAnimator() {
+    if (!progressAnimator) return;
+    clearInterval(progressAnimator);
+    progressAnimator = null;
+  }
+
+  function applyDisplayProgress(value) {
+    const clamped = Math.max(0, Math.min(100, value));
+    displayProgress = clamped;
+    if (analysisFill) {
+      analysisFill.style.width = `${clamped}%`;
+    }
+  }
+
+  function renderAnalysisLabel(stageMessage) {
+    if (!analysisLabel) return;
+    const percent = Math.min(100, Math.round(displayProgress));
+    analysisLabel.textContent = `${stageMessage} (${percent}%)`;
+  }
+
+  async function refreshAnalysisProgress() {
+    if (!analysisProgress) return;
+    try {
+      const response = await fetch('/api/progress/active/list?limit=20');
+      if (!response.ok) {
+        return;
+      }
+      const data = await response.json();
+      const operations = Array.isArray(data.operations) ? data.operations : [];
+      const currentById = storedOperationId
+        ? operations.find(op => op.operation_id === storedOperationId)
+        : null;
+      const current = currentById || operations.find(op => op.operation_id?.startsWith(operationPrefix));
+      if (!current) {
+        stopAnalysisWatcher();
+        return;
+      }
+      storeActiveOperation(current.operation_id);
+      updateAnalysisUI(current);
+      ensureAnalysisWatcher();
+      if (['completed', 'failed'].includes(current.status)) {
+        if (!analysisStopTimeout) {
+          analysisStopTimeout = setTimeout(() => {
+            stopAnalysisWatcher();
+          }, 1500);
+        }
+      } else if (analysisStopTimeout) {
+        clearTimeout(analysisStopTimeout);
+        analysisStopTimeout = null;
+      }
+    } catch (error) {
+      // Тихая обработка ошибки - не показываем пользователю
+    }
+  }
+
+  function storeActiveOperation(operationId) {
+    if (!operationId) return;
+    storedOperationId = operationId;
+    localStorage.setItem(ANALYSIS_STORAGE_KEY, operationId);
+  }
+
+  function clearStoredOperation() {
+    storedOperationId = null;
+    localStorage.removeItem(ANALYSIS_STORAGE_KEY);
+  }
+
+  function inspectMessageForAnalysis(node) {
+    if (!node || !node.classList.contains('bot')) return;
+    const textEl = node.querySelector('.text');
+    if (!textEl) return;
+    const text = textEl.textContent?.trim().toLowerCase() || '';
+    if (!text) return;
+    if (!isAnalysisProgressVisible && analysisKeywordsStart.some(keyword => text.includes(keyword))) {
+      refreshAnalysisProgress();
+    }
+    if (isAnalysisProgressVisible && analysisKeywordsDone.some(keyword => text.includes(keyword))) {
+      stopAnalysisWatcher();
+    }
+  }
+
+  function inspectMessageCollection(list) {
+    list.forEach(node => inspectMessageForAnalysis(node));
+  }
+
+  const chipsBox = document.getElementById('file-chips');
+  const badge = document.getElementById('attach-badge');
+
+  // Обработка выбора участника команды
+  const teamMemberSelect = document.getElementById('team-member-select');
+  const targetUserIdInput = document.getElementById('target-user-id-input');
+  const selectedMemberInfo = document.getElementById('selected-member-info');
+  const selectedMemberText = document.getElementById('selected-member-text');
+  
+  if (teamMemberSelect && targetUserIdInput) {
+    teamMemberSelect.addEventListener('change', function() {
+      const selectedValue = this.value;
+      targetUserIdInput.value = selectedValue;
+      
+      if (selectedValue) {
+        const selectedOption = this.options[this.selectedIndex];
+        selectedMemberText.textContent = `📤 Анализ и тренировка будут созданы для: ${selectedOption.text}`;
+        selectedMemberInfo.style.display = 'block';
+      } else {
+        selectedMemberInfo.style.display = 'none';
+      }
+    });
+    
+    // Инициализация при загрузке страницы
+    if (teamMemberSelect.value) {
+      teamMemberSelect.dispatchEvent(new Event('change'));
+    }
+  }
+
+  // автоскролл вниз
+  scroller.scrollTop = scroller.scrollHeight;
+  if (storedOperationId) {
+    refreshAnalysisProgress();
+  }
+  
+
+
+  // ===== утилиты
+  function humanSize(bytes){
+    if (bytes < 1024) return bytes + ' B';
+    const kb = bytes/1024;
+    if (kb < 1024) return kb.toFixed(0) + ' KB';
+    return (kb/1024).toFixed(1) + ' MB';
+  }
+
+  function renderChips(fileList){
+    const files = Array.from(fileList || []);
+    chipsBox.innerHTML = '';
+    if (!files.length){
+      chipsBox.classList.add('hidden');
+      badge.classList.add('hidden');
+      return;
+    }
+    chipsBox.classList.remove('hidden');
+    badge.classList.remove('hidden');
+    badge.textContent = files.length;
+
+    files.forEach((f, idx) => {
+      const chip = document.createElement('div');
+      chip.className = 'chip';
+      chip.innerHTML = `
+        <span class="chip-icon">📎</span>
+        <span class="chip-name" title="${f.name}">${f.name}</span>
+        <span class="chip-size">${humanSize(f.size)}</span>
+        <button type="button" class="chip-x" aria-label="Удалить">×</button>
+      `;
+      chip.querySelector('.chip-x').addEventListener('click', () => {
+        const dt = new DataTransfer();
+        Array.from(fileInput.files).forEach((file, i) => { if (i !== idx) dt.items.add(file); });
+        fileInput.files = dt.files;
+        renderChips(fileInput.files);
+      });
+      chipsBox.appendChild(chip);
+    });
+  }
+
+  // Автоматическое изменение размера textarea
+  textEl.addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+  });
+
+  // Обработка файлов
+  fileInput.addEventListener('change', function() {
+    renderChips(this.files);
+  });
+
+  // событие выбора файлов
+  fileInput.addEventListener('change', () => renderChips(fileInput.files));
+  
+  // Простой polling каждую секунду для новых сообщений
+  let lastMessageId = 0;
+  
+  // Инициализируем lastMessageId с ID последнего сообщения
+  const messages = document.querySelectorAll('.msg');
+  if (messages.length > 0) {
+    const lastMsg = messages[messages.length - 1];
+    lastMessageId = parseInt(lastMsg.dataset.id || '0');
+  }
+  
+  // Функция для прокрутки вниз
+  function scrollToBottom() {
+    scroller.scrollTop = scroller.scrollHeight;
+  }
+  
+  // Функция для показа уведомления
+  function showNotification(title, message) {
+    // Toast уведомление на странице
+    const toast = document.createElement('div');
+    toast.className = 'toast-notification';
+    toast.innerHTML = `
+      <div class="toast-icon">✅</div>
+      <div class="toast-content">
+        <h4 class="toast-title">${title}</h4>
+        <p class="toast-message">${message}</p>
+      </div>
+      <button class="toast-close" onclick="this.parentElement.remove()">×</button>
+    `;
+    
+    // Добавляем в body
+    document.body.appendChild(toast);
+    
+    // Автоматически удаляем через 5 секунд
+    setTimeout(() => {
+      if (toast.parentElement) {
+        toast.remove();
+      }
+    }, 5000);
+    
+    // Клик по toast закрывает его
+    toast.addEventListener('click', (e) => {
+      if (!e.target.classList.contains('toast-close')) {
+        toast.remove();
+      }
+    });
+    
+    // Браузерное уведомление (если разрешено)
+    if ("Notification" in window && Notification.permission === "granted") {
+      new Notification(title, {
+        body: message,
+        icon: "/static/favicon.ico",
+        badge: "/static/favicon.ico"
+      });
+    }
+    
+    // Звуковое уведомление
+    try {
+      const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OScTgwOUKfj8LZjHAU5k9n0yXcsB');
+      audio.volume = 0.3;
+      audio.play().catch(e => console.log('Звук отключен:', e));
+    } catch(e) {
+      console.log('Не удалось воспроизвести звук:', e);
+    }
+  }
+
+  // Запрос разрешения на уведомления
+  if ("Notification" in window && Notification.permission === "default") {
+    Notification.requestPermission();
+  }
+  
+  setInterval(() => {
+    fetch(`/chat/poll?last_id=${lastMessageId}`)
+      .then(response => {
+        if (response.ok) {
+          return response.text();
+        }
+        if (response.status === 204) {
+          return null; // Нет новых сообщений
+        }
+        throw new Error('Poll failed');
+      })
+      .then(html => {
+        if (html) {
+          // Добавляем новые сообщения в конец
+          const tempDiv = document.createElement('div');
+          tempDiv.innerHTML = html;
+          const newMessages = tempDiv.querySelectorAll('.msg');
+          let hasNewBotMessages = false;
+          
+          newMessages.forEach(msg => {
+            const msgId = parseInt(msg.dataset.id || '0');
+            // Проверяем, нет ли уже сообщения с таким ID
+            if (!scroller.querySelector(`.msg[data-id="${msgId}"]`)) {
+              const clone = msg.cloneNode(true);
+              scroller.appendChild(clone);
+              inspectMessageForAnalysis(clone);
+              
+              // Проверяем, является ли это сообщением бота
+              if (msg.classList.contains('bot')) {
+                hasNewBotMessages = true;
+              }
+            }
+            // Обновляем lastMessageId
+            if (msgId > lastMessageId) {
+              lastMessageId = msgId;
+            }
+          });
+          
+          // Показываем уведомление, если есть новые сообщения от бота
+          if (hasNewBotMessages) {
+            const lastBotMsg = Array.from(newMessages).reverse().find(m => m.classList.contains('bot'));
+            if (lastBotMsg) {
+              const text = lastBotMsg.querySelector('.text')?.textContent || 'Новое сообщение';
+              const shortText = text.length > 80 ? text.substring(0, 80) + '...' : text;
+              showNotification('✅ Анализ готов!', shortText);
+            }
+          }
+          
+          // Автоматически прокручиваем вниз при новых сообщениях
+          scrollToBottom();
+        }
+      })
+      .catch(err => {
+        // Тихая обработка ошибки polling
+      });
+  }, 1000);
+  
+
+
+  // enter = отправка (shift+enter — перенос)
+  let enterLock = false;
+  textEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (enterLock || isSubmitting) return;
+      enterLock = true;
+      form.requestSubmit();
+      setTimeout(() => enterLock = false, 400);
+    }
+  });
+
+  // ===== submit с защитой от двойной отправки
+  let isSubmitting = false;
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (isSubmitting) return;
+    isSubmitting = true;
+
+    sendBtn.disabled = true;
+    sendBtn.style.opacity = .6;
+    sendBtn.style.cursor = 'not-allowed';
+
+    const fd = new FormData(form);
+
+    progress.classList.remove('hidden');
+    bar.style.width = '15%';
+    const n = (fileInput.files || []).length;
+    label.textContent = n ? `Отправляю ${n} файл(ов)…` : 'Отправка…';
+
+    try {
+      const resp = await fetch('/chat/send', { method: 'POST', body: fd });
+      if (!resp.ok) throw new Error('Ошибка отправки');
+
+      bar.style.width = '60%';
+      label.textContent = 'Обновляю ленту…';
+
+      // Очищаем поле ввода и файлы
+      textEl.value = '';
+      fileInput.value = '';
+      renderChips(fileInput.files);
+
+      // 🔥 Мгновенно подтянуть свежие сообщения без F5:
+      if (window.htmx) {
+        // Используем обычный fetch для обновления
+        fetch(`/chat/poll?last_id=${lastMessageId}`)
+          .then(response => {
+            if (response.ok) {
+              return response.text();
+            }
+            throw new Error('Poll failed');
+          })
+          .then(html => {
+            // Добавляем новые сообщения в конец
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = html;
+            const newMessages = tempDiv.querySelectorAll('.msg');
+            newMessages.forEach(msg => {
+              const msgId = parseInt(msg.dataset.id || '0');
+              // Проверяем, нет ли уже сообщения с таким ID
+              if (!scroller.querySelector(`.msg[data-id="${msgId}"]`)) {
+                const clone = msg.cloneNode(true);
+                scroller.appendChild(clone);
+                inspectMessageForAnalysis(clone);
+              }
+              // Обновляем lastMessageId
+              if (msgId > lastMessageId) {
+                lastMessageId = msgId;
+              }
+            });
+            // Прокручиваем вниз
+            scrollToBottom();
+          })
+          .catch(err => {
+            // Тихая обработка ошибки polling
+          });
+      } else {
+        // Fallback если HTMX не загружен
+        location.reload();
+      }
+    } catch (err) {
+      label.textContent = 'Ошибка отправки';
+      label.style.color = '#ef4444';
+      // Показываем уведомление об ошибке
+      showNotification('Ошибка', 'Не удалось отправить сообщение. Попробуйте еще раз.');
+    } finally {
+      setTimeout(() => {
+        progress.classList.add('hidden');
+        bar.style.width = '0%';
+        isSubmitting = false;
+        sendBtn.disabled = false;
+        sendBtn.style.opacity = 1;
+        sendBtn.style.cursor = 'pointer';
+      }, 600);
+    }
+  });
+
+
+</script>
+{% endblock %}

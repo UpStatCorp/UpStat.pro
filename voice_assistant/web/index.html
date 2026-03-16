@@ -1,0 +1,1058 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎤 Голосовой ИИ-ассистент</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎤</text></svg>">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎤</text></svg>">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 800px;
+            width: 100%;
+            padding: 40px;
+        }
+
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+
+        .status {
+            text-align: center;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .status.ready {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .status.recording {
+            background: #f8d7da;
+            color: #721c24;
+            animation: pulse 1.5s infinite;
+        }
+
+        .status.processing {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .mic-button {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            border: none;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-size: 3em;
+            cursor: pointer;
+            margin: 30px auto;
+            display: block;
+            transition: all 0.3s;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.4);
+        }
+
+        .mic-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 15px 40px rgba(102, 126, 234, 0.6);
+        }
+
+        .mic-button:active {
+            transform: scale(0.95);
+        }
+
+        .mic-button.recording {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            animation: pulse 1s infinite;
+        }
+
+        .text-input-area {
+            margin-top: 30px;
+        }
+
+        .text-input {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            resize: vertical;
+            min-height: 100px;
+            font-family: inherit;
+        }
+
+        .text-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .send-button {
+            width: 100%;
+            padding: 15px;
+            margin-top: 10px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .send-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .messages {
+            margin-top: 30px;
+            max-height: 400px;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            padding: 12px 18px;
+            border-radius: 12px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+
+        .message.user {
+            background: #667eea;
+            color: white;
+            margin-left: auto;
+            text-align: right;
+        }
+
+        .message.assistant {
+            background: white;
+            color: #333;
+            border: 1px solid #e0e0e0;
+        }
+
+        .message.assistant .chunk {
+            display: inline;
+        }
+
+        .connection-status {
+            text-align: center;
+            padding: 10px;
+            margin-bottom: 20px;
+            border-radius: 10px;
+            font-size: 0.9em;
+        }
+
+        .connection-status.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .connection-status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .stop-button {
+            flex: 1;
+            padding: 12px;
+            background: #dc3545;
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .stop-button:hover {
+            background: #c82333;
+        }
+
+        .stop-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .error-message {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            color: #856404;
+        }
+
+        .error-message strong {
+            display: block;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+
+        .error-message small {
+            display: block;
+            margin-top: 5px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 Голосовой ИИ-ассистент</h1>
+        <p class="subtitle">Говорите или пишите - получите голосовой ответ</p>
+
+        <div id="connectionStatus" class="connection-status disconnected">
+            ⚠️ Подключение...
+        </div>
+
+        <div id="status" class="status ready">
+            ✅ Готов к работе
+        </div>
+
+        <div id="micHelp" style="display: none; padding: 15px; background: #e7f3ff; border-radius: 10px; margin: 20px 0; color: #004085;">
+            <strong>💡 Как использовать:</strong><br>
+            <small>
+            1. Нажмите кнопку микрофона 🎤 один раз<br>
+            2. Говорите - запись начнется автоматически<br>
+            3. После 1 секунды тишины запрос отправится сам<br>
+            4. Дождитесь ответа от ИИ<br>
+            5. Можно говорить снова сразу после ответа
+            </small>
+        </div>
+
+        <button id="micButton" class="mic-button" title="Нажмите и удерживайте для записи">
+            🎤
+        </button>
+
+        <div class="controls">
+            <button id="stopButton" class="stop-button" disabled>
+                ⏹️ Остановить
+            </button>
+        </div>
+
+        <div class="text-input-area">
+            <textarea 
+                id="textInput" 
+                class="text-input" 
+                placeholder="Или введите текст здесь..."
+            ></textarea>
+            <button id="sendButton" class="send-button">
+                📤 Отправить текст
+            </button>
+        </div>
+
+        <div id="messages" class="messages"></div>
+    </div>
+
+    <script>
+        // Определяем браузер для Safari-специфичных исправлений
+        const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        
+        // Конфигурация
+        // Определяем WebSocket URL автоматически на основе текущего хоста
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const port = window.location.port || 8000;
+        const WS_URL = `ws://${window.location.host}/voice-assistant/ws`;        
+        console.log('Браузер:', isSafari ? 'Safari' : 'Другой');
+        console.log('WebSocket URL:', WS_URL);
+        
+        // Состояние
+        let ws = null;
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let isRecording = false;
+        let audioContext = null;
+        let audioProcessor = null;
+        let mediaStream = null;
+        
+        // VAD параметры для клиента
+        const VAD_THRESHOLD = 0.005; // Порог для определения речи (RMS) - снижен для лучшей чувствительности
+        const SILENCE_DURATION_MS = 1500; // 1.5 секунды тишины (увеличено для надежности)
+        let speechStarted = false;
+        let silenceStartTime = null;
+        let recordedAudioChunks = []; // Накопленные аудио данные
+        let silenceCheckInterval = null;
+        let audioChunkCount = 0; // Счетчик чанков для отладки
+
+        // Элементы DOM
+        const connectionStatus = document.getElementById('connectionStatus');
+        const statusDiv = document.getElementById('status');
+        const micButton = document.getElementById('micButton');
+        const stopButton = document.getElementById('stopButton');
+        const textInput = document.getElementById('textInput');
+        const sendButton = document.getElementById('sendButton');
+        const messagesDiv = document.getElementById('messages');
+
+        // Инициализация WebSocket
+        function connectWebSocket() {
+            try {
+                console.log('Подключение к WebSocket:', WS_URL);
+                ws = new WebSocket(WS_URL);
+
+                ws.onopen = () => {
+                    console.log('WebSocket подключен');
+                    connectionStatus.textContent = '✅ Подключено';
+                    connectionStatus.className = 'connection-status connected';
+                    updateStatus('ready', '✅ Готов к работе');
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        handleWebSocketMessage(data);
+                    } catch (error) {
+                        console.error('Ошибка парсинга сообщения:', error, event.data);
+                    }
+                };
+
+                ws.onerror = (error) => {
+                    console.error('WebSocket error:', error);
+                    connectionStatus.textContent = '❌ Ошибка подключения';
+                    connectionStatus.className = 'connection-status disconnected';
+                };
+
+                ws.onclose = (event) => {
+                    console.log('WebSocket закрыт:', event.code, event.reason);
+                    connectionStatus.textContent = '⚠️ Отключено. Переподключение...';
+                    connectionStatus.className = 'connection-status disconnected';
+                    setTimeout(connectWebSocket, 3000);
+                };
+            } catch (error) {
+                console.error('Ошибка создания WebSocket:', error);
+                connectionStatus.textContent = '❌ Ошибка подключения';
+                connectionStatus.className = 'connection-status disconnected';
+            }
+        }
+
+        // Обработка сообщений от сервера
+        function handleWebSocketMessage(data) {
+            switch(data.type) {
+                case 'status':
+                    updateStatus(data.status, data.message);
+                    break;
+                
+                case 'user_message':
+                    addMessage('user', data.text);
+                    break;
+                
+                case 'assistant_chunk':
+                    appendAssistantChunk(data.text);
+                    break;
+                
+                case 'assistant_message':
+                    // Сообщение уже добавлено через chunks
+                    break;
+                
+                case 'audio_chunk':
+                    // Воспроизводим аудио чанк
+                    playAudioChunk(data.audio, data.sample_rate);
+                    // Включаем автоматический перезапуск записи
+                    autoRestartRecording = true;
+                    break;
+                
+                case 'synthesizing':
+                    // Начинаем новое воспроизведение - очищаем очередь
+                    clearAudioQueue();
+                    break;
+                
+                case 'error':
+                    clearAudioQueue(); // Останавливаем воспроизведение при ошибке
+                    updateStatus('error', `❌ ${data.message}`);
+                    break;
+            }
+        }
+
+        // Флаг для автоматического запуска записи после ответа
+        let autoRestartRecording = true;
+        
+        // Обновление статуса
+        function updateStatus(status, message) {
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${status}`;
+            
+            if (status === 'ready') {
+                stopButton.disabled = true;
+                // Если воспроизведение завершено и запись не идет - автоматически запускаем
+                if (autoRestartRecording && !isRecording && !isPlayingAudio && ws && ws.readyState === WebSocket.OPEN) {
+                    console.log('✅ Статус ready, автоматически запускаю запись...');
+                    setTimeout(() => {
+                        if (!isRecording && ws && ws.readyState === WebSocket.OPEN) {
+                            startRecording();
+                        }
+                    }, 300); // Небольшая задержка
+                }
+            } else {
+                stopButton.disabled = false;
+            }
+        }
+
+        // Добавление сообщения
+        function addMessage(type, text) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            
+            if (type === 'assistant') {
+                messageDiv.innerHTML = `<div class="chunk">${text}</div>`;
+            } else {
+                messageDiv.textContent = text;
+            }
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        // Добавление чанка к сообщению ассистента
+        function appendAssistantChunk(text) {
+            let lastMessage = messagesDiv.lastElementChild;
+            
+            if (!lastMessage || !lastMessage.classList.contains('assistant')) {
+                addMessage('assistant', '');
+                lastMessage = messagesDiv.lastElementChild;
+            }
+            
+            const chunkDiv = lastMessage.querySelector('.chunk');
+            if (chunkDiv) {
+                chunkDiv.textContent += text;
+            }
+            
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+        
+        // Вычисление RMS (Root Mean Square) для определения уровня звука
+        function calculateRMS(audioData) {
+            let sum = 0;
+            for (let i = 0; i < audioData.length; i++) {
+                sum += audioData[i] * audioData[i];
+            }
+            return Math.sqrt(sum / audioData.length);
+        }
+        
+        // Автоматическая отправка после тишины
+        function checkSilenceAndSend() {
+            if (!isRecording || !speechStarted) return;
+            
+            const now = Date.now();
+            if (silenceStartTime && (now - silenceStartTime) >= SILENCE_DURATION_MS) {
+                // Тишина длится больше 1 секунды - отправляем запрос
+                console.log('Тишина обнаружена, отправка запроса...');
+                stopRecordingAndSend();
+            }
+        }
+        
+        // Остановка записи и отправка данных
+        function stopRecordingAndSend() {
+            if (!isRecording) return;
+            
+            const wasRecording = isRecording;
+            const hadSpeech = speechStarted;
+            const chunksRecorded = audioChunkCount;
+            
+            isRecording = false;
+            speechStarted = false;
+            silenceStartTime = null;
+            
+            if (silenceCheckInterval) {
+                clearInterval(silenceCheckInterval);
+                silenceCheckInterval = null;
+            }
+            
+            micButton.classList.remove('recording');
+            updateStatus('processing', '🔄 Обработка запроса...');
+            
+            console.log(`Остановка записи: было речи=${hadSpeech}, чанков=${chunksRecorded}`);
+            
+            // Отправляем сигнал о завершении записи только если была речь
+            if (ws && ws.readyState === WebSocket.OPEN && hadSpeech) {
+                console.log('Отправка сигнала audio_end на сервер');
+                ws.send(JSON.stringify({
+                    type: 'audio_end'
+                }));
+                // Включаем автоматический перезапуск после отправки запроса
+                autoRestartRecording = true;
+            } else if (!hadSpeech) {
+                console.warn('Речь не была обнаружена, не отправляем запрос');
+                updateStatus('ready', '⚠️ Речь не обнаружена. Попробуйте говорить громче.');
+                // Очищаем состояние
+                if (audioProcessor) {
+                    audioProcessor.disconnect();
+                    audioProcessor = null;
+                }
+                if (mediaStream) {
+                    mediaStream.getTracks().forEach(track => track.stop());
+                    mediaStream = null;
+                }
+                // Если речь не обнаружена, тоже перезапускаем запись
+                if (autoRestartRecording && ws && ws.readyState === WebSocket.OPEN) {
+                    setTimeout(() => {
+                        if (!isRecording && ws && ws.readyState === WebSocket.OPEN) {
+                            startRecording();
+                        }
+                    }, 1000);
+                }
+                return;
+            }
+            
+            // Останавливаем обработку аудио
+            if (audioProcessor) {
+                audioProcessor.disconnect();
+                audioProcessor = null;
+            }
+            
+            if (mediaStream) {
+                mediaStream.getTracks().forEach(track => track.stop());
+                mediaStream = null;
+            }
+            
+            // Сбрасываем счетчики
+            audioChunkCount = 0;
+            recordedAudioChunks = [];
+        }
+
+        // Инициализация записи аудио
+        async function startRecording() {
+            if (isRecording) {
+                // Если уже записываем, останавливаем и отключаем авто-перезапуск
+                autoRestartRecording = false;
+                stopRecordingAndSend();
+                return;
+            }
+            
+            // Включаем автоматический перезапуск при запуске записи
+            autoRestartRecording = true;
+            try {
+                // Проверяем поддержку getUserMedia
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    // Пробуем старый API для Safari
+                    const getUserMedia = navigator.mediaDevices?.getUserMedia ||
+                                       navigator.getUserMedia ||
+                                       navigator.webkitGetUserMedia ||
+                                       navigator.mozGetUserMedia;
+                    
+                    if (!getUserMedia) {
+                        throw new Error('getUserMedia не поддерживается в этом браузере');
+                    }
+                }
+
+                updateStatus('recording', '🎤 Слушаю... Говорите!');
+                
+                // Safari более строгий к параметрам аудио
+                const audioConstraints = isSafari ? {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                } : {
+                    sampleRate: 16000,
+                    channelCount: 1,
+                    echoCancellation: true,
+                    noiseSuppression: true
+                };
+                
+                mediaStream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: audioConstraints
+                });
+
+                // Создаем AudioContext для обработки
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                if (isSafari) {
+                    audioContext = new AudioContextClass();
+                } else {
+                    audioContext = new AudioContextClass({
+                        sampleRate: 16000
+                    });
+                }
+
+                const source = audioContext.createMediaStreamSource(mediaStream);
+                audioProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+                
+                // Сбрасываем состояние
+                speechStarted = false;
+                silenceStartTime = null;
+                recordedAudioChunks = [];
+
+                audioProcessor.onaudioprocess = (e) => {
+                    if (!isRecording) return;
+                    
+                    const audioData = e.inputBuffer.getChannelData(0);
+                    const audioArray = new Float32Array(audioData);
+                    
+                    // Вычисляем RMS для VAD
+                    const rms = calculateRMS(audioArray);
+                    const hasSpeech = rms > VAD_THRESHOLD;
+                    
+                    if (hasSpeech) {
+                        // Речь обнаружена
+                        if (!speechStarted) {
+                            speechStarted = true;
+                            audioChunkCount = 0;
+                            console.log('Речь обнаружена, начало записи');
+                            updateStatus('recording', '🎤 Говорите...');
+                        }
+                        silenceStartTime = null; // Сбрасываем таймер тишины
+                        
+                        // Накапливаем аудио данные
+                        recordedAudioChunks.push(audioArray.slice());
+                        audioChunkCount++;
+                        
+                        // Логируем каждые 20 чанков
+                        if (audioChunkCount % 20 === 0) {
+                            console.log(`Записано ${audioChunkCount} чанков, RMS: ${rms.toFixed(4)}`);
+                        }
+                        
+                        // Отправляем в реальном времени на сервер
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            const uint8Array = new Uint8Array(audioArray.buffer);
+                            let binary = '';
+                            for (let i = 0; i < uint8Array.length; i++) {
+                                binary += String.fromCharCode(uint8Array[i]);
+                            }
+                            const audioB64 = btoa(binary);
+                            
+                            ws.send(JSON.stringify({
+                                type: 'audio',
+                                audio: audioB64
+                            }));
+                        }
+                    } else {
+                        // Тишина
+                        if (speechStarted) {
+                            // Речь уже началась, отсчитываем тишину
+                            if (silenceStartTime === null) {
+                                silenceStartTime = Date.now();
+                                console.log('Обнаружена тишина, начинаю отсчет...');
+                            } else {
+                                const silenceDuration = Date.now() - silenceStartTime;
+                                if (silenceDuration % 500 < 100) { // Логируем каждые 500мс
+                                    console.log(`Тишина: ${silenceDuration}мс из ${SILENCE_DURATION_MS}мс`);
+                                }
+                            }
+                        }
+                    }
+                };
+
+                source.connect(audioProcessor);
+                audioProcessor.connect(audioContext.destination);
+                
+                isRecording = true;
+                micButton.classList.add('recording');
+                
+                // Запускаем проверку тишины каждые 100мс
+                silenceCheckInterval = setInterval(checkSilenceAndSend, 100);
+                
+            } catch (error) {
+                console.error('Ошибка при записи:', error);
+                isRecording = false;
+                micButton.classList.remove('recording');
+                
+                let errorMessage = '❌ Ошибка доступа к микрофону';
+                let helpMessage = '';
+                
+                if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                    errorMessage = '🚫 Доступ к микрофону запрещен';
+                    helpMessage = 'Разрешите доступ к микрофону в настройках браузера. Нажмите на иконку 🔒 в адресной строке и разрешите доступ.';
+                } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+                    errorMessage = '🎤 Микрофон не найден';
+                    helpMessage = 'Подключите микрофон и обновите страницу.';
+                } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+                    errorMessage = '⚠️ Микрофон уже используется';
+                    helpMessage = 'Закройте другие приложения, использующие микрофон, и попробуйте снова.';
+                } else if (error.name === 'OverconstrainedError') {
+                    errorMessage = '⚠️ Микрофон не поддерживает требуемые настройки';
+                    helpMessage = 'Попробуйте использовать другой микрофон или браузер.';
+                } else {
+                    helpMessage = `Ошибка: ${error.message}`;
+                }
+                
+                updateStatus('error', errorMessage);
+                
+                // Показываем сообщение пользователю
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'message assistant';
+                errorDiv.style.background = '#fff3cd';
+                errorDiv.style.border = '2px solid #ffc107';
+                errorDiv.style.maxWidth = '100%';
+                errorDiv.innerHTML = `
+                    <strong>${errorMessage}</strong><br>
+                    <small>${helpMessage}</small>
+                `;
+                messagesDiv.appendChild(errorDiv);
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }
+        }
+
+        // Остановка записи (старая функция, для совместимости)
+        function stopRecording() {
+            stopRecordingAndSend();
+        }
+
+        // Очередь для плавного воспроизведения аудио
+        let audioQueue = [];
+        let isPlayingAudio = false;
+        let audioContextSampleRate = 44100; // Стандартная частота для браузера
+        
+        // Инициализация AudioContext с правильной частотой
+        function initAudioContext(targetSampleRate) {
+            if (!audioContext || audioContext.state === 'closed') {
+                const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+                audioContext = new AudioContextClass();
+                audioContextSampleRate = audioContext.sampleRate;
+                
+                // Если частота отличается, будем ресэмплировать
+                if (audioContextSampleRate !== targetSampleRate) {
+                    console.log(`AudioContext sampleRate: ${audioContextSampleRate}, target: ${targetSampleRate}`);
+                }
+            }
+            
+            // Восстанавливаем контекст если приостановлен
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+        }
+        
+        // Конвертация int16 bytes (little-endian) в float32
+        function int16BytesToFloat32(bytes, targetSampleRate) {
+            const samples = new Float32Array(bytes.length / 2);
+            const dataView = new DataView(bytes.buffer);
+            
+            for (let i = 0; i < samples.length; i++) {
+                // Читаем int16 как little-endian (правильный порядок байт)
+                const int16 = dataView.getInt16(i * 2, true); // true = little-endian
+                // Конвертируем в float32 от -1.0 до 1.0
+                samples[i] = int16 / 32768.0;
+            }
+            
+            // Ресэмплируем если нужно
+            if (audioContextSampleRate !== targetSampleRate) {
+                return resampleAudio(samples, targetSampleRate, audioContextSampleRate);
+            }
+            
+            return samples;
+        }
+        
+        // Простой ресэмплинг (линейная интерполяция)
+        function resampleAudio(audio, fromRate, toRate) {
+            if (fromRate === toRate) return audio;
+            
+            const ratio = toRate / fromRate;
+            const newLength = Math.round(audio.length * ratio);
+            const resampled = new Float32Array(newLength);
+            
+            for (let i = 0; i < newLength; i++) {
+                const srcIndex = i / ratio;
+                const index = Math.floor(srcIndex);
+                const fraction = srcIndex - index;
+                
+                if (index + 1 < audio.length) {
+                    // Линейная интерполяция
+                    resampled[i] = audio[index] * (1 - fraction) + audio[index + 1] * fraction;
+                } else {
+                    resampled[i] = audio[index] || 0;
+                }
+            }
+            
+            return resampled;
+        }
+        
+        // Воспроизведение следующего чанка из очереди
+        async function playNextAudioChunk() {
+            if (audioQueue.length === 0) {
+                isPlayingAudio = false;
+                // После завершения воспроизведения автоматически запускаем запись
+                if (autoRestartRecording && !isRecording) {
+                    console.log('🎤 Воспроизведение завершено, автоматически запускаю запись...');
+                    setTimeout(() => {
+                        if (!isRecording && ws && ws.readyState === WebSocket.OPEN) {
+                            startRecording();
+                        }
+                    }, 500); // Небольшая задержка перед запуском записи
+                }
+                return;
+            }
+            
+            isPlayingAudio = true;
+            
+            // Объединяем несколько чанков для более плавного воспроизведения
+            const chunksToPlay = [];
+            let totalSamples = 0;
+            let targetSampleRate = audioQueue[0]?.sampleRate || 16000;
+            
+            // Собираем чанки пока не наберем минимум 0.5 секунды или не закончится очередь
+            const minSamples = targetSampleRate * 0.5; // Минимум 0.5 секунды
+            while (audioQueue.length > 0 && (totalSamples < minSamples || chunksToPlay.length < 3)) {
+                const chunk = audioQueue.shift();
+                chunksToPlay.push(chunk);
+                totalSamples += chunk.audioData.length / 2; // int16 = 2 байта на сэмпл
+                targetSampleRate = chunk.sampleRate;
+            }
+            
+            try {
+                initAudioContext(targetSampleRate);
+                
+                // Объединяем все чанки в один массив
+                const allAudioData = new Uint8Array(
+                    chunksToPlay.reduce((sum, chunk) => sum + chunk.audioData.length, 0)
+                );
+                let offset = 0;
+                for (const chunk of chunksToPlay) {
+                    allAudioData.set(chunk.audioData, offset);
+                    offset += chunk.audioData.length;
+                }
+                
+                // Конвертируем байты в float32
+                const float32Audio = int16BytesToFloat32(allAudioData, targetSampleRate);
+                
+                if (float32Audio.length === 0) {
+                    playNextAudioChunk();
+                    return;
+                }
+                
+                // Создаем AudioBuffer
+                const audioBuffer = audioContext.createBuffer(1, float32Audio.length, audioContextSampleRate);
+                audioBuffer.getChannelData(0).set(float32Audio);
+                
+                // Создаем источник и воспроизводим
+                const source = audioContext.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(audioContext.destination);
+                
+                // Воспроизводим и переходим к следующему чанку
+                source.onended = () => {
+                    playNextAudioChunk();
+                };
+                
+                source.start();
+                
+            } catch (error) {
+                console.error('Ошибка воспроизведения чанка:', error);
+                playNextAudioChunk(); // Продолжаем со следующим чанком
+            }
+        }
+        
+        // Воспроизведение аудио чанка (добавляет в очередь)
+        function playAudioChunk(audioB64, sampleRate) {
+            try {
+                // Декодируем base64
+                const audioBytes = Uint8Array.from(atob(audioB64), c => c.charCodeAt(0));
+                
+                // Проверяем что есть данные
+                if (audioBytes.length === 0 || audioBytes.length % 2 !== 0) {
+                    console.warn('Некорректный размер аудио чанка, пропускаем');
+                    return;
+                }
+                
+                // Добавляем в очередь
+                audioQueue.push({
+                    audioData: audioBytes,
+                    sampleRate: sampleRate || 16000
+                });
+                
+                // Запускаем воспроизведение если еще не играет
+                if (!isPlayingAudio) {
+                    playNextAudioChunk();
+                }
+                
+            } catch (error) {
+                console.error('Ошибка добавления аудио чанка:', error);
+            }
+        }
+        
+        // Очистка очереди аудио
+        function clearAudioQueue() {
+            audioQueue = [];
+            isPlayingAudio = false;
+        }
+
+        // Показываем подсказку при первом клике
+        let helpShown = false;
+        function showMicHelp() {
+            if (!helpShown) {
+                const helpDiv = document.getElementById('micHelp');
+                if (helpDiv) {
+                    helpDiv.style.display = 'block';
+                    helpShown = true;
+                    setTimeout(() => {
+                        helpDiv.style.display = 'none';
+                    }, 10000);
+                }
+            }
+        }
+
+        // Обработчики событий
+        // Один клик - начало записи, повторный клик - остановка
+        micButton.addEventListener('click', () => {
+            showMicHelp();
+            if (isRecording) {
+                // Если записываем - останавливаем и отключаем авто-перезапуск
+                autoRestartRecording = false;
+                stopRecordingAndSend();
+            } else {
+                // Если не записываем - начинаем
+                autoRestartRecording = true;
+                startRecording();
+            }
+        });
+
+        sendButton.addEventListener('click', () => {
+            const text = textInput.value.trim();
+            if (text && ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'text',
+                    text: text
+                }));
+                textInput.value = '';
+            }
+        });
+
+        textInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && e.ctrlKey) {
+                sendButton.click();
+            }
+        });
+
+        stopButton.addEventListener('click', () => {
+            // Отключаем автоматический перезапуск при ручной остановке
+            autoRestartRecording = false;
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'stop' }));
+            }
+            stopRecording();
+        });
+
+        // Проверка наличия всех элементов
+        function checkElements() {
+            const elements = {
+                connectionStatus,
+                statusDiv,
+                micButton,
+                stopButton,
+                textInput,
+                sendButton,
+                messagesDiv
+            };
+            
+            for (const [name, element] of Object.entries(elements)) {
+                if (!element) {
+                    console.error(`Элемент не найден: ${name}`);
+                    document.body.innerHTML = `<h1>Ошибка: элемент ${name} не найден</h1>`;
+                    return false;
+                }
+            }
+            return true;
+        }
+
+        // Проверка поддержки микрофона при загрузке
+        function checkMicrophoneSupport() {
+            // Проверяем различные варианты API для совместимости с Safari
+            const hasGetUserMedia = navigator.mediaDevices?.getUserMedia ||
+                                   navigator.getUserMedia ||
+                                   navigator.webkitGetUserMedia ||
+                                   navigator.mozGetUserMedia;
+            
+            if (!hasGetUserMedia) {
+                updateStatus('error', '❌ Браузер не поддерживает запись с микрофона');
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'error-message';
+                errorDiv.innerHTML = `
+                    <strong>❌ Браузер не поддерживает запись</strong><br>
+                    <small>Используйте современный браузер: Chrome, Firefox, Edge или Safari (версия 11+)</small>
+                `;
+                const container = document.querySelector('.container');
+                if (container && micButton) {
+                    container.insertBefore(errorDiv, micButton);
+                }
+                return false;
+            }
+            return true;
+        }
+
+        // Запуск при загрузке
+        function initApp() {
+            console.log('Инициализация приложения...');
+            console.log('ReadyState:', document.readyState);
+            
+            if (!checkElements()) {
+                console.error('Не все элементы найдены');
+                return;
+            }
+            
+            if (!checkMicrophoneSupport()) {
+                console.error('Микрофон не поддерживается');
+                return;
+            }
+            
+            console.log('Все проверки пройдены, подключаюсь к WebSocket...');
+            connectWebSocket();
+        }
+
+        // Обработка загрузки страницы
+        if (document.readyState === 'loading') {
+            // DOM еще загружается
+            window.addEventListener('DOMContentLoaded', initApp);
+        } else {
+            // DOM уже загружен (Safari иногда пропускает DOMContentLoaded)
+            console.log('DOM уже загружен, инициализирую сразу');
+            setTimeout(initApp, 100); // Небольшая задержка для Safari
+        }
+        
+        // Дополнительная проверка через секунду (на случай проблем с Safari)
+        setTimeout(() => {
+            if (!ws || ws.readyState === WebSocket.CLOSED) {
+                console.log('WebSocket не подключен, пробую переподключиться...');
+                if (checkElements() && checkMicrophoneSupport()) {
+                    connectWebSocket();
+                }
+            }
+        }, 1000);
+    </script>
+</body>
+</html>
+

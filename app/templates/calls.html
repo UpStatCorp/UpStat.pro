@@ -1,0 +1,894 @@
+{% extends "_layout_dashboard.html" %}
+{% block title %}История звонков — UpStat{% endblock %}
+{% block content %}
+
+<div class="calls-container">
+  <!-- Заголовок страницы -->
+  <div class="calls-header">
+    <div class="calls-title">
+      <h1>📞 История звонков</h1>
+      <p>Все проанализированные звонки и планы тренировок</p>
+    </div>
+    <a href="/chat" class="btn btn-primary">
+      <svg class="btn-icon" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd"/>
+      </svg>
+      Загрузить новый звонок
+    </a>
+  </div>
+
+  <!-- Сетка карточек звонков -->
+  <div class="calls-grid">
+    {% if packages %}
+      {% for p in packages %}
+      <div class="call-card">
+        <!-- Заголовок карточки -->
+        <div class="call-card-header">
+          <div class="call-card-badge {% if p.is_from_crm %}badge-crm{% endif %}">
+            {% if p.is_from_crm %}
+            <svg style="width: 16px; height: 16px;" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h8a2 2 0 012 2v12a1 1 0 110 2h-3a1 1 0 01-1-1v-2a1 1 0 00-1-1H9a1 1 0 00-1 1v2a1 1 0 01-1 1H4a1 1 0 110-2V4zm3 1h2v2H7V5zm2 4H7v2h2V9zm2-4h2v2h-2V5zm2 4h-2v2h2V9z" clip-rule="evenodd"/>
+            </svg>
+            <span>{{ p.crm_info.integration_name }}</span>
+            {% else %}
+            <svg style="width: 16px; height: 16px;" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z"/>
+            </svg>
+            <span>Звонок #{{ loop.index }}</span>
+            {% endif %}
+          </div>
+          <div class="call-card-date">
+            <div class="date-main">{{ p.created_at.strftime("%d.%m.%Y") }}</div>
+            <div class="date-time">{{ p.created_at.strftime("%H:%M") }}</div>
+          </div>
+        </div>
+
+        {% if p.is_from_crm and p.crm_info %}
+        <div class="crm-details">
+          {% if p.crm_info.manager_name %}
+          <div class="crm-detail-item">
+            <span class="crm-detail-label">Менеджер:</span>
+            <span class="crm-detail-value">{{ p.crm_info.manager_name }}</span>
+          </div>
+          {% endif %}
+          {% if p.crm_info.client_name %}
+          <div class="crm-detail-item">
+            <span class="crm-detail-label">Клиент:</span>
+            <span class="crm-detail-value">{{ p.crm_info.client_name }}</span>
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Статус тренировок -->
+        {% if p.training_plan %}
+        <div class="training-status-section">
+          <div class="training-status-header">
+            <div class="training-icon">
+              {% if p.training_plan.status == 'completed' %}
+                <span style="font-size: 24px;">🎉</span>
+              {% elif p.training_plan.completed > 0 %}
+                <span style="font-size: 24px;">📊</span>
+              {% else %}
+                <span style="font-size: 24px;">🎯</span>
+              {% endif %}
+            </div>
+            <div class="training-info">
+              <div class="training-title">
+                {% if p.training_plan.status == 'completed' %}
+                  План тренировок завершён
+                {% elif p.training_plan.completed > 0 %}
+                  Тренировка в процессе
+                {% else %}
+                  План тренировок готов
+                {% endif %}
+              </div>
+              <div class="training-subtitle">
+                {{ p.training_plan.completed }}/{{ p.training_plan.total }} тренировок пройдено
+              </div>
+            </div>
+            <div class="training-progress-circle">
+              <svg viewBox="0 0 36 36">
+                <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                <path class="circle" stroke-dasharray="{{ p.training_plan.progress }}, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                <text x="18" y="20.35" class="percentage">{{ p.training_plan.progress }}%</text>
+              </svg>
+            </div>
+          </div>
+          
+          <!-- Прогресс-бар -->
+          <div class="training-progress-bar">
+            <div class="progress-bar-fill" style="width: {{ p.training_plan.progress }}%"></div>
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- Файлы -->
+        <div class="call-files-compact">
+          <div class="file-item">
+            <svg class="file-icon" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd"/>
+            </svg>
+            <span class="file-name">Данные анализа</span>
+            <span class="file-count-badge">{{ 1 + (p.extras|length) }} файл{{ 'а' if (1 + p.extras|length) in [2,3,4] else 'ов' if (1 + p.extras|length) >= 5 else '' }}</span>
+          </div>
+        </div>
+
+        <!-- Действия -->
+        <div class="call-card-actions">
+          <a href="/chat/export/by-report/{{ p.report_msg_id }}" class="btn-action btn-action-download" title="Скачать ZIP с анализом и транскрибацией">
+            <svg style="width: 18px; height: 18px;" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/>
+            </svg>
+            <span>ZIP</span>
+          </a>
+          
+          {% if p.training_plan %}
+            {% if p.training_plan.status == 'completed' %}
+              <a href="/training-plan/{{ p.report_msg_id }}" class="btn-action btn-action-success">
+                <svg style="width: 18px; height: 18px;" viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                </svg>
+                <span>Завершено</span>
+              </a>
+            {% elif p.training_plan.completed > 0 %}
+              <a href="/training-plan/{{ p.report_msg_id }}" class="btn-action btn-action-primary">
+                <svg style="width: 18px; height: 18px;" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z"/>
+                </svg>
+                <span>Продолжить ({{ p.training_plan.completed }}/{{ p.training_plan.total }})</span>
+              </a>
+            {% else %}
+              <a href="/training-plan/{{ p.report_msg_id }}" class="btn-action btn-action-primary">
+                <svg style="width: 18px; height: 18px;" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M10.394 2.08a1 1 0 00-.788 0l-7 3a1 1 0 000 1.84L5.25 8.051a.999.999 0 01.356-.257l4-1.714a1 1 0 11.788 1.838L7.667 9.088l1.94.831a1 1 0 00.787 0l7-3a1 1 0 000-1.838l-7-3z"/>
+                </svg>
+                <span>Начать тренировку</span>
+              </a>
+            {% endif %}
+          {% else %}
+            <button onclick="createTraining({{ p.report_msg_id }})" class="btn-action btn-action-primary">
+              <svg style="width: 18px; height: 18px;" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M10.394 2.08a1 1 0 00-.788 0l-7 3a1 1 0 000 1.84L5.25 8.051a.999.999 0 01.356-.257l4-1.714a1 1 0 11.788 1.838L7.667 9.088l1.94.831a1 1 0 00.787 0l7-3a1 1 0 000-1.838l-7-3z"/>
+              </svg>
+              <span>Создать тренировку</span>
+            </button>
+          {% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty-calls">
+        <div class="empty-icon">
+          <svg viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/>
+          </svg>
+        </div>
+        <h3>История пуста</h3>
+        <p>У вас пока нет проанализированных звонков. Загрузите первый аудиофайл для анализа!</p>
+        <a href="/chat" class="btn btn-primary">Начать анализ</a>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Модальное окно создания тренировки -->
+<div class="training-modal" id="training-modal">
+  <div class="training-modal-content">
+    <div class="training-modal-icon">
+      <div class="icon-circle">
+        <svg style="width: 48px; height: 48px;" viewBox="0 0 20 20" fill="currentColor">
+          <path d="M10.394 2.08a1 1 0 00-.788 0l-7 3a1 1 0 000 1.84L5.25 8.051a.999.999 0 01.356-.257l4-1.714a1 1 0 11.788 1.838L7.667 9.088l1.94.831a1 1 0 00.787 0l7-3a1 1 0 000-1.838l-7-3zM3.31 9.397L5 10.12v4.102a8.969 8.969 0 00-1.05-.174 1 1 0 01-.89-.89 11.115 11.115 0 01.25-3.762zM9.3 16.573A9.026 9.026 0 007 14.935v-3.957l1.818.78a3 3 0 002.364 0l5.508-2.361a11.026 11.026 0 01.25 3.762 1 1 0 01-.89.89 8.968 8.968 0 00-5.35 2.524 1 1 0 01-1.4 0zM6 18a1 1 0 001-1v-2.065a8.935 8.935 0 00-2-.712V17a1 1 0 001 1z"/>
+        </svg>
+      </div>
+    </div>
+    
+    <h3 class="training-modal-title" id="modal-title">Создаём план тренировок</h3>
+    <p class="training-modal-text" id="modal-text">Анализируем звонок и формируем персональный план тренировок...</p>
+    
+    <div class="training-progress-container">
+      <div class="training-progress-bar-modal">
+        <div class="training-progress-fill-modal" id="progress-fill"></div>
+      </div>
+      <div class="training-progress-text" id="progress-text">0%</div>
+    </div>
+    
+    <div class="training-steps" id="training-steps">
+      <div class="training-step" id="step-1">
+        <div class="step-icon">⏳</div>
+        <div class="step-text">Анализ звонка</div>
+      </div>
+      <div class="training-step" id="step-2">
+        <div class="step-icon">⏳</div>
+        <div class="step-text">Генерация рекомендаций</div>
+      </div>
+      <div class="training-step" id="step-3">
+        <div class="step-icon">⏳</div>
+        <div class="step-text">Создание плана</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+/* Контейнер страницы */
+.calls-container {
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* Заголовок */
+.calls-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 32px;
+}
+
+.calls-title h1 {
+  margin: 0 0 4px 0;
+  font-size: 32px;
+  font-weight: 700;
+}
+
+.calls-title p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 16px;
+}
+
+/* Сетка карточек */
+.calls-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 24px;
+}
+
+/* Карточка звонка */
+.call-card {
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: 16px;
+  padding: 24px;
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.call-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(37, 99, 235, 0.15);
+  border-color: var(--primary);
+}
+
+/* Заголовок карточки */
+.call-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.call-card-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(37, 99, 235, 0.1);
+  border-radius: 8px;
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.call-card-badge.badge-crm {
+  background: rgba(16, 185, 129, 0.1);
+  color: #059669;
+}
+
+.crm-details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.crm-detail-item {
+  display: flex;
+  gap: 8px;
+}
+
+.crm-detail-label {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.crm-detail-value {
+  color: var(--text);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.call-card-date {
+  text-align: right;
+}
+
+.date-main {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.date-time {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+/* Секция статуса тренировок */
+.training-status-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.05), rgba(29, 78, 216, 0.02));
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  border-radius: 12px;
+}
+
+.training-status-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.training-icon {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.training-info {
+  flex: 1;
+}
+
+.training-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.training-subtitle {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.training-progress-circle {
+  width: 52px;
+  height: 52px;
+  flex-shrink: 0;
+}
+
+.training-progress-circle svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.circle-bg {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 3;
+}
+
+.circle {
+  fill: none;
+  stroke: #10b981;
+  stroke-width: 3;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.5s ease;
+}
+
+.percentage {
+  font-size: 8px;
+  font-weight: 700;
+  fill: var(--text);
+  transform: rotate(90deg);
+  transform-origin: center;
+}
+
+.training-progress-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--bg);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #10b981, #059669);
+  border-radius: 4px;
+  transition: width 0.5s ease;
+}
+
+/* Компактные файлы */
+.call-files-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border-radius: 8px;
+  font-size: 13px;
+  transition: all 0.2s ease;
+}
+
+.file-item:hover {
+  background: rgba(37, 99, 235, 0.05);
+}
+
+.file-item.secondary {
+  border: 1px dashed var(--border);
+  background: transparent;
+}
+
+.file-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.file-count {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.file-count-badge {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--surface);
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+
+/* Кнопки действий */
+.call-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.btn-action {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 0.3s ease;
+  border: none;
+  cursor: pointer;
+}
+
+.btn-action-primary {
+  background: linear-gradient(135deg, var(--primary), #1d4ed8);
+  color: white;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+}
+
+.btn-action-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.4);
+}
+
+.btn-action-secondary {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.btn-action-secondary:hover {
+  background: var(--bg);
+  border-color: var(--primary);
+}
+
+.btn-action-download {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border);
+  flex: 0 0 auto;
+  min-width: 70px;
+}
+
+.btn-action-download:hover {
+  background: rgba(37, 99, 235, 0.05);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.btn-action-success {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+  cursor: default;
+}
+
+.btn-action-success:hover {
+  transform: none;
+}
+
+/* Пустое состояние */
+.empty-calls {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 80px 20px;
+  background: var(--surface);
+  border: 2px dashed var(--border);
+  border-radius: 16px;
+}
+
+.empty-icon {
+  width: 80px;
+  height: 80px;
+  margin: 0 auto 24px;
+  background: rgba(37, 99, 235, 0.1);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.empty-icon svg {
+  width: 40px;
+  height: 40px;
+  color: var(--primary);
+}
+
+.empty-calls h3 {
+  margin: 0 0 12px 0;
+  font-size: 24px;
+  color: var(--text);
+}
+
+.empty-calls p {
+  margin: 0 0 24px 0;
+  color: var(--muted);
+  max-width: 400px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+  .calls-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .calls-header {
+    flex-direction: column;
+    gap: 16px;
+    align-items: stretch;
+  }
+  
+  .call-card-actions {
+    flex-direction: column;
+  }
+  
+  .btn-action {
+    width: 100%;
+  }
+}
+
+/* Модальное окно создания тренировки */
+.training-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  z-index: 10000;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.training-modal.active {
+  display: flex;
+  opacity: 1;
+}
+
+.training-modal-content {
+  background: var(--surface);
+  border-radius: 24px;
+  padding: 48px 40px;
+  max-width: 500px;
+  width: 90%;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.3);
+  text-align: center;
+  transform: scale(0.9);
+  transition: transform 0.3s ease;
+}
+
+.training-modal.active .training-modal-content {
+  transform: scale(1);
+}
+
+.training-modal-icon {
+  margin-bottom: 24px;
+}
+
+.icon-circle {
+  width: 96px;
+  height: 96px;
+  margin: 0 auto;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(29, 78, 216, 0.05));
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: pulse-icon 2s infinite;
+  color: var(--primary);
+}
+
+@keyframes pulse-icon {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.4);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 20px rgba(37, 99, 235, 0);
+  }
+}
+
+.training-modal-title {
+  margin: 0 0 12px 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.training-modal-text {
+  margin: 0 0 32px 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.training-progress-container {
+  margin-bottom: 32px;
+}
+
+.training-progress-bar-modal {
+  width: 100%;
+  height: 12px;
+  background: var(--bg);
+  border-radius: 6px;
+  overflow: hidden;
+  margin-bottom: 12px;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.training-progress-fill-modal {
+  height: 100%;
+  background: linear-gradient(90deg, var(--primary), #1d4ed8);
+  border-radius: 6px;
+  width: 0%;
+  transition: width 0.5s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.training-progress-fill-modal::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.3),
+    transparent
+  );
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.training-progress-text {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.training-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.training-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--bg);
+  border-radius: 12px;
+  transition: all 0.3s ease;
+}
+
+.training-step.active {
+  background: rgba(37, 99, 235, 0.1);
+  border: 1px solid rgba(37, 99, 235, 0.3);
+}
+
+.training-step.completed {
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.step-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.step-text {
+  flex: 1;
+  text-align: left;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+</style>
+
+<script>
+// Функция создания плана тренировок с прогресс-баром
+async function createTraining(reportMsgId) {
+  const modal = document.getElementById('training-modal');
+  const progressFill = document.getElementById('progress-fill');
+  const progressText = document.getElementById('progress-text');
+  const modalTitle = document.getElementById('modal-title');
+  const modalText = document.getElementById('modal-text');
+  
+  const step1 = document.getElementById('step-1');
+  const step2 = document.getElementById('step-2');
+  const step3 = document.getElementById('step-3');
+  
+  // Показываем модальное окно
+  modal.classList.add('active');
+  
+  // Функция обновления прогресса
+  function updateProgress(percent, title, text, activeStep) {
+    progressFill.style.width = percent + '%';
+    progressText.textContent = percent + '%';
+    if (title) modalTitle.textContent = title;
+    if (text) modalText.textContent = text;
+    
+    // Обновляем шаги
+    [step1, step2, step3].forEach((step, index) => {
+      step.classList.remove('active', 'completed');
+      const icon = step.querySelector('.step-icon');
+      
+      if (index + 1 < activeStep) {
+        step.classList.add('completed');
+        icon.textContent = '✅';
+      } else if (index + 1 === activeStep) {
+        step.classList.add('active');
+        icon.textContent = '⏳';
+      } else {
+        icon.textContent = '⏳';
+      }
+    });
+  }
+  
+  try {
+    // Шаг 1: Анализ звонка (0-30%)
+    updateProgress(10, 'Создаём план тренировок', 'Загружаем анализ звонка...', 1);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    updateProgress(30, 'Анализируем звонок', 'Читаем результаты анализа...', 1);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Шаг 2: Генерация рекомендаций (30-70%)
+    updateProgress(40, 'Генерируем рекомендации', 'Извлекаем ключевые рекомендации из анализа...', 2);
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
+    updateProgress(55, 'Обрабатываем данные', 'Формируем структуру тренировок...', 2);
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
+    updateProgress(70, 'Подготовка плана', 'Создаём персональные упражнения...', 2);
+    
+    // Создаём план тренировок (реальный запрос к серверу)
+    const response = await fetch(`/training-plan/${reportMsgId}`, {
+      method: 'GET',
+      headers: {
+        'Accept': 'text/html'
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error('Ошибка создания плана тренировок');
+    }
+    
+    // Шаг 3: Создание плана (70-100%)
+    updateProgress(85, 'Сохраняем план', 'Записываем план тренировок в базу данных...', 3);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    updateProgress(95, 'Финализируем', 'Подготовка к запуску...', 3);
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    updateProgress(100, 'Готово!', 'План тренировок успешно создан! Перенаправляем...', 3);
+    await new Promise(resolve => setTimeout(resolve, 800));
+    
+    // Перенаправляем на страницу плана тренировок
+    window.location.href = `/training-plan/${reportMsgId}`;
+    
+  } catch (error) {
+    console.error('Ошибка создания плана:', error);
+    
+    // Показываем ошибку
+    modalTitle.textContent = '❌ Ошибка';
+    modalText.textContent = 'Не удалось создать план тренировок. Попробуйте ещё раз.';
+    progressFill.style.background = 'linear-gradient(90deg, #ef4444, #dc2626)';
+    
+    // Закрываем модальное окно через 3 секунды
+    setTimeout(() => {
+      modal.classList.remove('active');
+      // Сброс стилей
+      progressFill.style.background = 'linear-gradient(90deg, var(--primary), #1d4ed8)';
+      progressFill.style.width = '0%';
+    }, 3000);
+  }
+}
+</script>
+
+{% endblock %}

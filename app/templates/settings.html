@@ -1,0 +1,216 @@
+{% extends "_layout_dashboard.html" %}
+{% block title %}Настройки — UpStat{% endblock %}
+{% block content %}
+
+<div class="settings-container">
+  <div class="settings-header">
+    <h1>Настройки профиля</h1>
+    <p class="settings-subtitle">Управляйте своим профилем и безопасностью</p>
+  </div>
+
+  {% if success %}
+  <div class="alert alert-success">
+    <svg class="alert-icon" viewBox="0 0 20 20" fill="currentColor">
+      <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+    </svg>
+    {{ success }}
+  </div>
+  {% endif %}
+
+  {% if error %}
+  <div class="alert alert-error">
+    <svg class="alert-icon" viewBox="0 0 20 20" fill="currentColor">
+      <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+    </svg>
+    {{ error }}
+  </div>
+  {% endif %}
+
+  <div class="settings-grid">
+    <!-- Профиль -->
+    <div class="settings-card">
+      <div class="settings-card-header">
+        <div class="settings-card-icon">
+          <svg viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" />
+          </svg>
+        </div>
+        <div>
+          <h2>Основная информация</h2>
+          <p>Измените свое имя, email и номер телефона</p>
+        </div>
+      </div>
+      
+      <form action="/settings/profile" method="POST" class="settings-form">
+        <div class="form-group">
+          <label for="name">Имя</label>
+          <input type="text" id="name" name="name" value="{{ user.name }}" required>
+        </div>
+        
+        <div class="form-group">
+          <label for="email">Email</label>
+          <input type="email" id="email" name="email" value="{{ user.email }}" required>
+        </div>
+        
+        <div class="form-group">
+          <label for="phone">Номер телефона</label>
+          <input type="tel" id="phone" name="phone" value="{{ user.phone or '' }}" placeholder="+7 (999) 123-45-67">
+        </div>
+        
+        <button type="submit" class="btn btn-primary">Сохранить изменения</button>
+      </form>
+    </div>
+
+    <!-- Аватар -->
+    <div class="settings-card">
+      <div class="settings-card-header">
+        <div class="settings-card-icon">
+          <svg viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M4 3a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V5a2 2 0 00-2-2H4zm12 12H4l4-8 3 6 2-4 3 6z" clip-rule="evenodd" />
+          </svg>
+        </div>
+        <div>
+          <h2>Фото профиля</h2>
+          <p>Загрузите новое изображение для вашего профиля</p>
+        </div>
+      </div>
+      
+      <div class="avatar-section">
+        <div class="avatar-preview">
+          {% if user.avatar %}
+            <img src="{{ user.avatar }}" alt="Аватар" id="avatar-preview-img">
+          {% else %}
+            <div class="avatar-placeholder" id="avatar-placeholder">
+              <svg viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" />
+              </svg>
+            </div>
+          {% endif %}
+        </div>
+        
+        <form action="/settings/avatar" method="POST" enctype="multipart/form-data" class="avatar-form">
+          <div class="file-upload">
+            <input type="file" id="avatar" name="avatar" accept="image/*" onchange="previewAvatar(this)">
+            <label for="avatar" class="file-upload-label">
+              <svg viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+              </svg>
+              Выбрать файл
+            </label>
+          </div>
+          
+          <button type="submit" class="btn btn-secondary">Загрузить аватар</button>
+        </form>
+        
+        <div class="avatar-info">
+          <p>Поддерживаемые форматы: JPG, PNG, GIF</p>
+          <p>Максимальный размер: 5MB</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Пароль -->
+    <div class="settings-card">
+      <div class="settings-card-header">
+        <div class="settings-card-icon">
+          <svg viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd" />
+          </svg>
+        </div>
+        <div>
+          <h2>Безопасность</h2>
+          <p>Измените свой пароль для защиты аккаунта</p>
+        </div>
+      </div>
+      
+      <form action="/settings/password" method="POST" class="settings-form">
+        <div class="form-group">
+          <label for="current_password">Текущий пароль</label>
+          <input type="password" id="current_password" name="current_password" required>
+        </div>
+        
+        <div class="form-group">
+          <label for="new_password">Новый пароль</label>
+          <input type="password" id="new_password" name="new_password" required minlength="6">
+        </div>
+        
+        <div class="form-group">
+          <label for="confirm_password">Подтвердите новый пароль</label>
+          <input type="password" id="confirm_password" name="confirm_password" required minlength="6">
+        </div>
+        
+        <button type="submit" class="btn btn-primary">Изменить пароль</button>
+      </form>
+    </div>
+
+    <!-- Интеграции -->
+    <div class="settings-card">
+      <div class="settings-card-header">
+        <div class="settings-card-icon">
+          <svg viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" clip-rule="evenodd" />
+          </svg>
+        </div>
+        <div>
+          <h2>Интеграции</h2>
+          <p>Подключите внешние сервисы и API</p>
+        </div>
+      </div>
+      
+      <div class="integrations-placeholder">
+        <div class="placeholder-icon">
+          <svg viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+          </svg>
+        </div>
+        <h3>Скоро появятся</h3>
+        <p>Интеграции с CRM системами, webhook'и и API будут доступны в следующих обновлениях</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function previewAvatar(input) {
+  if (input.files && input.files[0]) {
+    const reader = new FileReader();
+    
+    reader.onload = function(e) {
+      const previewImg = document.getElementById('avatar-preview-img');
+      const placeholder = document.getElementById('avatar-placeholder');
+      
+      if (previewImg) {
+        previewImg.src = e.target.result;
+      } else {
+        // Создаем новый img элемент
+        const newImg = document.createElement('img');
+        newImg.src = e.target.result;
+        newImg.alt = 'Аватар';
+        newImg.id = 'avatar-preview-img';
+        newImg.className = 'avatar-preview-img';
+        
+        if (placeholder) {
+          placeholder.parentNode.replaceChild(newImg, placeholder);
+        }
+      }
+    };
+    
+    reader.readAsDataURL(input.files[0]);
+  }
+}
+
+// Автоматически скрываем уведомления через 5 секунд
+document.addEventListener('DOMContentLoaded', function() {
+  const alerts = document.querySelectorAll('.alert');
+  alerts.forEach(alert => {
+    setTimeout(() => {
+      alert.style.opacity = '0';
+      setTimeout(() => alert.remove(), 300);
+    }, 5000);
+  });
+  
+  // (переключатель темы перенесён в топбар)
+});
+</script>
+
+{% endblock %}

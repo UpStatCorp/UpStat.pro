@@ -1,0 +1,32 @@
+{
+  "language_code": "spa",
+  "language_probability": 0.4104457497596741,
+  "text": "(sonido de tono) (pausa de dos segundos)",
+  "words": [
+    {
+      "text": "(sonido de tono)",
+      "start": 0.119,
+      "end": 8.1,
+      "type": "audio_event",
+      "speaker_id": "speaker_0",
+      "logprob": -0.23059578176720866
+    },
+    {
+      "text": " ",
+      "start": 8.1,
+      "end": 8.1,
+      "type": "spacing",
+      "speaker_id": "speaker_0",
+      "logprob": -0.00865529477596283
+    },
+    {
+      "text": "(pausa de dos segundos)",
+      "start": 8.1,
+      "end": 18.979,
+      "type": "audio_event",
+      "speaker_id": "speaker_0",
+      "logprob": -0.3358585866064661
+    }
+  ],
+  "transcription_id": "7if7hk7PEHyaJZAeKLzc"
+}

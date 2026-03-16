@@ -1,0 +1,23 @@
+{
+  "speakers": [
+    {
+      "id": "speaker_0",
+      "label": "speaker_1"
+    }
+  ],
+  "role_map": {
+    "manager": "unknown",
+    "client": "unknown"
+  },
+  "stats_sec": {
+    "speaker_1": 18.86
+  },
+  "turns": [
+    {
+      "speaker": "speaker_1",
+      "start": 0.12,
+      "end": 18.98,
+      "text": "(sonido de tono) (pausa de dos segundos)"
+    }
+  ]
+}

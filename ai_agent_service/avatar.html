@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ИИ-агент Аватар</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+        
+        .avatar-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .avatar {
+            position: relative;
+            width: 400px;
+            height: 400px;
+            background: linear-gradient(45deg, #f0f0f0, #e0e0e0);
+            border-radius: 50%;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: float 3s ease-in-out infinite;
+        }
+        
+        .avatar::before {
+            content: '';
+            position: absolute;
+            width: 350px;
+            height: 350px;
+            background: linear-gradient(45deg, #4facfe, #00f2fe);
+            border-radius: 50%;
+            z-index: -1;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        .face {
+            position: relative;
+            width: 300px;
+            height: 300px;
+            background: #ffdbac;
+            border-radius: 50%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .eyes {
+            display: flex;
+            gap: 60px;
+            margin-bottom: 40px;
+        }
+        
+        .eye {
+            width: 40px;
+            height: 40px;
+            background: #2c3e50;
+            border-radius: 50%;
+            position: relative;
+            animation: blink 4s ease-in-out infinite;
+        }
+        
+        .eye::after {
+            content: '';
+            position: absolute;
+            width: 15px;
+            height: 15px;
+            background: #fff;
+            border-radius: 50%;
+            top: 5px;
+            left: 5px;
+        }
+        
+        .mouth {
+            width: 80px;
+            height: 40px;
+            background: #e74c3c;
+            border-radius: 0 0 80px 80px;
+            position: relative;
+            animation: speak 0.5s ease-in-out infinite;
+        }
+        
+        .mouth.speaking {
+            animation: speak 0.2s ease-in-out infinite;
+        }
+        
+        .status-indicator {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background: #2ecc71;
+            border-radius: 50%;
+            animation: pulse 1s ease-in-out infinite;
+        }
+        
+        .greeting-text {
+            position: absolute;
+            bottom: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 25px;
+            font-size: 18px;
+            max-width: 600px;
+            text-align: center;
+            opacity: 0;
+            animation: fadeInUp 1s ease-out 0.5s forwards;
+        }
+        
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-20px); }
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 0.7; }
+            50% { transform: scale(1.1); opacity: 1; }
+        }
+        
+        @keyframes blink {
+            0%, 90%, 100% { transform: scaleY(1); }
+            95% { transform: scaleY(0.1); }
+        }
+        
+        @keyframes speak {
+            0%, 100% { transform: scaleY(1); }
+            50% { transform: scaleY(1.2); }
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translate(-50%, 30px);
+            }
+            to {
+                opacity: 1;
+                transform: translate(-50%, 0);
+            }
+        }
+        
+        .ai-badge {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: bold;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="avatar-container">
+        <div class="ai-badge">🤖 ИИ-агент</div>
+        
+        <div class="status-indicator">
+            <div class="status-dot"></div>
+            <span>Подключен к встрече</span>
+        </div>
+        
+        <div class="avatar">
+            <div class="face">
+                <div class="eyes">
+                    <div class="eye"></div>
+                    <div class="eye"></div>
+                </div>
+                <div class="mouth" id="mouth"></div>
+            </div>
+        </div>
+        
+        <div class="greeting-text" id="greeting-text">
+            Здравствуйте! Я ваш ИИ-тренер. Готов к обучению!
+        </div>
+    </div>
+
+    <script>
+        // Функция для анимации речи
+        function startSpeaking() {
+            const mouth = document.getElementById('mouth');
+            mouth.classList.add('speaking');
+        }
+        
+        function stopSpeaking() {
+            const mouth = document.getElementById('mouth');
+            mouth.classList.remove('speaking');
+        }
+        
+        // Функция для обновления текста приветствия
+        function updateGreeting(text) {
+            const greetingElement = document.getElementById('greeting-text');
+            greetingElement.textContent = text;
+            greetingElement.style.opacity = '0';
+            
+            setTimeout(() => {
+                greetingElement.style.opacity = '1';
+            }, 100);
+        }
+        
+        // Симуляция речи (в реальном приложении будет управляться через WebSocket)
+        function simulateSpeech(duration = 3000) {
+            startSpeaking();
+            setTimeout(() => {
+                stopSpeaking();
+            }, duration);
+        }
+        
+        // Пример использования
+        setTimeout(() => {
+            updateGreeting('Здравствуйте! Я ваш ИИ-тренер на сегодня. Обучение продлится 60 минут. Как у вас дела?');
+            simulateSpeech(4000);
+        }, 2000);
+        
+        // Периодическое моргание глаз
+        setInterval(() => {
+            const eyes = document.querySelectorAll('.eye');
+            eyes.forEach(eye => {
+                eye.style.animation = 'none';
+                setTimeout(() => {
+                    eye.style.animation = 'blink 4s ease-in-out infinite';
+                }, 10);
+            });
+        }, 8000);
+        
+        // WebSocket для связи с AI Agent Service (заглушка)
+        function connectToAIService() {
+            // В реальном приложении здесь будет WebSocket соединение
+            console.log('Подключение к AI Agent Service...');
+        }
+        
+        // Инициализация
+        document.addEventListener('DOMContentLoaded', function() {
+            connectToAIService();
+        });
+    </script>
+</body>
+</html>

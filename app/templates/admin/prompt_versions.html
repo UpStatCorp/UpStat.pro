@@ -1,0 +1,204 @@
+{% extends "admin/_layout_admin.html" %}
+
+{% block content %}
+<!-- Заголовок -->
+<div style="margin-bottom: 32px;">
+    <h1 style="font-size: 28px; font-weight: 700; color: var(--text); margin: 0 0 8px 0;">
+        <i class="fas fa-history" style="color: var(--admin-secondary); margin-right: 12px;"></i>
+        История версий промпта
+    </h1>
+    <p style="color: var(--muted); margin: 0; font-size: 16px;">
+        Промпт: <strong>{{ prompt_name }}</strong> • Всего версий: {{ versions|length }}
+    </p>
+</div>
+
+<!-- Статистика версий -->
+<div class="admin-cards" style="margin-bottom: 32px;">
+    <div class="admin-card">
+        <div class="admin-card-header">
+            <div class="admin-card-title">Всего версий</div>
+            <div class="admin-card-icon system">
+                <i class="fas fa-history"></i>
+            </div>
+        </div>
+        <div class="admin-metric">{{ versions|length }}</div>
+        <div class="admin-metric-change">
+            <i class="fas fa-archive"></i>
+            <span>История изменений</span>
+        </div>
+    </div>
+
+    <div class="admin-card">
+        <div class="admin-card-header">
+            <div class="admin-card-title">Активная версия</div>
+            <div class="admin-card-icon users">
+                <i class="fas fa-check-circle"></i>
+            </div>
+        </div>
+        <div class="admin-metric">
+            {% for version in versions %}
+                {% if version.is_active %}
+                    v{{ version.version }}
+                {% endif %}
+            {% endfor %}
+        </div>
+        <div class="admin-metric-change positive">
+            <i class="fas fa-play"></i>
+            <span>Используется сейчас</span>
+        </div>
+    </div>
+
+    <div class="admin-card">
+        <div class="admin-card-header">
+            <div class="admin-card-title">Последнее изменение</div>
+            <div class="admin-card-icon conversations">
+                <i class="fas fa-clock"></i>
+            </div>
+        </div>
+        <div class="admin-metric">
+            {% if versions %}
+                {{ versions[0].created_at.strftime('%d.%m') if versions[0].created_at else '-' }}
+            {% else %}
+                -
+            {% endif %}
+        </div>
+        <div class="admin-metric-change">
+            <i class="fas fa-calendar"></i>
+            <span>Дата создания</span>
+        </div>
+    </div>
+</div>
+
+<!-- Список версий -->
+<div class="admin-table-container">
+    <div class="admin-table-header">
+        <h3 class="admin-table-title">
+            <i class="fas fa-list" style="color: var(--admin-info); margin-right: 8px;"></i>
+            Все версии промпта
+        </h3>
+    </div>
+    
+    {% if versions %}
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>Версия</th>
+                <th>Название</th>
+                <th>Описание</th>
+                <th>Автор</th>
+                <th>Создана</th>
+                <th>Статус</th>
+                <th>Действия</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for version in versions %}
+            <tr{% if version.is_active %} style="background: rgba(16, 185, 129, 0.02);"{% endif %}>
+                <td>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="display: inline-flex; align-items: center; gap: 4px; background: {% if version.is_active %}var(--admin-success){% else %}#6b7280{% endif %}; color: white; padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 500;">
+                            <i class="fas fa-tag"></i> v{{ version.version }}
+                        </span>
+                        {% if version.is_active %}
+                        <span style="display: inline-flex; align-items: center; gap: 4px; background: var(--admin-success); color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 500;">
+                            <i class="fas fa-check"></i> Активна
+                        </span>
+                        {% endif %}
+                    </div>
+                </td>
+                <td>
+                    <div style="font-weight: 600; margin-bottom: 2px;">{{ version.title }}</div>
+                </td>
+                <td>
+                    <div style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                        {{ version.description or 'Без описания' }}
+                    </div>
+                </td>
+                <td>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <div style="width: 24px; height: 24px; background: #e5e7eb; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #6b7280; font-size: 12px;">
+                            <i class="fas fa-user"></i>
+                        </div>
+                        <span style="font-weight: 500;">{{ version.creator.name if version.creator else 'Неизвестно' }}</span>
+                    </div>
+                </td>
+                <td>
+                    <div style="font-weight: 500;">{{ version.created_at.strftime('%d.%m.%Y') if version.created_at else '-' }}</div>
+                    <div style="font-size: 12px; color: var(--muted);">{{ version.created_at.strftime('%H:%M') if version.created_at else '' }}</div>
+                </td>
+                <td>
+                    {% if version.is_active %}
+                    <span style="display: inline-flex; align-items: center; gap: 4px; color: var(--admin-success);">
+                        <i class="fas fa-check-circle"></i>
+                        Активна
+                    </span>
+                    {% else %}
+                    <span style="display: inline-flex; align-items: center; gap: 4px; color: var(--muted);">
+                        <i class="fas fa-pause-circle"></i>
+                        Неактивна
+                    </span>
+                    {% endif %}
+                </td>
+                <td>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        {% if not version.is_active %}
+                        <!-- Активировать версию -->
+                        <form method="post" action="/admin/prompts/{{ version.id }}/activate" style="margin: 0;">
+                            <button type="submit" 
+                                    style="display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; border: none; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.2s ease; background: var(--admin-success); color: white;"
+                                    onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(16,185,129,0.3)'"
+                                    onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'"
+                                    onclick="return confirm('Вы уверены, что хотите активировать версию v{{ version.version }}? Текущая активная версия будет деактивирована.')">
+                                <i class="fas fa-play"></i> Активировать
+                            </button>
+                        </form>
+                        {% endif %}
+                        
+                        <!-- Редактировать -->
+                        <a href="/admin/prompts/{{ version.name }}/edit" 
+                           style="display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; border: none; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.2s ease; background: var(--admin-info); color: white; text-decoration: none;"
+                           onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(59,130,246,0.3)'"
+                           onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+                            <i class="fas fa-edit"></i> Редактировать
+                        </a>
+                        
+                        {% if not version.is_active %}
+                        <!-- Удалить версию -->
+                        <form method="post" action="/admin/prompts/{{ version.id }}/delete" style="margin: 0;">
+                            <button type="submit" 
+                                    style="display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; border: none; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.2s ease; background: var(--admin-primary); color: white;"
+                                    onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(220,38,38,0.3)'"
+                                    onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'"
+                                    onclick="return confirm('Вы уверены, что хотите удалить версию v{{ version.version }}? Это действие нельзя отменить!')">
+                                <i class="fas fa-trash"></i> Удалить
+                            </button>
+                        </form>
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div style="padding: 48px 24px; text-align: center;">
+        <div style="width: 80px; height: 80px; background: #f3f4f6; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; color: #9ca3af;">
+            <i class="fas fa-history" style="font-size: 32px;"></i>
+        </div>
+        <h3 style="color: var(--muted); margin: 0 0 8px 0;">Версии не найдены</h3>
+        <p style="color: var(--muted); margin: 0;">Для этого промпта пока нет сохраненных версий.</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Навигация -->
+<div style="margin-top: 24px;">
+    <a href="/admin/prompts" 
+       style="display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; background: #6b7280; color: white; border-radius: 8px; text-decoration: none; font-weight: 500; transition: all 0.2s ease;"
+       onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 8px 24px rgba(107,114,128,0.3)'"
+       onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
+        <i class="fas fa-arrow-left"></i> Назад к списку промптов
+    </a>
+</div>
+{% endblock %}
+

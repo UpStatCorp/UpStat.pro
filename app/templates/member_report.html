@@ -1,0 +1,1001 @@
+{% extends "_layout_dashboard.html" %}
+{% block title %}Отчет: {{ analytics.user.name }} — UpStat{% endblock %}
+
+{% block content %}
+<link href="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.css" rel="stylesheet">
+<style>
+  /* === SENIOR UI/UX DESIGN SYSTEM === */
+  
+  :root {
+    --card-bg: var(--surface);
+    --card-border: 1px solid var(--border);
+    --card-radius: 16px;
+    --accent-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+    --success-gradient: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    --glass-bg: rgba(255, 255, 255, 0.03);
+    --glass-border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+
+  body.dark {
+    --card-bg: #1e293b; /* Slate 800 */
+    --card-border: 1px solid #334155;
+  }
+
+  .dashboard-container {
+    max-width: 1600px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+  }
+
+  /* 1. PROFILE HERO SECTION (Discord Style) */
+  .profile-hero {
+    position: relative !important;
+    background: var(--card-bg) !important;
+    border-radius: var(--card-radius) !important;
+    border: var(--card-border) !important;
+    overflow: hidden !important;
+    padding: 0 !important;
+    margin-bottom: 32px !important;
+  }
+
+  .hero-banner {
+    height: 120px !important;
+    background: var(--accent-gradient) !important;
+    opacity: 0.9 !important;
+  }
+
+  .hero-content {
+    padding: 0 32px 32px !important;
+    margin-top: -50px !important;
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: flex-end !important;
+    flex-wrap: wrap !important;
+    gap: 24px !important;
+  }
+
+  .profile-main {
+    display: flex !important;
+    align-items: flex-end !important;
+    gap: 24px !important;
+  }
+
+  .profile-avatar-wrapper {
+    position: relative !important;
+    padding: 4px !important;
+    background: var(--card-bg) !important;
+    border-radius: 50% !important;
+  }
+
+  .profile-avatar {
+    width: 100px !important;
+    height: 100px !important;
+    border-radius: 50% !important;
+    background: var(--surface) !important;
+    color: var(--text) !important;
+    font-size: 40px !important;
+    font-weight: 800 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    border: 4px solid var(--card-bg) !important;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
+  }
+
+  .profile-info h1 {
+    font-size: 28px !important;
+    font-weight: 800 !important;
+    margin: 0 0 4px 0 !important;
+    color: var(--text) !important;
+  }
+
+  .profile-info p {
+    color: var(--muted) !important;
+    font-size: 15px !important;
+    margin: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+  }
+
+  .hero-actions {
+    display: flex !important;
+    gap: 12px !important;
+    padding-bottom: 8px !important;
+  }
+
+  /* 2. METRICS GRID (Google Analytics Style) */
+  .metrics-grid {
+    display: grid !important;
+    grid-template-columns: repeat(5, 1fr) !important;
+    gap: 24px !important;
+    margin-bottom: 32px !important;
+  }
+
+  .kpi-card {
+    background: var(--card-bg) !important;
+    border: var(--card-border) !important;
+    border-radius: var(--card-radius) !important;
+    padding: 24px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: space-between !important;
+    height: 140px !important;
+    transition: transform 0.2s, box-shadow 0.2s !important;
+  }
+
+  .kpi-card:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 10px 20px rgba(0,0,0,0.05) !important;
+    border-color: var(--primary) !important;
+  }
+
+  .kpi-header {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: flex-start !important;
+    color: var(--muted) !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+  }
+
+  .kpi-icon {
+    width: 32px !important;
+    height: 32px !important;
+    border-radius: 8px !important;
+    background: var(--bg) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    color: var(--primary) !important;
+  }
+
+  .kpi-value {
+    font-size: 36px !important;
+    font-weight: 800 !important;
+    color: var(--text) !important;
+    margin-top: auto !important;
+    line-height: 1 !important;
+  }
+
+  .kpi-subtext {
+    font-size: 12px !important;
+    color: var(--muted) !important;
+    margin-top: 8px !important;
+  }
+
+  /* 3. CONTENT LAYOUT (Grid with Sidebar) */
+  .content-layout {
+    display: grid !important;
+    grid-template-columns: 2fr 1fr !important;
+    gap: 32px !important;
+    margin-top: 32px !important;
+  }
+
+  .section-title {
+    font-size: 20px !important;
+    font-weight: 700 !important;
+    margin-bottom: 20px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    color: var(--text) !important;
+  }
+
+  /* 4. TRAINING PLANS (The Requested Card Style) */
+  /* These styles are COPIED EXACTLY from Dashboard to ensure 100% match */
+  .training-plans-container {
+    background: transparent;
+    border-radius: 0;
+    margin-bottom: 40px;
+  }
+
+  .training-plans-scroll {
+    display: flex;
+    gap: 20px;
+    overflow-x: auto;
+    padding-bottom: 20px;
+    scrollbar-width: thin;
+  }
+  
+  .training-plans-scroll::-webkit-scrollbar {
+    height: 8px;
+  }
+  
+  .training-plans-scroll::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 4px;
+  }
+
+  /* --- EXACT DASHBOARD CARD STYLES START --- */
+  .training-plan-card {
+    background: var(--surface) !important;
+    border: 1.5px solid var(--border) !important;
+    border-radius: 12px !important;
+    padding: 16px !important;
+    transition: all 0.3s ease;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 14px !important;
+    width: 340px !important;
+    min-width: 340px !important; /* Force width in flex container */
+    flex-shrink: 0 !important;
+    box-sizing: border-box !important;
+  }
+  
+  body.dark .training-plan-card {
+    background: rgba(30, 41, 59, 0.4) !important; /* Slightly more transparent for modern feel */
+    border-color: #334155 !important;
+  }
+
+  .training-plan-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 24px rgba(0,0,0,0.15) !important;
+    border-color: var(--primary) !important;
+  }
+
+  .training-plan-card.completed {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.03), rgba(5, 150, 105, 0.01));
+    border-color: rgba(16, 185, 129, 0.3);
+  }
+
+  .training-plan-header {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .training-plan-icon {
+    flex-shrink: 0;
+    font-size: 24px;
+  }
+
+  .training-plan-title-section {
+    flex: 1;
+  }
+
+  .training-plan-title {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.3;
+  }
+
+  .training-plan-date {
+    margin: 3px 0 0 0;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .status-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+
+  .status-badge.active {
+    background: rgba(37, 99, 235, 0.1);
+    color: var(--primary);
+  }
+
+  .status-badge.completed {
+    background: rgba(16, 185, 129, 0.1);
+    color: #059669;
+  }
+
+  .training-plan-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .progress-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+  }
+
+  .progress-label { color: var(--muted); }
+  .progress-value { font-weight: 600; color: var(--text); }
+
+  .progress-bar-container {
+    width: 100%;
+    height: 18px;
+    background: var(--bg);
+    border-radius: 9px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #10b981, #059669);
+    transition: width 0.5s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 32px;
+  }
+
+  .progress-percent {
+    font-size: 10px;
+    font-weight: 700;
+    color: white;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+  }
+
+  .current-training-section {
+    padding: 12px;
+    background: rgba(16, 185, 129, 0.05);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+    border-radius: 10px;
+  }
+
+  .current-training-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: #059669;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+  }
+
+  .current-training-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 5px;
+    line-height: 1.3;
+  }
+
+  .current-training-desc {
+    font-size: 12px;
+    color: var(--muted);
+    line-height: 1.4;
+    margin-bottom: 6px;
+  }
+
+  .training-attempts {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 6px;
+  }
+
+  .trainings-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .training-mini-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 10px;
+    background: var(--bg);
+    border-radius: 7px;
+    font-size: 12px;
+    transition: all 0.2s ease;
+  }
+
+  .training-mini-item:hover:not(.locked):not(.more) {
+    background: rgba(37, 99, 235, 0.05) !important;
+  }
+
+  .training-mini-item.completed {
+    background: rgba(16, 185, 129, 0.08) !important;
+  }
+
+  .training-mini-item.locked { opacity: 0.5; }
+
+  .training-mini-item.more {
+    justify-content: center;
+    font-style: italic;
+    color: var(--muted);
+  }
+
+  .training-mini-number {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    background: white;
+    border: 1.5px solid var(--border);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+  }
+
+  .training-mini-item.completed .training-mini-number {
+    background: #10b981;
+    border-color: #10b981;
+    color: white;
+  }
+
+  .training-mini-title { flex: 1; color: var(--text); }
+
+  .training-plan-actions {
+    display: flex;
+    gap: 7px;
+  }
+
+  .btn-block {
+    width: 100%;
+    justify-content: center;
+    padding: 10px 16px;
+    font-size: 13px;
+  }
+  
+  .btn-icon-sm {
+    width: 16px;
+    height: 16px;
+    margin-right: 6px;
+  }
+  /* --- EXACT DASHBOARD CARD STYLES END --- */
+
+
+  /* 5. ERRORS & CORRECTIONS (Notion/Jira Style) */
+  .errors-container {
+    background: var(--card-bg) !important;
+    border: var(--card-border) !important;
+    border-radius: var(--card-radius) !important;
+    padding: 24px !important;
+  }
+
+  .error-item-modern {
+    padding: 16px !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 12px !important;
+    margin-bottom: 16px !important;
+    background: var(--bg) !important;
+    transition: background 0.2s !important;
+  }
+
+  .error-item-modern:hover {
+    background: var(--surface-hover) !important;
+  }
+
+  .error-tags {
+    display: flex !important;
+    gap: 8px !important;
+    margin-bottom: 12px !important;
+  }
+
+  .tag {
+    padding: 4px 10px !important;
+    border-radius: 6px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+  }
+
+  .tag-type { background: rgba(59, 130, 246, 0.1) !important; color: #3b82f6 !important; }
+  .tag-status-pending { background: rgba(245, 158, 11, 0.1) !important; color: #f59e0b !important; }
+  .tag-status-applied { background: rgba(16, 185, 129, 0.1) !important; color: #10b981 !important; }
+
+  .error-content-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 16px !important;
+  }
+
+  .error-box-title {
+    font-size: 11px !important;
+    color: var(--muted) !important;
+    text-transform: uppercase !important;
+    margin-bottom: 6px !important;
+    font-weight: 600 !important;
+  }
+
+  .error-text {
+    font-size: 14px !important;
+    line-height: 1.5 !important;
+    color: var(--text) !important;
+  }
+
+  /* 6. CHARTS & SIDEBAR */
+  .chart-card {
+    background: var(--card-bg) !important;
+    border: var(--card-border) !important;
+    border-radius: var(--card-radius) !important;
+    padding: 24px !important;
+    height: 100% !important;
+  }
+
+  /* Responsive */
+  @media (max-width: 1400px) {
+    .metrics-grid { grid-template-columns: repeat(3, 1fr); }
+  }
+  @media (max-width: 1200px) {
+    .metrics-grid { grid-template-columns: repeat(2, 1fr); }
+    .content-layout { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 768px) {
+    .hero-content { flex-direction: column; align-items: flex-start; }
+    .metrics-grid { grid-template-columns: 1fr; }
+  }
+</style>
+
+<div class="dashboard-container">
+  
+  <!-- 1. HEADER (Discord Style Profile) -->
+  <div class="profile-hero">
+    <div class="hero-banner"></div>
+    <div class="hero-content">
+      <div class="profile-main">
+        <div class="profile-avatar-wrapper">
+          <div class="profile-avatar">
+            {{ analytics.user.name[0].upper() }}
+          </div>
+        </div>
+        <div class="profile-info">
+          <h1>{{ analytics.user.name }}</h1>
+          <p>
+            <svg style="width:16px; height:16px;" viewBox="0 0 20 20" fill="currentColor">
+              <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
+              <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
+            </svg>
+            {{ analytics.user.email }}
+          </p>
+        </div>
+      </div>
+      <div class="hero-actions">
+        <a href="/teams/{{ team.id }}/analytics" class="btn btn-outline" style="background: var(--surface);">
+          ← К команде
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. METRICS (Google Ads Style) -->
+  <div class="metrics-grid">
+    <!-- Card 1 -->
+    <div class="kpi-card">
+      <div class="kpi-header">
+        <span>Активность</span>
+        <div class="kpi-icon"><svg style="width:18px" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/></svg></div>
+      </div>
+      <div class="kpi-value">{{ analytics.stats.completed_trainings }}</div>
+      <div class="kpi-subtext">Тренировок завершено</div>
+    </div>
+    
+    <!-- Card 2 -->
+    <div class="kpi-card">
+      <div class="kpi-header">
+        <span>Качество</span>
+        <div class="kpi-icon"><svg style="width:18px" viewBox="0 0 20 20" fill="currentColor"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg></div>
+      </div>
+      <div class="kpi-value">{{ "%.1f"|format(analytics.stats.avg_score) }}</div>
+      <div class="kpi-subtext">Средний балл</div>
+    </div>
+
+    <!-- Card 3 -->
+    <div class="kpi-card">
+      <div class="kpi-header">
+        <span>Прогресс</span>
+        <div class="kpi-icon"><svg style="width:18px" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12 7a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0V8.414l-4.293 4.293a1 1 0 01-1.414 0L8 10.414l-4.293 4.293a1 1 0 01-1.414-1.414l5-5a1 1 0 011.414 0L11 10.586 14.586 7H12z" clip-rule="evenodd"/></svg></div>
+      </div>
+      <div class="kpi-value">{{ analytics.stats.completed_plans }}</div>
+      <div class="kpi-subtext">Планов выполнено из {{ analytics.stats.total_plans }}</div>
+    </div>
+
+    <!-- Card 4 -->
+    <div class="kpi-card">
+      <div class="kpi-header">
+        <span>Работа над ошибками</span>
+        <div class="kpi-icon"><svg style="width:18px" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg></div>
+      </div>
+      <div class="kpi-value">{{ analytics.stats.corrections_applied }}</div>
+      <div class="kpi-subtext">Исправлений применено</div>
+    </div>
+
+    <!-- Card 5: Последний вход -->
+    <div class="kpi-card">
+      <div class="kpi-header">
+        <span>Последний вход</span>
+        <div class="kpi-icon"><svg style="width:18px" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/></svg></div>
+      </div>
+      <div class="kpi-value" id="last-login-time" style="font-size: 18px; line-height: 1.4;">
+        {% if analytics.user.last_login_at %}
+          <span data-utc-time="{{ analytics.user.last_login_at.isoformat() }}">Загрузка...</span>
+        {% else %}
+          Никогда
+        {% endif %}
+      </div>
+      <div class="kpi-subtext" id="last-login-timezone">Определение часового пояса...</div>
+    </div>
+  </div>
+
+  <!-- 3. TRAINING PLANS (Canva Style Layout) -->
+  <div class="training-plans-container">
+    <div class="section-title">
+      <span style="font-size: 24px">🎯</span>
+      Планы тренировок
+      <span style="background: var(--surface); padding: 2px 10px; border-radius: 12px; font-size: 14px; border: 1px solid var(--border);">{{ training_plans|length }}</span>
+    </div>
+
+    {% if training_plans %}
+    <div class="training-plans-scroll">
+      {% for item in training_plans %}
+        <!-- CARD START (EXACT REPLICA) -->
+        <div class="training-plan-card {% if item.plan.status == 'completed' %}completed{% endif %}">
+          <div class="training-plan-header">
+            <div class="training-plan-icon">
+              {% if item.plan.status == 'completed' %}🎉{% else %}🎯{% endif %}
+            </div>
+            <div class="training-plan-title-section">
+              <h3 class="training-plan-title">{{ item.plan.title }}</h3>
+              <p class="training-plan-date">
+                <svg style="width: 12px; height: 12px; display: inline; vertical-align: middle;" viewBox="0 0 20 20" fill="currentColor">
+                  <path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/>
+                </svg>
+                Создан {{ item.plan.created_at.strftime("%d.%m.%Y") }}
+              </p>
+            </div>
+            <div class="training-plan-status {% if item.plan.status == 'completed' %}completed{% else %}active{% endif %}">
+              {% if item.plan.status == 'completed' %}
+                <span class="status-badge completed">✅ Завершён</span>
+              {% else %}
+                <span class="status-badge active">🔄 В процессе</span>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="training-plan-progress">
+            <div class="progress-info">
+              <span class="progress-label">Прогресс тренировок</span>
+              <span class="progress-value">{{ item.plan.completed_trainings }}/{{ item.plan.total_trainings }}</span>
+            </div>
+            <div class="progress-bar-container">
+              <div class="progress-bar-fill" style="width: {{ item.progress_percent }}%">
+                <span class="progress-percent">{{ item.progress_percent }}%</span>
+              </div>
+            </div>
+          </div>
+
+          {% if item.current_training %}
+          <div class="current-training-section">
+            <div class="current-training-label">
+              <svg style="width: 16px; height: 16px; display: inline; margin-right: 6px;" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/>
+              </svg>
+              Следующая тренировка:
+            </div>
+            <div class="current-training-title">{{ item.current_training.title }}</div>
+            <div class="current-training-desc">{{ item.current_training.description[:80] }}{% if item.current_training.description|length > 80 %}...{% endif %}</div>
+            {% if item.current_training.attempts > 0 %}
+            <div class="training-attempts">
+              📊 Попыток: {{ item.current_training.attempts }}
+              {% if item.current_training.best_score %}
+              | ⭐ Лучший: {{ item.current_training.best_score }}/100
+              {% endif %}
+            </div>
+            {% endif %}
+          </div>
+          {% endif %}
+
+          <div class="trainings-list">
+            {% for training in item.trainings[:5] %}
+            <div class="training-mini-item {% if training.status == 'completed' %}completed{% elif training.status == 'locked' %}locked{% endif %}">
+              <span class="training-mini-number">
+                {% if training.status == 'completed' %}✅{% elif training.status == 'locked' %}🔒{% else %}{{ training.order }}{% endif %}
+              </span>
+              <span class="training-mini-title">{{ training.title[:40] }}{% if training.title|length > 40 %}...{% endif %}</span>
+            </div>
+            {% endfor %}
+            {% if item.trainings|length > 5 %}
+            <div class="training-mini-item more">
+              <span>+{{ item.trainings|length - 5 }} еще...</span>
+            </div>
+            {% endif %}
+          </div>
+
+          <div class="training-plan-actions">
+            {% if item.plan.status == 'completed' %}
+              <a href="/training-plan/{{ item.plan.report_message_id }}?view_mode=1" class="btn btn-outline btn-block">
+                <svg class="btn-icon-sm" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/>
+                  <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/>
+                </svg>
+                Подробнее
+              </a>
+            {% elif item.current_training %}
+              <a href="/training-plan/{{ item.plan.report_message_id }}?view_mode=1" class="btn btn-outline btn-block">
+                <svg class="btn-icon-sm" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/>
+                  <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/>
+                </svg>
+                Подробнее
+              </a>
+            {% else %}
+              <a href="/training-plan/{{ item.plan.report_message_id }}?view_mode=1" class="btn btn-outline btn-block">
+                <svg class="btn-icon-sm" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/>
+                  <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/>
+                </svg>
+                Подробнее
+              </a>
+            {% endif %}
+          </div>
+        </div>
+        <!-- CARD END -->
+      {% endfor %}
+    </div>
+    {% else %}
+    <div style="padding: 60px 40px; text-align: center; border: 2px dashed var(--border); border-radius: 20px; color: var(--muted);">
+      <div style="font-size: 48px; margin-bottom: 16px;">🎯</div>
+      <p style="margin: 0; font-size: 16px;">Нет активных планов тренировок</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- 4. CONTENT SPLIT: CHARTS & ERRORS -->
+  <div class="content-layout">
+    
+    <!-- Left: Errors List -->
+    <div class="errors-container">
+      <div class="section-title">
+        <span style="font-size: 24px">⚠️</span>
+        Работа над ошибками
+        <span style="background: rgba(239, 68, 68, 0.1); color: #ef4444; padding: 2px 10px; border-radius: 12px; font-size: 14px;">{{ analytics.errors|length if analytics.errors else 0 }}</span>
+      </div>
+
+      {% if analytics.errors and analytics.errors|length > 0 %}
+        {% for error in analytics.errors[:10] %}
+        <div class="error-item-modern">
+          <div class="error-tags">
+            <span class="tag tag-type">{{ error.error_type }}</span>
+            <span class="tag {{ 'tag-status-applied' if error.correction_applied else 'tag-status-pending' }}">
+              {{ 'Исправлено' if error.correction_applied else 'Ожидает' }}
+            </span>
+            <span style="font-size: 11px; color: var(--muted); margin-left: auto;">{{ error.detected_at.strftime('%d.%m.%Y') }}</span>
+          </div>
+          <div class="error-content-grid">
+            <div>
+              <div class="error-box-title">Обнаруженная проблема</div>
+              <div class="error-text">{{ error.error_description }}</div>
+            </div>
+            <div style="border-left: 1px solid var(--border); padding-left: 16px;">
+              <div class="error-box-title" style="color: var(--primary);">Рекомендация</div>
+              <div class="error-text">{{ error.correction_text }}</div>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      {% else %}
+        <div style="text-align: center; padding: 40px; color: var(--muted);">
+          Ошибок не обнаружено. Отличная работа! 🎉
+        </div>
+      {% endif %}
+    </div>
+
+    <!-- Right: Stats Chart -->
+    <div class="chart-card">
+      <div class="section-title">
+        <span style="font-size: 24px">📈</span>
+        Конверсия
+      </div>
+      <div style="height: 300px; width: 100%;">
+        <canvas id="conversionChart"></canvas>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+  const ctx = document.getElementById('conversionChart');
+  if (ctx) {
+    // Получаем данные из API
+    fetch(`/api/teams/{{ team.id }}/conversion-metrics?member_id={{ analytics.user.id }}&period=weekly&days=30`)
+      .then(r => r.json())
+      .then(data => {
+        // Находим данные для нужного участника
+        const memberData = data.metrics.find(m => m.user_id === {{ analytics.user.id }}) || data.metrics[0];
+        
+        if (!memberData || !memberData.conversions || Object.keys(memberData.conversions).length === 0) {
+          // Если данных нет, показываем сообщение
+          ctx.parentElement.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--muted);">Нет данных о конверсии</div>';
+          return;
+        }
+        
+        // Сортируем этапы конверсии в правильном порядке
+        const conversionStages = [
+          'plan_created_to_first_training',
+          'first_training_to_second_training',
+          'second_training_to_third_training',
+          'third_training_to_fourth_training',
+          'fourth_training_to_fifth_training',
+          'fifth_training_to_completion'
+        ];
+        
+        const labels = [];
+        const conversionData = [];
+        const colors = [];
+        
+        conversionStages.forEach((stage, index) => {
+          if (memberData.conversions[stage] !== undefined) {
+            const value = (memberData.conversions[stage] || 0) * 100;
+            labels.push(getStageLabel(stage));
+            conversionData.push(value);
+            // Градиент цветов от зеленого к красному
+            const hue = 120 - (index * 20); // От зеленого (120) к красному (0)
+            colors.push(`hsl(${hue}, 70%, 50%)`);
+          }
+        });
+        
+        // Если есть завершение, добавляем его
+        const completionKey = Object.keys(memberData.conversions).find(k => k.includes('_completion'));
+        if (completionKey) {
+          labels.push('Финиш');
+          conversionData.push((memberData.conversions[completionKey] || 0) * 100);
+          colors.push('hsl(0, 70%, 50%)');
+        }
+        
+        if (labels.length === 0) {
+          ctx.parentElement.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--muted);">Нет данных о конверсии</div>';
+          return;
+        }
+        
+        // Используем линейный график для отображения воронки конверсии
+        new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: 'Конверсия (%)',
+              data: conversionData,
+              borderColor: '#6366f1',
+              backgroundColor: 'rgba(99, 102, 241, 0.1)',
+              fill: true,
+              tension: 0.4,
+              pointRadius: 6,
+              pointHoverRadius: 8,
+              pointBackgroundColor: '#6366f1',
+              pointBorderColor: '#fff',
+              pointBorderWidth: 2
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                callbacks: {
+                  label: function(context) {
+                    return 'Конверсия: ' + context.parsed.y.toFixed(1) + '%';
+                  }
+                }
+              }
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                max: 100,
+                ticks: {
+                  callback: function(value) {
+                    return value + '%';
+                  }
+                },
+                grid: {
+                  color: 'rgba(255, 255, 255, 0.1)'
+                }
+              },
+              x: {
+                grid: {
+                  display: false
+                },
+                ticks: {
+                  color: '#94a3b8',
+                  font: { size: 11 }
+                }
+              }
+            }
+          }
+        });
+      })
+      .catch(error => {
+        console.error('Ошибка загрузки данных конверсии:', error);
+        ctx.parentElement.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--muted);">Ошибка загрузки данных</div>';
+      });
+    
+    // Функция для получения читаемых названий этапов
+    function getStageLabel(stage) {
+      const labels = {
+        'plan_created_to_first_training': 'Старт',
+        'first_training_to_second_training': 'Этап 1→2',
+        'second_training_to_third_training': 'Этап 2→3',
+        'third_training_to_fourth_training': 'Этап 3→4',
+        'fourth_training_to_fifth_training': 'Этап 4→5',
+        'fifth_training_to_completion': 'Этап 5→Финиш'
+      };
+      return labels[stage] || stage.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+    }
+  }
+
+  // Отображение времени последнего входа в часовом поясе пользователя
+  (function() {
+    const lastLoginElement = document.getElementById('last-login-time');
+    const timezoneElement = document.getElementById('last-login-timezone');
+    
+    if (!lastLoginElement) return;
+    
+    const utcTimeStr = lastLoginElement.querySelector('[data-utc-time]')?.getAttribute('data-utc-time');
+    if (!utcTimeStr) {
+      if (timezoneElement) {
+        timezoneElement.textContent = '';
+      }
+      return;
+    }
+    
+    // Определяем часовой пояс пользователя (участника команды)
+    // Используем часовой пояс браузера менеджера как приближение
+    // В будущем можно сохранять часовой пояс пользователя в БД
+    const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const timezoneName = userTimezone.replace('_', ' ');
+    
+    // Конвертируем UTC время в локальное время пользователя
+    const utcDate = new Date(utcTimeStr);
+    
+    // Форматируем дату и время
+    const formatter = new Intl.DateTimeFormat('ru-RU', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZone: userTimezone
+    });
+    
+    const formattedTime = formatter.format(utcDate);
+    
+    // Отображаем время
+    lastLoginElement.innerHTML = formattedTime;
+    
+    // Отображаем часовой пояс
+    if (timezoneElement) {
+      timezoneElement.textContent = timezoneName;
+    }
+    
+    // Обновляем время каждую минуту (показываем относительное время)
+    function updateRelativeTime() {
+      const now = new Date();
+      const diffMs = now - utcDate;
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+      
+      let relativeTime = '';
+      if (diffMins < 1) {
+        relativeTime = 'только что';
+      } else if (diffMins < 60) {
+        relativeTime = `${diffMins} ${diffMins === 1 ? 'минуту' : diffMins < 5 ? 'минуты' : 'минут'} назад`;
+      } else if (diffHours < 24) {
+        relativeTime = `${diffHours} ${diffHours === 1 ? 'час' : diffHours < 5 ? 'часа' : 'часов'} назад`;
+      } else if (diffDays < 7) {
+        relativeTime = `${diffDays} ${diffDays === 1 ? 'день' : diffDays < 5 ? 'дня' : 'дней'} назад`;
+      } else {
+        relativeTime = formattedTime;
+      }
+      
+      lastLoginElement.innerHTML = relativeTime;
+    }
+    
+    // Обновляем сразу и затем каждую минуту
+    updateRelativeTime();
+    setInterval(updateRelativeTime, 60000);
+  })();
+</script>
+{% endblock %}

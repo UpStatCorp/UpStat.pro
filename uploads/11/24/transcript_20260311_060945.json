@@ -1,0 +1,256 @@
+{
+  "language_code": "rus",
+  "language_probability": 0.9615687727928162,
+  "text": "(гудок телефона) Алло, девушка еще на встрече, буквально еще минут пятнадцать-двадцать дайте мне. Хорошо, принято. Ага, давайте.",
+  "words": [
+    {
+      "text": "(гудок телефона)",
+      "start": 0.119,
+      "end": 17.239,
+      "type": "audio_event",
+      "speaker_id": "speaker_0",
+      "logprob": -0.5534300217340933
+    },
+    {
+      "text": " ",
+      "start": 17.239,
+      "end": 17.359,
+      "type": "spacing",
+      "speaker_id": "speaker_0",
+      "logprob": 0.0
+    },
+    {
+      "text": "Алло,",
+      "start": 17.359,
+      "end": 17.6,
+      "type": "word",
+      "speaker_id": "speaker_1",
+      "logprob": -0.035442581481765954
+    },
+    {
+      "text": " ",
+      "start": 17.6,
+      "end": 17.719,
+      "type": "spacing",
+      "speaker_id": "speaker_1",
+      "logprob": -0.00038115866482257843
+    },
+    {
+      "text": "девушка",
+      "start": 17.719,
+      "end": 18.079,
+      "type": "word",
+      "speaker_id": "speaker_1",
+      "logprob": -0.012435942622167724
+    },
+    {
+      "text": " ",
+      "start": 18.079,
+      "end": 18.219,
+      "type": "spacing",
+      "speaker_id": "speaker_1",
+      "logprob": -1.6106728315353394
+    },
+    {
+      "text": "еще",
+      "start": 18.219,
+      "end": 18.44,
+      "type": "word",
+      "speaker_id": "speaker_1",
+      "logprob": -1.6106728315353394
+    },
+    {
+      "text": " ",
+      "start": 18.44,
+      "end": 18.479,
+      "type": "spacing",
+      "speaker_id": "speaker_1",
+      "logprob": -0.22074533998966217
+    },
+    {
+      "text": "на",
+      "start": 18.479,
+      "end": 18.559,
+      "type": "word",
+      "speaker_id": "speaker_1",
+      "logprob": -0.22074533998966217
+    },
+    {
+      "text": " ",
+      "start": 18.559,
+      "end": 18.579,
+      "type": "spacing",
+      "speaker_id": "speaker_1",
+      "logprob": -0.2115253210067749
+    },
+    {
+      "text": "встрече,",
+      "start": 18.579,
+      "end": 19.039,
+      "type": "word",
+      "speaker_id": "speaker_1",
+      "logprob": -0.04473774757229876
+    },
+    {
+      "text": " ",
+      "start": 19.039,
+      "end": 19.1,
+      "type": "spacing",
+      "speaker_id": "speaker_1",
+      "logprob": -0.093953438103199
+    },
+    {
+      "text": "буквально",
+      "start": 19.1,
+      "end": 19.459,
+      "type": "word",
+      "speaker_id": "speaker_1",
+      "logprob": -0.03133679305190324
+    },
+    {
+      "text": " ",
+      "start": 19.459,
+      "end": 19.459,
+      "type": "spacing",
+      "speaker_id": "speaker_1",
+      "logprob": -0.0004968600696884096
+    },
+    {
+      "text": "еще",
+      "start": 19.459,
+      "end": 19.619,
+      "type": "word",
+      "speaker_id": "speaker_1",
+      "logprob": -0.0004968600696884096
+    },
+    {
+      "text": " ",
+      "start": 19.619,
+      "end": 19.659,
+      "type": "spacing",
+      "speaker_id": "speaker_1",
+      "logprob": -0.010996809229254723
+    },
+    {
+      "text": "минут",
+      "start": 19.659,
+      "end": 19.92,
+      "type": "word",
+      "speaker_id": "speaker_1",
+      "logprob": -0.010996809229254723
+    },
+    {
+      "text": " ",
+      "start": 19.92,
+      "end": 20.0,
+      "type": "spacing",
+      "speaker_id": "speaker_1",
+      "logprob": -0.02506561577320099
+    },
+    {
+      "text": "пятнадцать-двадцать",
+      "start": 20.0,
+      "end": 20.6,
+      "type": "word",
+      "speaker_id": "speaker_1",
+      "logprob": -0.02725508322289802
+    },
+    {
+      "text": " ",
+      "start": 20.6,
+      "end": 20.639,
+      "type": "spacing",
+      "speaker_id": "speaker_1",
+      "logprob": -4.8397800128441304e-05
+    },
+    {
+      "text": "дайте",
+      "start": 20.639,
+      "end": 20.84,
+      "type": "word",
+      "speaker_id": "speaker_1",
+      "logprob": -0.0007572968941531144
+    },
+    {
+      "text": " ",
+      "start": 20.84,
+      "end": 20.879,
+      "type": "spacing",
+      "speaker_id": "speaker_1",
+      "logprob": -0.00010978573118336499
+    },
+    {
+      "text": "мне.",
+      "start": 20.879,
+      "end": 21.1,
+      "type": "word",
+      "speaker_id": "speaker_1",
+      "logprob": -8.242870534047597e-05
+    },
+    {
+      "text": " ",
+      "start": 21.1,
+      "end": 22.619,
+      "type": "spacing",
+      "speaker_id": "speaker_1",
+      "logprob": 0.0
+    },
+    {
+      "text": "Хорошо,",
+      "start": 22.619,
+      "end": 23.22,
+      "type": "word",
+      "speaker_id": "speaker_0",
+      "logprob": -0.025548443018383944
+    },
+    {
+      "text": " ",
+      "start": 23.22,
+      "end": 23.259,
+      "type": "spacing",
+      "speaker_id": "speaker_0",
+      "logprob": -0.009751658886671066
+    },
+    {
+      "text": "принято.",
+      "start": 23.26,
+      "end": 24.299,
+      "type": "word",
+      "speaker_id": "speaker_0",
+      "logprob": -0.006116794869541309
+    },
+    {
+      "text": " ",
+      "start": 24.299,
+      "end": 24.339,
+      "type": "spacing",
+      "speaker_id": "speaker_0",
+      "logprob": 0.0
+    },
+    {
+      "text": "Ага,",
+      "start": 24.34,
+      "end": 24.579,
+      "type": "word",
+      "speaker_id": "speaker_1",
+      "logprob": -6.126871608103102e-05
+    },
+    {
+      "text": " ",
+      "start": 24.579,
+      "end": 24.699,
+      "type": "spacing",
+      "speaker_id": "speaker_1",
+      "logprob": -0.0012038849527016282
+    },
+    {
+      "text": "давайте.",
+      "start": 24.699,
+      "end": 26.539,
+      "type": "word",
+      "speaker_id": "speaker_1",
+      "logprob": -0.0006916118572917185
+    }
+  ],
+  "transcription_id": "ainOcJ1o0dmuFrR0l6ER"
+}

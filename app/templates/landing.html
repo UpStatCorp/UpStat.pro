@@ -1,0 +1,1974 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>UpStat — ИИ-платформа управления продажами</title>
+  <meta name="description" content="UpStat — интеллектуальная система управления продажами. Анализ звонков, обучение менеджеров и рост конверсии на автопилоте.">
+  <style>
+    /* ===== CSS Variables ===== */
+    :root{
+      --bg:#f8fafc; --surface:#fff; --text:#0f172a; --muted:#64748b; --border:#e2e8f0;
+      --brand:#2563eb; --brand-dark:#1d4ed8; --brand-light:#dbeafe;
+      --brand-2:#7c3aed; --brand-2-light:#ede9fe;
+      --success:#10b981; --success-light:#d1fae5;
+      --danger:#ef4444; --danger-light:#fee2e2;
+      --amber:#f59e0b; --amber-light:#fef3c7;
+      --shadow-sm:0 1px 2px rgba(15,23,42,.05);
+      --shadow:0 1px 3px rgba(15,23,42,.06),0 8px 24px rgba(15,23,42,.08);
+      --shadow-lg:0 4px 6px rgba(15,23,42,.05),0 20px 50px rgba(15,23,42,.12);
+      --shadow-xl:0 8px 16px rgba(15,23,42,.06),0 32px 64px rgba(15,23,42,.14);
+      --radius:16px; --radius-sm:12px; --radius-xs:8px; --radius-lg:24px;
+    }
+    *{box-sizing:border-box; margin:0; padding:0}
+    html{scroll-behavior:smooth; scroll-padding-top:80px; font-size:100%}
+    body{
+      background:var(--bg); color:var(--text);
+      font-family:'Inter',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;
+      font-size:16px; line-height:1.6; -webkit-font-smoothing:antialiased;
+      padding-top:72px;
+    }
+    a{color:inherit; text-decoration:none}
+    img{max-width:100%; display:block}
+    ul{list-style:none}
+
+    /* ===== Layout ===== */
+    .container{max-width:1200px; margin:0 auto; padding:0 24px}
+    .section{padding:80px 0}
+    .section-alt{background:linear-gradient(180deg,#f1f5f9 0%,#f8fafc 100%)}
+    .text-center{text-align:center}
+
+    /* ===== Typography ===== */
+    .h1{font-size:clamp(32px,5vw,52px); line-height:1.1; letter-spacing:-0.03em; font-weight:800}
+    .h2{font-size:clamp(26px,3.5vw,40px); line-height:1.15; letter-spacing:-0.02em; font-weight:800}
+    .h3{font-size:clamp(20px,2.5vw,28px); line-height:1.2; letter-spacing:-0.01em; font-weight:700}
+    .h4{font-size:18px; font-weight:700; line-height:1.3}
+    .lead{font-size:clamp(16px,1.8vw,20px); color:var(--muted); line-height:1.6}
+    .lead-lg{font-size:clamp(17px,2vw,22px); color:var(--muted); line-height:1.6}
+    .muted{color:var(--muted)}
+    .text-brand{color:var(--brand)}
+    .gradient-text{background:linear-gradient(135deg,var(--brand),var(--brand-2)); -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text}
+
+    /* ===== Buttons ===== */
+    .btn{
+      display:inline-flex; align-items:center; justify-content:center; gap:8px;
+      padding:14px 28px; border-radius:var(--radius-sm); font-weight:700; font-size:16px;
+      border:2px solid transparent; cursor:pointer; transition:all .2s ease;
+      white-space:nowrap; min-height:48px;
+    }
+    .btn-primary{
+      background:linear-gradient(135deg,var(--brand),var(--brand-2)); color:#fff;
+      box-shadow:0 4px 16px rgba(37,99,235,.3), 0 1px 3px rgba(37,99,235,.2);
+    }
+    .btn-primary:hover{transform:translateY(-2px); box-shadow:0 8px 28px rgba(37,99,235,.4), 0 2px 6px rgba(37,99,235,.25)}
+    .btn-outline{background:var(--surface); color:var(--text); border-color:var(--border)}
+    .btn-outline:hover{border-color:var(--brand); color:var(--brand); box-shadow:var(--shadow)}
+    .btn-ghost{background:transparent; color:var(--text); border-color:transparent}
+    .btn-ghost:hover{background:var(--surface); box-shadow:var(--shadow-sm)}
+    .btn-sm{padding:10px 20px; font-size:14px; min-height:40px}
+    .btn-lg{padding:18px 36px; font-size:18px; min-height:56px}
+
+    /* ===== Badge / Pill ===== */
+    .badge{
+      display:inline-flex; align-items:center; gap:6px;
+      padding:6px 14px; border-radius:999px; font-weight:600; font-size:13px;
+      background:var(--brand-light); color:var(--brand);
+    }
+    .badge-purple{background:var(--brand-2-light); color:var(--brand-2)}
+    .badge-green{background:var(--success-light); color:#059669}
+    .badge-amber{background:var(--amber-light); color:#d97706}
+    .pill{display:inline-block; padding:4px 12px; font-size:12px; font-weight:600; border-radius:999px; background:#e2e8f0; color:var(--muted)}
+
+    /* ===== Cards ===== */
+    .card{
+      background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+      box-shadow:var(--shadow-sm); transition:all .25s ease;
+    }
+    .card-hover:hover{
+      transform:translateY(-4px);
+      box-shadow:var(--shadow-lg);
+      border-color:rgba(37,99,235,.15);
+    }
+    .card-glow:hover{
+      box-shadow:0 8px 32px rgba(37,99,235,.12), 0 2px 8px rgba(37,99,235,.06);
+      border-color:rgba(37,99,235,.2);
+    }
+
+    /* ===== Grids ===== */
+    .grid-2{display:grid; grid-template-columns:repeat(2,1fr); gap:24px}
+    .grid-3{display:grid; grid-template-columns:repeat(3,1fr); gap:24px}
+    .grid-4{display:grid; grid-template-columns:repeat(4,1fr); gap:20px}
+
+    /* ===== Icon Box ===== */
+    .icon-box{
+      width:48px; height:48px; border-radius:var(--radius-sm);
+      display:flex; align-items:center; justify-content:center;
+      flex-shrink:0;
+    }
+    .icon-box svg{width:24px; height:24px}
+    .icon-box-blue{background:var(--brand-light); color:var(--brand)}
+    .icon-box-purple{background:var(--brand-2-light); color:var(--brand-2)}
+    .icon-box-green{background:var(--success-light); color:var(--success)}
+    .icon-box-amber{background:var(--amber-light); color:var(--amber)}
+    .icon-box-red{background:var(--danger-light); color:var(--danger)}
+    .icon-box-lg{width:56px; height:56px; border-radius:var(--radius)}
+    .icon-box-lg svg{width:28px; height:28px}
+
+    /* ========================================
+       HEADER / NAV
+    ======================================== */
+    .nav-header{
+      position:fixed; top:0; left:0; right:0; z-index:100;
+      background:rgba(255,255,255,.85); backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+      border-bottom:1px solid var(--border);
+      transition:box-shadow .3s ease;
+    }
+    .nav-header.scrolled{box-shadow:0 4px 20px rgba(15,23,42,.08)}
+    .nav-inner{display:flex; align-items:center; justify-content:space-between; height:72px}
+    .nav-logo{display:flex; align-items:center; gap:10px; font-weight:800; font-size:20px}
+    .nav-logo-img{
+      display:block; height:44px; width:auto;
+      border-radius:10px; object-fit:contain;
+    }
+    .nav-links{display:flex; align-items:center; gap:4px}
+    .nav-links a{
+      padding:8px 14px; border-radius:var(--radius-xs); font-size:15px; font-weight:500;
+      color:var(--muted); transition:all .2s ease;
+    }
+    .nav-links a:hover{color:var(--text); background:rgba(0,0,0,.04)}
+    .nav-actions{display:flex; align-items:center; gap:10px}
+    /* Burger */
+    .burger{
+      display:none; width:44px; height:44px; border:1px solid var(--border);
+      background:#fff; border-radius:var(--radius-sm); align-items:center; justify-content:center;
+      cursor:pointer; transition:all .2s;
+    }
+    .burger span{display:block; width:20px; height:2px; background:var(--text); position:relative; transition:.2s}
+    .burger span::before,.burger span::after{content:""; position:absolute; left:0; width:20px; height:2px; background:var(--text); transition:.25s}
+    .burger span::before{top:-6px}
+    .burger span::after{top:6px}
+    .burger.active span{background:transparent}
+    .burger.active span::before{top:0; transform:rotate(45deg)}
+    .burger.active span::after{top:0; transform:rotate(-45deg)}
+    /* Mobile Drawer */
+    .nav-drawer{
+      display:none; position:fixed; top:72px; left:0; right:0;
+      background:#fff; border-bottom:1px solid var(--border);
+      box-shadow:0 16px 40px rgba(15,23,42,.1); z-index:99;
+      padding:16px 24px; flex-direction:column; gap:8px;
+    }
+    .nav-drawer.open{display:flex}
+    .nav-drawer a{padding:12px 8px; font-size:16px; font-weight:500; color:var(--text)}
+    .nav-drawer .drawer-btns{display:flex; gap:10px; margin-top:8px}
+    .nav-drawer .drawer-btns .btn{flex:1; justify-content:center}
+
+    /* ========================================
+       HERO
+    ======================================== */
+    .hero{
+      padding:60px 0 80px; position:relative; overflow:hidden;
+      background:
+        radial-gradient(ellipse 900px 500px at 5% 20%, rgba(37,99,235,.08), transparent 60%),
+        radial-gradient(ellipse 800px 400px at 95% 10%, rgba(124,58,237,.06), transparent 60%),
+        radial-gradient(ellipse 600px 300px at 50% 100%, rgba(37,99,235,.04), transparent 60%);
+    }
+    .hero::before{
+      content:""; position:absolute; top:-200px; right:-200px; width:600px; height:600px;
+      border-radius:50%; background:radial-gradient(circle, rgba(37,99,235,.06), transparent 70%);
+      animation:floatBlob 20s ease-in-out infinite;
+    }
+    .hero::after{
+      content:""; position:absolute; bottom:-150px; left:-100px; width:500px; height:500px;
+      border-radius:50%; background:radial-gradient(circle, rgba(124,58,237,.05), transparent 70%);
+      animation:floatBlob 25s ease-in-out infinite reverse;
+    }
+    @keyframes floatBlob{
+      0%,100%{transform:translate(0,0) scale(1)}
+      25%{transform:translate(30px,-20px) scale(1.05)}
+      50%{transform:translate(-20px,30px) scale(.95)}
+      75%{transform:translate(15px,15px) scale(1.02)}
+    }
+    .hero-grid{display:grid; grid-template-columns:1.1fr 1fr; gap:48px; align-items:center; position:relative; z-index:1}
+    .hero-copy{display:flex; flex-direction:column; align-items:flex-start; gap:16px}
+    .hero-title{margin:0}
+    .hero-sub{max-width:540px}
+    .hero-btns{display:flex; gap:14px; flex-wrap:wrap}
+    .hero-proof{display:flex; align-items:center; gap:12px; margin-top:4px}
+    .hero-proof .avatars{display:flex}
+    .hero-proof .avatars span{
+      width:36px; height:36px; border-radius:50%; border:2px solid #fff;
+      display:flex; align-items:center; justify-content:center;
+      font-size:12px; font-weight:700; color:#fff;
+    }
+    .hero-proof .avatars span:not(:first-child){margin-left:-10px}
+    .hero-proof .avatars span:nth-child(1){background:#3b82f6}
+    .hero-proof .avatars span:nth-child(2){background:#8b5cf6}
+    .hero-proof .avatars span:nth-child(3){background:#06b6d4}
+    .hero-proof .avatars span:nth-child(4){background:#10b981}
+    .hero-visual{position:relative}
+    .hero-mockup{
+      border-radius:var(--radius); border:1px solid var(--border);
+      overflow:hidden; background:var(--surface); box-shadow:var(--shadow-xl);
+      aspect-ratio:16/10; display:flex; align-items:center; justify-content:center;
+    }
+    .hero-mockup-inner{
+      padding:32px; display:flex; flex-direction:column; gap:16px; width:100%;
+    }
+    .mock-bar{height:8px; border-radius:4px; background:#e2e8f0}
+    .mock-bar-brand{background:linear-gradient(90deg,var(--brand),var(--brand-2)); width:60%}
+    .mock-bar-sm{width:40%}
+    .mock-bar-xs{width:25%}
+    .mock-row{display:flex; gap:12px}
+    .mock-card{flex:1; height:60px; border-radius:var(--radius-xs); border:1px solid var(--border); background:var(--bg)}
+    .hero-float{
+      position:absolute; padding:12px 16px; border-radius:var(--radius-sm);
+      background:var(--surface); border:1px solid var(--border); box-shadow:var(--shadow-lg);
+      font-size:13px; font-weight:600; display:flex; align-items:center; gap:8px;
+      animation:floatCard 6s ease-in-out infinite;
+    }
+    .hero-float-1{top:-10px; right:-20px; animation-delay:0s}
+    .hero-float-2{bottom:20px; left:-30px; animation-delay:2s}
+    @keyframes floatCard{
+      0%,100%{transform:translateY(0)}
+      50%{transform:translateY(-8px)}
+    }
+
+    /* ========================================
+       SOCIAL PROOF BAR
+    ======================================== */
+    .social-bar{padding:40px 0; border-bottom:1px solid var(--border)}
+    .social-stats{display:flex; align-items:center; justify-content:center; gap:48px; flex-wrap:wrap}
+    .social-stat{text-align:center}
+    .social-stat .num{font-size:28px; font-weight:900; color:var(--text)}
+    .social-stat .label{font-size:14px; color:var(--muted); margin-top:2px}
+    /* Logo marquee */
+    .logo-marquee-wrap{overflow:hidden; margin-top:28px; position:relative}
+    .logo-marquee-wrap::before,.logo-marquee-wrap::after{
+      content:""; position:absolute; top:0; bottom:0; width:80px; z-index:2; pointer-events:none;
+    }
+    .logo-marquee-wrap::before{left:0; background:linear-gradient(90deg,var(--bg),transparent)}
+    .logo-marquee-wrap::after{right:0; background:linear-gradient(270deg,var(--bg),transparent)}
+    .logo-marquee{
+      display:flex; gap:24px; width:max-content;
+      animation:marquee 80s linear infinite;
+    }
+    .logo-marquee:hover{animation-play-state:paused}
+    @keyframes marquee{
+      0%{transform:translateX(0)}
+      100%{transform:translateX(-50%)}
+    }
+    .logo-item{
+      height:40px; padding:0 20px; border:1px solid var(--border); border-radius:var(--radius-xs);
+      display:flex; align-items:center; justify-content:center; font-size:13px; color:var(--muted); font-weight:600;
+      white-space:nowrap; flex-shrink:0; background:var(--surface); transition:all .2s;
+    }
+    .logo-item:hover{border-color:#cbd5e1; color:var(--text)}
+
+    /* ========================================
+       PAIN SECTION
+    ======================================== */
+    .pain-card{padding:24px; display:flex; gap:16px; align-items:flex-start}
+    .pain-card h4{margin-bottom:6px}
+    .pain-card p{color:var(--muted); font-size:15px; line-height:1.5}
+
+    /* ========================================
+       SOLUTION SECTION
+    ======================================== */
+    .solution-grid{display:grid; grid-template-columns:1fr 1fr; gap:32px; align-items:center}
+    .solution-list{display:flex; flex-direction:column; gap:20px}
+    .solution-item{display:flex; gap:16px; align-items:flex-start}
+    .solution-item h4{margin-bottom:4px}
+    .solution-item p{color:var(--muted); font-size:15px}
+    .solution-visual{
+      border-radius:var(--radius); background:linear-gradient(135deg,rgba(37,99,235,.05),rgba(124,58,237,.05));
+      border:1px solid var(--border); padding:40px; display:flex; align-items:center; justify-content:center;
+      min-height:360px;
+    }
+    .solution-visual-inner{
+      width:100%; max-width:320px;
+    }
+    .sv-row{display:flex; align-items:center; gap:12px; padding:14px 16px; background:var(--surface); border-radius:var(--radius-sm); border:1px solid var(--border); margin-bottom:10px; box-shadow:var(--shadow-sm)}
+    .sv-dot{width:10px; height:10px; border-radius:50%; flex-shrink:0}
+    .sv-dot-green{background:var(--success)}
+    .sv-dot-amber{background:var(--amber)}
+    .sv-dot-red{background:var(--danger)}
+    .sv-bar{flex:1; height:6px; border-radius:3px; background:#e2e8f0}
+    .sv-bar-fill{height:100%; border-radius:3px}
+    .sv-bar-fill-green{background:var(--success); width:85%}
+    .sv-bar-fill-amber{background:var(--amber); width:55%}
+    .sv-bar-fill-red{background:var(--danger); width:30%}
+    .sv-label{font-size:12px; font-weight:600; color:var(--muted); min-width:32px; text-align:right}
+
+    /* ========================================
+       FOR WHOM SECTION
+    ======================================== */
+    .whom-card{padding:28px; display:flex; flex-direction:column; gap:12px}
+    .whom-card .whom-tag{font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.05em}
+    .whom-card h4{font-size:17px}
+    .whom-card .whom-quote{font-style:italic; color:var(--muted); font-size:14px; padding:12px; background:var(--bg); border-radius:var(--radius-xs); border-left:3px solid var(--brand)}
+    .whom-card .whom-solution{font-size:14px; color:var(--text); font-weight:600}
+
+    /* ========================================
+       FEATURES SECTION
+    ======================================== */
+    .feat-card{padding:28px; display:flex; flex-direction:column; gap:12px}
+    .feat-card h4{font-size:17px}
+    .feat-card p{color:var(--muted); font-size:15px; line-height:1.5}
+
+    /* ========================================
+       HOW IT WORKS
+    ======================================== */
+    .steps-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:20px; position:relative}
+    .steps-grid::before{
+      content:""; position:absolute; top:36px; left:calc(12.5% + 24px); right:calc(12.5% + 24px);
+      height:2px; background:linear-gradient(90deg,var(--brand),var(--brand-2));
+      opacity:.2; z-index:0;
+    }
+    .step-card{padding:24px; text-align:center; display:flex; flex-direction:column; align-items:center; gap:12px; position:relative; z-index:1}
+    .step-num{
+      width:48px; height:48px; border-radius:50%;
+      background:linear-gradient(135deg,var(--brand),var(--brand-2));
+      color:#fff; font-weight:800; font-size:18px;
+      display:flex; align-items:center; justify-content:center;
+      box-shadow:0 4px 12px rgba(37,99,235,.25);
+    }
+    .step-card h4{font-size:16px}
+    .step-card p{color:var(--muted); font-size:14px}
+
+    /* ========================================
+       RESULTS / METRICS
+    ======================================== */
+    .results-grid{display:grid; grid-template-columns:1fr 1fr; gap:32px; align-items:center}
+    .results-list li{
+      display:flex; align-items:flex-start; gap:12px; padding:10px 0;
+      font-size:16px; line-height:1.5;
+    }
+    .results-list li svg{flex-shrink:0; margin-top:3px; color:var(--success)}
+    .metrics-row{display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-top:32px}
+    .metric-card{padding:24px; text-align:center; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow-sm)}
+    .metric-val{font-size:clamp(28px,4vw,42px); font-weight:900; line-height:1}
+    .metric-val.brand{color:var(--brand)}
+    .metric-val.green{color:var(--success)}
+    .metric-val.purple{color:var(--brand-2)}
+    .metric-desc{color:var(--muted); font-size:14px; margin-top:6px}
+
+    /* ========================================
+       CTA BANNER
+    ======================================== */
+    .cta-banner{
+      padding:56px 48px; border-radius:var(--radius-lg); text-align:center;
+      background:linear-gradient(135deg, #1e1b4b 0%, #312e81 40%, #4338ca 100%);
+      color:#fff; position:relative; overflow:hidden;
+      border:1px solid rgba(255,255,255,.08);
+    }
+    .cta-banner::before{
+      content:""; position:absolute; top:-40%; right:-15%; width:500px; height:500px;
+      border-radius:50%; background:radial-gradient(circle, rgba(99,102,241,.25) 0%, transparent 70%);
+    }
+    .cta-banner::after{
+      content:""; position:absolute; bottom:-40%; left:-10%; width:400px; height:400px;
+      border-radius:50%; background:radial-gradient(circle, rgba(139,92,246,.2) 0%, transparent 70%);
+    }
+    .cta-banner *{position:relative; z-index:1}
+    .cta-banner .h2{color:#fff; font-size:clamp(24px,4vw,36px); line-height:1.25}
+    .cta-banner .lead{color:rgba(255,255,255,.75); font-size:clamp(15px,2vw,18px)}
+    .cta-banner .btn{
+      background:#fff; color:#4338ca; font-weight:700;
+      padding:16px 36px; border-radius:var(--radius-sm); font-size:16px;
+      box-shadow:0 4px 16px rgba(0,0,0,.15);
+      transition:all .25s ease;
+    }
+    .cta-banner .btn:hover{transform:translateY(-2px); box-shadow:0 10px 32px rgba(0,0,0,.25)}
+
+    /* ========================================
+       TESTIMONIALS
+    ======================================== */
+    .quote-card{padding:28px; display:flex; flex-direction:column; gap:16px}
+    .quote-stars{display:flex; gap:2px; color:#f59e0b}
+    .quote-text{font-size:16px; line-height:1.6; color:var(--text)}
+    .quote-author{display:flex; align-items:center; gap:12px}
+    .quote-avatar{
+      width:44px; height:44px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+      font-weight:700; font-size:16px; color:#fff;
+    }
+    .quote-meta .name{font-weight:700; font-size:15px}
+    .quote-meta .role{color:var(--muted); font-size:13px}
+
+    /* ===== Case Study Cards ===== */
+    .case-card{padding:0; overflow:hidden; display:flex; flex-direction:column}
+    .case-header{padding:20px 28px; display:flex; align-items:center; gap:12px}
+    .case-header .case-icon{
+      width:44px; height:44px; border-radius:12px; display:flex; align-items:center; justify-content:center; flex-shrink:0;
+    }
+    .case-header .case-icon svg{width:22px; height:22px}
+    .case-header .case-industry{font-weight:700; font-size:15px}
+    .case-header .case-tag{font-size:12px; color:var(--muted)}
+    .case-body{padding:0 28px 28px; flex:1; display:flex; flex-direction:column; gap:16px}
+    .case-block{padding:16px; border-radius:var(--radius-sm); border:1px solid var(--border)}
+    .case-block-problem{background:rgba(239,68,68,.04); border-color:rgba(239,68,68,.12)}
+    .case-block-result{background:rgba(16,185,129,.04); border-color:rgba(16,185,129,.15)}
+    .case-block-label{
+      display:inline-flex; align-items:center; gap:6px;
+      font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; margin-bottom:8px;
+    }
+    .case-block-problem .case-block-label{color:var(--danger)}
+    .case-block-result .case-block-label{color:var(--success)}
+    .case-block p{font-size:14px; line-height:1.6; color:var(--text)}
+    .case-highlight{
+      display:inline-flex; align-items:center; gap:8px;
+      padding:10px 16px; border-radius:var(--radius-xs);
+      background:linear-gradient(135deg,rgba(37,99,235,.08),rgba(124,58,237,.06));
+      border:1px solid rgba(37,99,235,.12);
+      font-size:15px; font-weight:800; color:var(--brand); margin-top:4px;
+    }
+    .case-highlight svg{flex-shrink:0}
+
+    /* ========================================
+       PRICING
+    ======================================== */
+    .pricing-section{background:linear-gradient(180deg,#f1f5f9 0%,#f8fafc 100%)}
+
+    /* Toggle (center of page) */
+    .pricing-controls{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      margin:18px 0 28px;
+    }
+    .pricing-toggle{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding:8px;
+      border:1px solid var(--border);
+      border-radius:999px;
+      background:#fff;
+      box-shadow:0 6px 20px rgba(2,6,23,.06);
+    }
+    .pricing-toggle button{
+      border:0;
+      background:transparent;
+      padding:10px 14px;
+      border-radius:999px;
+      cursor:pointer;
+      font-weight:700;
+      color:var(--muted);
+      font-size:14px;
+    }
+    .pricing-toggle button.active{
+      background:var(--text);
+      color:#fff;
+    }
+    .pricing-save{
+      font-size:12px;
+      color:var(--brand);
+      font-weight:900;
+      margin-left:8px;
+      user-select:none;
+    }
+
+    /* Pricing grid: 4 columns, each card is a subgrid spanning 9 rows */
+    .pricing-grid{
+      display:grid;
+      grid-template-columns: repeat(4, 1fr);
+      grid-template-rows: auto auto auto auto auto auto auto auto 1fr;
+      gap:0 14px;
+      align-items:start;
+    }
+    @media (max-width: 980px){
+      .pricing-grid{grid-template-columns: repeat(2, 1fr);}
+    }
+    @media (max-width: 560px){
+      .pricing-grid{grid-template-columns: 1fr;}
+    }
+    .plan-card{
+      position:relative;
+      border:1px solid var(--border);
+      border-radius:18px;
+      background:var(--surface);
+      box-shadow:0 10px 30px rgba(2,6,23,.08);
+      padding:24px 20px 20px;
+      overflow:hidden;
+      display:grid;
+      grid-row:1 / -1;
+      grid-template-rows:subgrid;
+      row-gap:0;
+    }
+    .plan-card.featured{
+      border:2px solid rgba(37,99,235,.35);
+      box-shadow:0 16px 50px rgba(37,99,235,.16);
+    }
+    .plan-badge{
+      position:absolute;
+      top:12px;
+      left:12px;
+      padding:6px 10px;
+      border-radius:999px;
+      background:var(--brand-light,#eef2ff);
+      color:var(--brand);
+      font-weight:900;
+      font-size:12px;
+      border:1px solid rgba(37,99,235,.18);
+    }
+    .plan-label{
+      letter-spacing:.06em;
+      font-weight:900;
+      font-size:13px;
+      color:var(--text);
+      padding-bottom:4px;
+      align-self:end;
+    }
+    .plan-title{
+      font-size:22px;
+      font-weight:950;
+      margin:0;
+      padding-bottom:10px;
+      align-self:start;
+    }
+
+    .plan-priceRow{
+      display:flex;
+      align-items:baseline;
+      gap:6px;
+      padding-bottom:8px;
+      align-self:start;
+    }
+    .plan-price{
+      font-size:40px;
+      font-weight:950;
+      letter-spacing:-.03em;
+      font-variant-numeric: tabular-nums;
+    }
+    .plan-per{
+      color:var(--muted);
+      font-weight:700;
+    }
+
+    .plan-yearTotal{
+      display:none;
+      padding:10px 12px;
+      border-radius:14px;
+      background:#fff;
+      border:1px solid var(--border);
+      color:var(--text);
+      font-weight:900;
+      font-size:13px;
+      box-shadow:0 6px 20px rgba(2,6,23,.06);
+      font-variant-numeric: tabular-nums;
+    }
+    .plan-yearTotal span{
+      color:var(--muted);
+      font-weight:800;
+    }
+
+    .plan-desc{
+      margin:0;
+      color:var(--muted);
+      font-size:13px;
+      line-height:1.5;
+      padding-bottom:10px;
+      align-self:start;
+    }
+
+    .plan-meta{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      padding-bottom:12px;
+      align-self:start;
+      align-content:start;
+    }
+    .plan-chip{
+      background:var(--bg-alt,#f1f5f9);
+      border:1px solid var(--border);
+      color:var(--text);
+      font-weight:800;
+      font-size:12px;
+      padding:7px 10px;
+      border-radius:999px;
+      white-space:nowrap;
+    }
+
+    .plan-cta{
+      display:flex;
+      gap:10px;
+      align-items:start;
+      padding-bottom:14px;
+      align-self:start;
+    }
+    .plan-cta .btn{width:100%; padding:14px 14px; font-size:15px; text-align:center}
+
+    .plan-sectionTitle{
+      margin:0 0 6px;
+      font-size:12px;
+      font-weight:950;
+      color:var(--muted);
+      letter-spacing:.08em;
+      text-transform:uppercase;
+      align-self:start;
+    }
+    .plan-features{
+      list-style:none;
+      padding:0;
+      margin:0;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      align-self:start;
+    }
+    .plan-features li{
+      display:flex;
+      gap:10px;
+      align-items:flex-start;
+      font-size:13px;
+      line-height:1.4;
+      color:var(--text);
+    }
+    .plan-tick{
+      width:18px; height:18px;
+      border-radius:6px;
+      background:rgba(22,163,74,.12);
+      border:1px solid rgba(22,163,74,.25);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      flex:0 0 18px;
+      margin-top:1px;
+      color:var(--success,#16a34a);
+      font-weight:900;
+      font-size:12px;
+    }
+
+    .pricing-allInclude{
+      margin-top:18px;
+      padding:14px 14px;
+      border:1px solid var(--border);
+      border-radius:16px;
+      background:#fff;
+      box-shadow:0 10px 30px rgba(2,6,23,.06);
+    }
+    .pricing-allInclude h3{
+      margin:0 0 10px;
+      font-size:14px;
+      font-weight:950;
+      letter-spacing:.02em;
+    }
+    .pricing-includeGrid{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px 14px;
+      color:var(--muted);
+      font-size:13px;
+    }
+    .pricing-includeItem{
+      display:flex;
+      align-items:center;
+      gap:8px;
+    }
+    .pricing-miniTick{
+      width:18px;height:18px;border-radius:999px;
+      border:1px solid rgba(22,163,74,.25);
+      background:rgba(22,163,74,.10);
+      display:flex;align-items:center;justify-content:center;
+      color:var(--success,#16a34a);font-weight:900;font-size:12px;
+    }
+    .pricing-note{
+      margin-top:10px;
+      font-size:12px;
+      color:var(--muted);
+    }
+
+    /* ========================================
+       FAQ
+    ======================================== */
+    .faq-item{
+      border:1px solid var(--border); border-radius:var(--radius-sm);
+      background:var(--surface); overflow:hidden; transition:all .2s;
+    }
+    .faq-item:hover{border-color:rgba(37,99,235,.2)}
+    .faq-item+.faq-item{margin-top:12px}
+    .faq-q{
+      padding:18px 24px; cursor:pointer; font-weight:700; font-size:16px;
+      display:flex; align-items:center; justify-content:space-between; gap:16px;
+      user-select:none;
+    }
+    .faq-q::after{
+      content:""; width:10px; height:10px; border-right:2px solid var(--muted); border-bottom:2px solid var(--muted);
+      transform:rotate(45deg); transition:transform .25s; flex-shrink:0;
+    }
+    .faq-item.open .faq-q::after{transform:rotate(-135deg)}
+    .faq-a{
+      max-height:0; overflow:hidden; transition:max-height .3s ease, padding .3s ease;
+      padding:0 24px; color:var(--muted); font-size:15px; line-height:1.6;
+    }
+    .faq-item.open .faq-a{max-height:200px; padding:0 24px 18px}
+
+    /* ========================================
+       FOOTER
+    ======================================== */
+    .site-footer{
+      background:#0f172a; color:#94a3b8; padding:64px 0 0;
+    }
+    .footer-grid{display:grid; grid-template-columns:1.5fr 1fr 1fr 1fr; gap:40px}
+    .footer-brand{display:flex; flex-direction:column; gap:16px}
+    .footer-brand .logo{display:flex; align-items:center; gap:10px; font-weight:800; font-size:20px; color:#fff}
+    .footer-brand .logo .logo-icon{
+      width:36px; height:36px; border-radius:10px;
+      background:linear-gradient(135deg,var(--brand),var(--brand-2));
+      display:flex; align-items:center; justify-content:center; color:#fff; font-weight:900; font-size:16px;
+    }
+    .footer-brand p{font-size:14px; line-height:1.6; max-width:280px}
+    .footer-social{display:flex; gap:12px; margin-top:4px}
+    .footer-social a{
+      width:40px; height:40px; border-radius:10px; border:1px solid rgba(255,255,255,.1);
+      display:flex; align-items:center; justify-content:center; color:#94a3b8;
+      transition:all .2s;
+    }
+    .footer-social a:hover{background:rgba(255,255,255,.08); color:#fff; border-color:rgba(255,255,255,.2)}
+    .footer-col h4{color:#fff; font-size:14px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; margin-bottom:16px}
+    .footer-col ul{display:flex; flex-direction:column; gap:10px}
+    .footer-col a{font-size:14px; color:#94a3b8; transition:color .2s}
+    .footer-col a:hover{color:#fff}
+    .footer-bottom{
+      margin-top:48px; padding:24px 0; border-top:1px solid rgba(255,255,255,.08);
+      display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;
+      font-size:13px;
+    }
+    .footer-bottom a{color:#94a3b8; transition:color .2s}
+    .footer-bottom a:hover{color:#fff}
+    .footer-legal{display:flex; gap:24px}
+
+    /* ========================================
+       MOBILE STICKY CTA
+    ======================================== */
+    .mobile-cta{
+      display:none; position:fixed; bottom:0; left:0; right:0; z-index:90;
+      padding:12px 16px; background:rgba(255,255,255,.95); backdrop-filter:blur(8px);
+      border-top:1px solid var(--border); box-shadow:0 -4px 16px rgba(15,23,42,.08);
+    }
+    .mobile-cta .btn{width:100%}
+
+    /* ========================================
+       SCROLL REVEAL
+    ======================================== */
+    .reveal{opacity:0; transform:translateY(20px); transition:opacity .6s ease, transform .6s ease; will-change:transform,opacity}
+    .reveal.is-visible{opacity:1; transform:none}
+    .reveal-left{transform:translateX(-24px)}
+    .reveal-right{transform:translateX(24px)}
+    .reveal-zoom{transform:scale(.95); transition:opacity .6s ease, transform .6s ease}
+    .reveal-zoom.is-visible{transform:none}
+    .reveal[data-delay="1"]{transition-delay:.08s}
+    .reveal[data-delay="2"]{transition-delay:.16s}
+    .reveal[data-delay="3"]{transition-delay:.24s}
+    .reveal[data-delay="4"]{transition-delay:.32s}
+    .reveal[data-delay="5"]{transition-delay:.40s}
+    .reveal[data-delay="6"]{transition-delay:.48s}
+
+    /* ========================================
+       RESPONSIVE
+    ======================================== */
+    @media(max-width:1024px){
+      .hero-grid{grid-template-columns:1fr; gap:40px}
+      .hero-visual{max-width:560px; margin:0 auto}
+      .solution-grid{grid-template-columns:1fr}
+      .solution-visual{min-height:280px}
+      .results-grid{grid-template-columns:1fr}
+      .footer-grid{grid-template-columns:1fr 1fr}
+    }
+    @media(max-width:860px){
+      .nav-links{display:none}
+      .nav-actions{display:none}
+      .burger{display:inline-flex}
+      .mobile-cta{display:block}
+      body{padding-bottom:72px}
+      .section{padding:60px 0}
+      .grid-3{grid-template-columns:1fr 1fr}
+      .grid-4{grid-template-columns:1fr 1fr}
+      .steps-grid{grid-template-columns:1fr 1fr}
+      .steps-grid::before{display:none}
+      .metrics-row{grid-template-columns:1fr}
+      .cta-banner{padding:40px 24px; border-radius:var(--radius)}
+      .hero-float{display:none!important}
+      .hero-visual{display:none!important}
+    }
+    @media(max-width:640px){
+      .container{padding:0 16px}
+      .section{padding:48px 0}
+      .hero{padding:40px 0 60px}
+      .grid-2,.grid-3,.grid-4{grid-template-columns:1fr}
+      .steps-grid{grid-template-columns:1fr}
+      .hero-btns{flex-direction:column; width:100%}
+      .hero-btns .btn{width:100%}
+      .footer-grid{grid-template-columns:1fr}
+      .footer-bottom{flex-direction:column; text-align:center}
+      .footer-legal{justify-content:center}
+      .social-stats{gap:24px}
+      .plan-card{padding:24px}
+    }
+    @media(prefers-reduced-motion:reduce){
+      .reveal,.reveal-left,.reveal-right,.reveal-zoom{transition:none!important; transform:none!important; opacity:1!important}
+      .hero::before,.hero::after,.hero-float{animation:none!important}
+      .card-hover:hover,.card-glow:hover{transform:none!important}
+      .btn-primary:hover{transform:none!important}
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ============ NAV ============ -->
+  <header class="nav-header" id="nav-header">
+    <div class="container nav-inner">
+      <a href="/" class="nav-logo">
+        <img src="/static/img/Gemini_Generated_Image_4i7muu4i7muu4i7m.png"
+             alt="UpStat" class="nav-logo-img">
+        <span>UpStat</span>
+      </a>
+      <nav class="nav-links" aria-label="Навигация">
+        <a href="#problems">Проблемы</a>
+        <a href="#solution">Решение</a>
+        <a href="#features">Возможности</a>
+        <a href="#how">Как работает</a>
+        <a href="#pricing">Тарифы</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+      <div class="nav-actions">
+        <a class="btn btn-ghost btn-sm" href="/login">Войти</a>
+        <a class="btn btn-primary btn-sm" href="/register">Начать бесплатно</a>
+      </div>
+      <button class="burger" id="nav-burger" aria-label="Меню"><span></span></button>
+    </div>
+    <div class="nav-drawer" id="nav-drawer">
+      <a href="#problems">Проблемы</a>
+      <a href="#solution">Решение</a>
+      <a href="#features">Возможности</a>
+      <a href="#how">Как работает</a>
+      <a href="#pricing">Тарифы</a>
+      <a href="#faq">FAQ</a>
+      <div class="drawer-btns">
+        <a class="btn btn-outline btn-sm" href="/login">Войти</a>
+        <a class="btn btn-primary btn-sm" href="/register">Начать бесплатно</a>
+      </div>
+    </div>
+  </header>
+
+  <!-- ============ HERO ============ -->
+  <section class="hero">
+    <div class="container hero-grid">
+      <div class="hero-copy reveal reveal-left">
+        <div class="badge">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+          ИИ-платформа для управления продажами
+        </div>
+        <h1 class="h1 hero-title">Ваши продажи работают<br><span class="gradient-text">на автопилоте</span> — даже когда вы в отпуске</h1>
+        <p class="lead-lg hero-sub">UpStat анализирует каждый звонок, находит слабые места менеджеров и превращает хаос в предсказуемую систему роста продаж.</p>
+        <div class="hero-btns">
+          <a class="btn btn-primary btn-lg" href="/register">
+            Попробовать бесплатно
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </a>
+          <a class="btn btn-outline btn-lg" href="#how">Как это работает</a>
+        </div>
+        <div class="hero-proof">
+          <div class="avatars">
+            <span>АК</span><span>МИ</span><span>ДС</span><span>ОВ</span>
+          </div>
+          <div>
+            <div style="font-weight:700; font-size:14px">500+ компаний</div>
+            <div style="font-size:13px; color:var(--muted)">уже управляют продажами с UpStat</div>
+          </div>
+        </div>
+      </div>
+      <div class="hero-visual reveal reveal-right reveal-zoom">
+        <div class="hero-mockup">
+          <div class="hero-mockup-inner">
+            <div class="mock-bar mock-bar-brand" style="width:70%"></div>
+            <div class="mock-bar" style="width:90%"></div>
+            <div class="mock-bar" style="width:50%"></div>
+            <div class="mock-row">
+              <div class="mock-card"></div>
+              <div class="mock-card"></div>
+              <div class="mock-card"></div>
+            </div>
+            <div class="mock-bar" style="width:80%"></div>
+            <div class="mock-row">
+              <div class="mock-card" style="height:80px"></div>
+              <div class="mock-card" style="height:80px"></div>
+            </div>
+          </div>
+        </div>
+        <div class="hero-float hero-float-1">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          Конверсия +27%
+        </div>
+        <div class="hero-float hero-float-2">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.5"><path d="M12 20V10M18 20V4M6 20v-4"/></svg>
+          Аналитика в реальном времени
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SOCIAL PROOF BAR ============ -->
+  <section class="social-bar reveal reveal-up">
+    <div class="container">
+      <div class="social-stats">
+        <div class="social-stat">
+          <div class="num" data-count="10000" data-suffix="+">0</div>
+          <div class="label">Человек изучили технологию продаж</div>
+        </div>
+        <div class="social-stat">
+          <div class="num">от +20,6%</div>
+          <div class="label">Прирост конверсии продаж</div>
+        </div>
+        <div class="social-stat">
+          <div class="num">~300%</div>
+          <div class="label">Экономия времени РОПа</div>
+        </div>
+        <div class="social-stat">
+          <div class="num" data-count="100" data-suffix="%">0</div>
+          <div class="label">Прозрачность стандартов продаж</div>
+        </div>
+      </div>
+      <div class="logo-marquee-wrap">
+        <div class="logo-marquee" id="logo-marquee">
+          <div class="logo-item">Weltew Home</div>
+          <div class="logo-item">Форт Боярд</div>
+          <div class="logo-item">Prime Mebel Group</div>
+          <div class="logo-item">Оконные Системы</div>
+          <div class="logo-item">Промпутьснабжение</div>
+          <div class="logo-item">Vitaplastica</div>
+          <div class="logo-item">Baro Service</div>
+          <div class="logo-item">Porsha</div>
+          <div class="logo-item">Profi Dress</div>
+          <div class="logo-item">Sweet Home</div>
+          <div class="logo-item">Агрономъ</div>
+          <div class="logo-item">Орматек</div>
+          <div class="logo-item">Телесеть+</div>
+          <div class="logo-item">ExpertLine</div>
+          <div class="logo-item">Полезный Юрист</div>
+          <div class="logo-item">Красный Кит</div>
+          <div class="logo-item">ЕлиХудели</div>
+          <div class="logo-item">DaVita</div>
+          <div class="logo-item">ПрофТехИнжиниринг</div>
+          <div class="logo-item">Септик78</div>
+          <div class="logo-item">Global Estate</div>
+          <div class="logo-item">Amway</div>
+          <div class="logo-item">Мир Стиля</div>
+          <div class="logo-item">Aqua Leader Pools</div>
+          <div class="logo-item">Екатерининский Лицей</div>
+          <div class="logo-item">АвтоСвет</div>
+          <div class="logo-item">ТрансТехКомплект</div>
+          <div class="logo-item">Бегемот</div>
+          <div class="logo-item">Райтон</div>
+          <div class="logo-item">Центральное Агентство Недвижимости</div>
+          <div class="logo-item">Умная Техника</div>
+          <div class="logo-item">Risk Expert</div>
+          <div class="logo-item">Big Promo</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ PAIN / PROBLEMS ============ -->
+  <section id="problems" class="section">
+    <div class="container">
+      <div class="text-center" style="max-width:680px; margin:0 auto 40px">
+        <div class="badge badge-amber" style="margin-bottom:16px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          Знакомые проблемы?
+        </div>
+        <h2 class="h2">Менеджеры сливают заявки,<br>а вы узнаёте об этом последним</h2>
+        <p class="lead" style="margin-top:12px">80% владельцев бизнеса не знают, что происходит на звонках их менеджеров. Деньги утекают — а виновных нет.</p>
+      </div>
+      <div class="grid-2">
+        <div class="card card-hover pain-card reveal reveal-up" data-delay="1">
+          <div class="icon-box icon-box-red">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16 16s-1.5-2-4-2-4 2-4 2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+          </div>
+          <div>
+            <h4>Хаос вместо системы</h4>
+            <p>Каждый менеджер продаёт по-своему. Нет единого стандарта — нет предсказуемости. Результат зависит от настроения продавца.</p>
+          </div>
+        </div>
+        <div class="card card-hover pain-card reveal reveal-up" data-delay="2">
+          <div class="icon-box icon-box-amber">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+          </div>
+          <div>
+            <h4>Зависимость от людей</h4>
+            <p>Уволился лучший продавец — и выручка упала. Вы заложник своих сотрудников, а не руководитель системы.</p>
+          </div>
+        </div>
+        <div class="card card-hover pain-card reveal reveal-up" data-delay="3">
+          <div class="icon-box icon-box-purple">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </div>
+          <div>
+            <h4>Нулевая прозрачность</h4>
+            <p>Вы не знаете, почему один менеджер закрывает 30%, а другой — 5%. Без данных — только догадки и споры.</p>
+          </div>
+        </div>
+        <div class="card card-hover pain-card reveal reveal-up" data-delay="4">
+          <div class="icon-box icon-box-blue">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          </div>
+          <div>
+            <h4>Ручной контроль съедает время</h4>
+            <p>Прослушивание звонков, разбор ошибок, обучение — вы тратите часы на то, что должна делать система.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SOLUTION ============ -->
+  <section id="solution" class="section section-alt">
+    <div class="container">
+      <div class="text-center" style="max-width:680px; margin:0 auto 40px">
+        <div class="badge badge-green" style="margin-bottom:16px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+          Решение
+        </div>
+        <h2 class="h2">UpStat заменяет ручной контроль<br>интеллектуальной системой</h2>
+        <p class="lead" style="margin-top:12px">Один инструмент, который видит всё, обучает сам и показывает, где теряются деньги.</p>
+      </div>
+      <div class="solution-grid">
+        <div class="solution-list">
+          <div class="solution-item reveal reveal-left" data-delay="1">
+            <div class="icon-box icon-box-blue icon-box-lg">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10M18 20V4M6 20v-4"/></svg>
+            </div>
+            <div>
+              <h4>Видите всю картину в цифрах</h4>
+              <p>Воронка, конверсия, KPI каждого менеджера — без прослушивания сотен звонков.</p>
+            </div>
+          </div>
+          <div class="solution-item reveal reveal-left" data-delay="2">
+            <div class="icon-box icon-box-green icon-box-lg">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            </div>
+            <div>
+              <h4>ИИ обучает менеджеров за вас</h4>
+              <p>Персональный план улучшений на основе реальных ошибок. Не теория — а конкретные рекомендации.</p>
+            </div>
+          </div>
+          <div class="solution-item reveal reveal-left" data-delay="3">
+            <div class="icon-box icon-box-purple icon-box-lg">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+            </div>
+            <div>
+              <h4>Контроль без микроменеджмента</h4>
+              <p>Система сама находит сбои и показывает, где нужно вмешательство. Вы управляете — а не тушите пожары.</p>
+            </div>
+          </div>
+          <div class="solution-item reveal reveal-left" data-delay="4">
+            <div class="icon-box icon-box-amber icon-box-lg">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+            </div>
+            <div>
+              <h4>Предсказуемый рост выручки</h4>
+              <p>Когда каждый звонок под контролем — конверсия растёт, а вы знаете, сколько денег придёт завтра.</p>
+            </div>
+          </div>
+        </div>
+        <div class="solution-visual reveal reveal-right reveal-zoom">
+          <div class="solution-visual-inner">
+            <div style="font-size:13px; font-weight:600; color:var(--muted); margin-bottom:12px">Эффективность менеджеров</div>
+            <div class="sv-row">
+              <div class="sv-dot sv-dot-green"></div>
+              <div style="flex:1">
+                <div style="font-size:13px; font-weight:600">Алексей К.</div>
+                <div class="sv-bar"><div class="sv-bar-fill sv-bar-fill-green"></div></div>
+              </div>
+              <div class="sv-label">85%</div>
+            </div>
+            <div class="sv-row">
+              <div class="sv-dot sv-dot-amber"></div>
+              <div style="flex:1">
+                <div style="font-size:13px; font-weight:600">Мария И.</div>
+                <div class="sv-bar"><div class="sv-bar-fill sv-bar-fill-amber"></div></div>
+              </div>
+              <div class="sv-label">55%</div>
+            </div>
+            <div class="sv-row">
+              <div class="sv-dot sv-dot-red"></div>
+              <div style="flex:1">
+                <div style="font-size:13px; font-weight:600">Дмитрий С.</div>
+                <div class="sv-bar"><div class="sv-bar-fill sv-bar-fill-red"></div></div>
+              </div>
+              <div class="sv-label">30%</div>
+            </div>
+            <div style="margin-top:16px; padding:12px 16px; background:var(--brand-light); border-radius:var(--radius-xs); border:1px solid rgba(37,99,235,.15)">
+              <div style="font-size:12px; font-weight:700; color:var(--brand); display:flex; align-items:center; gap:6px">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+                ИИ-рекомендация для Дмитрия
+              </div>
+              <div style="font-size:12px; color:var(--muted); margin-top:4px">Пропускает этап выявления потребностей. Рекомендуем тренировку #3.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FOR WHOM ============ -->
+  <section class="section">
+    <div class="container">
+      <div class="text-center" style="max-width:680px; margin:0 auto 40px">
+        <div class="badge badge-purple" style="margin-bottom:16px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+          Для кого UpStat
+        </div>
+        <h2 class="h2">Для бизнеса на любом этапе роста</h2>
+        <p class="lead" style="margin-top:12px">Не важно, 2 у вас менеджера или 200 — UpStat адаптируется под ваш масштаб.</p>
+      </div>
+      <div class="grid-4">
+        <div class="card card-hover whom-card reveal reveal-up" data-delay="1">
+          <div class="whom-tag" style="color:var(--brand)">Стартап</div>
+          <h4>Основатель, который сам продаёт</h4>
+          <div class="whom-quote">«Я устал быть главным продавцом. Хочу, чтобы продавали без меня.»</div>
+          <div class="whom-solution">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.5" style="display:inline; vertical-align:middle"><polyline points="20 6 9 17 4 12"/></svg>
+            UpStat создаст систему, которая работает без вас
+          </div>
+        </div>
+        <div class="card card-hover whom-card reveal reveal-up" data-delay="2">
+          <div class="whom-tag" style="color:var(--amber)">Малый бизнес</div>
+          <h4>Команда 2–5 менеджеров</h4>
+          <div class="whom-quote">«Хочу, чтобы у всех была структура: как звонить, что говорить, как закрывать.»</div>
+          <div class="whom-solution">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.5" style="display:inline; vertical-align:middle"><polyline points="20 6 9 17 4 12"/></svg>
+            Единый стандарт продаж и контроль каждого звонка
+          </div>
+        </div>
+        <div class="card card-hover whom-card reveal reveal-up" data-delay="3">
+          <div class="whom-tag" style="color:var(--brand-2)">Стабильный бизнес</div>
+          <h4>Отдел продаж 5–20 человек</h4>
+          <div class="whom-quote">«Хочу понимать, кто реально работает, а кто делает вид.»</div>
+          <div class="whom-solution">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.5" style="display:inline; vertical-align:middle"><polyline points="20 6 9 17 4 12"/></svg>
+            Прозрачная аналитика и рост без расширения штата
+          </div>
+        </div>
+        <div class="card card-hover whom-card reveal reveal-up" data-delay="4">
+          <div class="whom-tag" style="color:var(--success)">Экспансия</div>
+          <h4>Сеть филиалов и франшизы</h4>
+          <div class="whom-quote">«Хочу, чтобы стандарты держались в 10 филиалах одинаково.»</div>
+          <div class="whom-solution">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.5" style="display:inline; vertical-align:middle"><polyline points="20 6 9 17 4 12"/></svg>
+            Автоматическое обучение и контроль в каждом городе
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FEATURES ============ -->
+  <section id="features" class="section section-alt">
+    <div class="container">
+      <div class="text-center" style="max-width:680px; margin:0 auto 40px">
+        <div class="badge" style="margin-bottom:16px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          Возможности платформы
+        </div>
+        <h2 class="h2">Всё, что нужно для управления продажами — в одном месте</h2>
+      </div>
+      <div class="grid-3">
+        <div class="card card-glow feat-card reveal reveal-up" data-delay="1">
+          <div class="icon-box icon-box-blue">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+          </div>
+          <h4>Транскрипция с разделением ролей</h4>
+          <p>Загрузите запись — и получите точный текст с разделением «менеджер / клиент» и таймкодами.</p>
+        </div>
+        <div class="card card-glow feat-card reveal reveal-up" data-delay="2">
+          <div class="icon-box icon-box-purple">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+          </div>
+          <h4>Анализ этапов продаж</h4>
+          <p>ИИ определяет контакт, выявление потребностей, презентацию, работу с возражениями и закрытие.</p>
+        </div>
+        <div class="card card-glow feat-card reveal reveal-up" data-delay="3">
+          <div class="icon-box icon-box-green">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          </div>
+          <h4>Персональный план обучения</h4>
+          <p>На основе ошибок каждого менеджера формируется план тренировок с примерами лучших практик.</p>
+        </div>
+        <div class="card card-glow feat-card reveal reveal-up" data-delay="4">
+          <div class="icon-box icon-box-amber">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20V10M18 20V4M6 20v-4"/></svg>
+          </div>
+          <h4>Дашборд руководителя</h4>
+          <p>Воронка, конверсия, настроение клиентов, динамика каждого менеджера — всё в одном экране.</p>
+        </div>
+        <div class="card card-glow feat-card reveal reveal-up" data-delay="5">
+          <div class="icon-box icon-box-red">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
+          </div>
+          <h4>ИИ-тренер для менеджеров</h4>
+          <p>Голосовой ИИ-наставник, который тренирует продавцов в режиме реального диалога и даёт обратную связь.</p>
+        </div>
+        <div class="card card-glow feat-card reveal reveal-up" data-delay="6">
+          <div class="icon-box icon-box-blue">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+          </div>
+          <h4>Безопасность и роли</h4>
+          <p>Доступ по ролям, приватные ссылки, лог событий. Полная готовность к корпоративным политикам.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ HOW IT WORKS ============ -->
+  <section id="how" class="section">
+    <div class="container">
+      <div class="text-center" style="max-width:680px; margin:0 auto 40px">
+        <div class="badge" style="margin-bottom:16px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          4 простых шага
+        </div>
+        <h2 class="h2">Начните за 5 минут — результат уже сегодня</h2>
+      </div>
+      <div class="steps-grid">
+        <div class="card card-hover step-card reveal reveal-up" data-delay="1">
+          <div class="step-num">1</div>
+          <h4>Загрузите звонок</h4>
+          <p>Перетащите MP3, WAV или M4A — или подключите телефонию для автоматической загрузки.</p>
+        </div>
+        <div class="card card-hover step-card reveal reveal-up" data-delay="2">
+          <div class="step-num">2</div>
+          <h4>ИИ расшифрует и разделит роли</h4>
+          <p>Точная транскрипция с разделением менеджер/клиент за пару минут.</p>
+        </div>
+        <div class="card card-hover step-card reveal reveal-up" data-delay="3">
+          <div class="step-num">3</div>
+          <h4>Получите анализ и оценку</h4>
+          <p>Этапы продаж, тональность, ошибки — всё разложено по полочкам с конкретными цифрами.</p>
+        </div>
+        <div class="card card-hover step-card reveal reveal-up" data-delay="4">
+          <div class="step-num">4</div>
+          <h4>Обучайте и растите</h4>
+          <p>Персональный план обучения для каждого менеджера. Рост конверсии — без найма новых людей.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ RESULTS ============ -->
+  <section id="results" class="section section-alt">
+    <div class="container">
+      <div class="text-center" style="max-width:680px; margin:0 auto 40px">
+        <div class="badge badge-green" style="margin-bottom:16px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+          Результаты клиентов
+        </div>
+        <h2 class="h2">Цифры, которые говорят сами за себя</h2>
+      </div>
+      <div class="results-grid">
+        <div>
+          <ul class="results-list" style="list-style:none; padding:0; display:flex; flex-direction:column; gap:4px">
+            <li class="reveal reveal-left" data-delay="1">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              <span>На <strong>40% меньше времени</strong> руководителей на прослушивание звонков</span>
+            </li>
+            <li class="reveal reveal-left" data-delay="2">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              <span>Рост конверсии до следующего этапа на <strong>22–30%</strong></span>
+            </li>
+            <li class="reveal reveal-left" data-delay="3">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              <span><strong>100% прозрачность</strong> стандартов продаж в каждом звонке</span>
+            </li>
+            <li class="reveal reveal-left" data-delay="4">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              <span>Выявление <strong>типичных ошибок</strong> менеджеров за минуты, а не дни</span>
+            </li>
+            <li class="reveal reveal-left" data-delay="5">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+              <span>Персональное обучение <strong>без затрат на тренеров</strong></span>
+            </li>
+          </ul>
+          <div style="margin-top:28px; display:flex; gap:12px; flex-wrap:wrap">
+            <a class="btn btn-primary" href="/register">Запустить пилот бесплатно</a>
+            <a class="btn btn-outline" href="#pricing">Смотреть тарифы</a>
+          </div>
+        </div>
+        <div class="reveal reveal-right reveal-zoom">
+          <div class="card" style="padding:28px">
+            <div style="font-size:14px; font-weight:700; margin-bottom:16px">Рост конверсии после внедрения UpStat</div>
+            <div style="display:flex; align-items:flex-end; gap:8px; height:160px; padding-bottom:8px; border-bottom:1px solid var(--border)">
+              <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:4px">
+                <div style="width:100%; background:#e2e8f0; border-radius:4px 4px 0 0; height:40%"></div>
+                <span style="font-size:11px; color:var(--muted)">Янв</span>
+              </div>
+              <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:4px">
+                <div style="width:100%; background:#e2e8f0; border-radius:4px 4px 0 0; height:45%"></div>
+                <span style="font-size:11px; color:var(--muted)">Фев</span>
+              </div>
+              <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:4px">
+                <div style="width:100%; background:var(--brand-light); border:1px solid rgba(37,99,235,.2); border-radius:4px 4px 0 0; height:55%"></div>
+                <span style="font-size:11px; color:var(--brand); font-weight:600">Мар</span>
+              </div>
+              <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:4px">
+                <div style="width:100%; background:var(--brand-light); border:1px solid rgba(37,99,235,.2); border-radius:4px 4px 0 0; height:68%"></div>
+                <span style="font-size:11px; color:var(--brand); font-weight:600">Апр</span>
+              </div>
+              <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:4px">
+                <div style="width:100%; background:linear-gradient(180deg,var(--brand),var(--brand-dark)); border-radius:4px 4px 0 0; height:80%"></div>
+                <span style="font-size:11px; color:var(--brand); font-weight:700">Май</span>
+              </div>
+              <div style="flex:1; display:flex; flex-direction:column; align-items:center; gap:4px">
+                <div style="width:100%; background:linear-gradient(180deg,var(--brand),var(--brand-2)); border-radius:4px 4px 0 0; height:95%"></div>
+                <span style="font-size:11px; color:var(--brand-2); font-weight:700">Июн</span>
+              </div>
+            </div>
+            <div style="display:flex; justify-content:space-between; margin-top:12px; font-size:13px">
+              <span style="color:var(--muted)">До UpStat</span>
+              <span style="color:var(--brand); font-weight:700">+27% конверсия</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <!-- Metrics -->
+      <div class="metrics-row">
+        <div class="metric-card card-hover reveal reveal-up" data-delay="1">
+          <div class="metric-val brand" data-count="27" data-suffix="%">0</div>
+          <div class="metric-desc">Средний рост конверсии</div>
+        </div>
+        <div class="metric-card card-hover reveal reveal-up" data-delay="2">
+          <div class="metric-val green" data-count="40" data-suffix="%">0</div>
+          <div class="metric-desc">Экономия времени руководителя</div>
+        </div>
+        <div class="metric-card card-hover reveal reveal-up" data-delay="3">
+          <div class="metric-val purple" data-count="3" data-suffix="x">0</div>
+          <div class="metric-desc">Быстрее адаптация новых менеджеров</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CTA BANNER 1 ============ -->
+  <section class="section" style="padding:0">
+    <div class="container">
+      <div class="cta-banner reveal reveal-up">
+        <p style="display:inline-block; padding:6px 16px; border-radius:20px; background:rgba(255,255,255,.1); border:1px solid rgba(255,255,255,.15); font-size:13px; font-weight:600; color:rgba(255,255,255,.8); margin-bottom:20px; letter-spacing:.3px">⚡ Бесплатная диагностика</p>
+        <h2 class="h2" style="margin-bottom:16px">Готовы увидеть, где<br>теряются ваши деньги?</h2>
+        <p class="lead" style="margin-bottom:32px; max-width:480px; margin-left:auto; margin-right:auto">Загрузите пару звонков — и получите полный разбор с рекомендациями уже сегодня. Бесплатно.</p>
+        <a class="btn btn-lg" href="/register">
+          Начать бесплатно — за 2 минуты
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        </a>
+        <p style="margin-top:16px; font-size:13px; color:rgba(255,255,255,.45)">Без привязки карты · Результат за 2 минуты</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CASE STUDIES ============ -->
+  <section class="section">
+    <div class="container">
+      <div class="text-center" style="max-width:760px; margin:0 auto 48px">
+        <div class="badge badge-green" style="margin-bottom:16px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+          Реальные кейсы
+        </div>
+        <h2 class="h2">Результаты от применения<br>Международного Стандарта Продаж</h2>
+        <p class="lead" style="margin-top:12px">Три истории компаний, которые кардинально изменили свои продажи.</p>
+      </div>
+      <div class="grid-3">
+
+        <!-- Case 1: Обувная сеть -->
+        <div class="card card-hover case-card reveal reveal-up" data-delay="1">
+          <div class="case-header" style="background:linear-gradient(135deg,rgba(37,99,235,.06),rgba(37,99,235,.02))">
+            <div class="case-icon" style="background:var(--brand-light); color:var(--brand)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
+            </div>
+            <div>
+              <div class="case-industry">Розничная сеть обуви</div>
+              <div class="case-tag">950 магазинов</div>
+            </div>
+          </div>
+          <div class="case-body">
+            <div class="case-block case-block-problem">
+              <div class="case-block-label">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                Проблема
+              </div>
+              <p>Компания продавала недорогую обувь из кожзаменителя. При появлении дорогой кожаной обуви продавцы не справлялись с её продажей и стабильно не выполняли план.</p>
+            </div>
+            <div class="case-block case-block-result">
+              <div class="case-block-label">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                Результат
+              </div>
+              <p>Продавцы 76 магазинов Сибирского региона прошли обучение. Через месяц продажи выросли, а через несколько месяцев многократно превысили другие регионы. Руководителям доверили управление всей сетью из 950 магазинов.</p>
+            </div>
+            <div class="case-highlight">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+              Многократный рост продаж
+            </div>
+          </div>
+        </div>
+
+        <!-- Case 2: Промышленное оборудование -->
+        <div class="card card-hover case-card reveal reveal-up" data-delay="2">
+          <div class="case-header" style="background:linear-gradient(135deg,rgba(124,58,237,.06),rgba(124,58,237,.02))">
+            <div class="case-icon" style="background:var(--brand-2-light); color:var(--brand-2)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
+            </div>
+            <div>
+              <div class="case-industry">Промышленное оборудование</div>
+              <div class="case-tag">B2B, крупные сделки</div>
+            </div>
+          </div>
+          <div class="case-body">
+            <div class="case-block case-block-problem">
+              <div class="case-block-label">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                Проблема
+              </div>
+              <p>Крупные заказы тянулись слишком долго и периодически срывались из-за более дешёвых китайских аналогов на рынке.</p>
+            </div>
+            <div class="case-block case-block-result">
+              <div class="case-block-label">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                Результат
+              </div>
+              <p>Через 2 дня после старта обучения один из руководителей заключил многомиллионную сделку. Он применил полученные техники и убедил клиента отказаться от дешёвой покупки в пользу их более дорогого и качественного продукта.</p>
+            </div>
+            <div class="case-highlight">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+              Многомиллионная сделка за 2 дня
+            </div>
+          </div>
+        </div>
+
+        <!-- Case 3: Компьютерная техника -->
+        <div class="card card-hover case-card reveal reveal-up" data-delay="3">
+          <div class="case-header" style="background:linear-gradient(135deg,rgba(16,185,129,.06),rgba(16,185,129,.02))">
+            <div class="case-icon" style="background:var(--success-light); color:var(--success)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+            </div>
+            <div>
+              <div class="case-industry">«Альтернативные технологии»</div>
+              <div class="case-tag">4 магазина компьютерной техники</div>
+            </div>
+          </div>
+          <div class="case-body">
+            <div class="case-block case-block-problem">
+              <div class="case-block-label">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                Проблема
+              </div>
+              <p>В кризисном 2014 году, когда резко вырос курс доллара, продажи компьютерной техники обрушились по всей компании.</p>
+            </div>
+            <div class="case-block case-block-result">
+              <div class="case-block-label">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                Результат
+              </div>
+              <p>Один продавец изучил материалы курса, на следующий день передал это коллегам — и за 1 день они подняли продажи в 9,5 раз. Владелец был настолько впечатлён, что сразу приобрёл полный курс и приехал на обучение с персоналом.</p>
+            </div>
+            <div class="case-highlight">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
+              Рост продаж в 9,5 раз за 1 день
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ PRICING ============ -->
+  <section id="pricing" class="section pricing-section">
+    <div class="container">
+      <div class="text-center" style="max-width:860px; margin:0 auto 18px">
+        <div class="badge" style="margin-bottom:16px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+          Тарифы
+        </div>
+        <h2 class="h2">Тарифы UpStat</h2>
+        <p class="lead" style="margin-top:12px">
+          Выберите оплату помесячно или за год. При оплате за год действует скидка <b>−20%</b>.
+        </p>
+      </div>
+
+      <div class="pricing-controls">
+        <div class="pricing-toggle" role="tablist" aria-label="Период оплаты">
+          <button id="btnMonthly" class="active" role="tab" aria-selected="true">Ежемесячно</button>
+          <button id="btnYearly" role="tab" aria-selected="false">Ежегодно</button>
+          <div class="pricing-save" aria-hidden="true">−20% на год</div>
+        </div>
+      </div>
+
+      <div class="pricing-grid">
+
+        <!-- Тариф: Личный -->
+        <div class="plan-card reveal reveal-up" data-plan="personal" data-delay="1">
+          <div class="plan-label">ЛИЧНЫЙ</div>
+          <h3 class="plan-title">1 человек</h3>
+          <div class="plan-priceRow">
+            <div class="plan-price" id="price-personal">$—</div>
+            <div class="plan-per" id="per-personal">/мес</div>
+          </div>
+          <div class="plan-yearTotal" id="yearTotal-personal"><span>За год:</span> $—</div>
+          <p class="plan-desc">Для собственника/эксперта, которому нужен быстрый личный контроль качества коммуникаций и результатов.</p>
+          <div class="plan-meta">
+            <span class="plan-chip" id="billing-personal">Оплата: —</span>
+            <span class="plan-chip" id="minutes-personal">Включено: —</span>
+          </div>
+          <div class="plan-cta">
+            <a class="btn btn-outline" href="/register">Попробовать</a>
+          </div>
+          <div class="plan-sectionTitle">Что входит</div>
+          <ul class="plan-features">
+            <li><span class="plan-tick">✓</span>Панель контроля: ключевые ошибки и риски в разговорах</li>
+            <li><span class="plan-tick">✓</span>Авто-отчёты по неделям: что улучшить прямо сейчас</li>
+            <li><span class="plan-tick">✓</span>Теги/категории причин отказов и провалов</li>
+            <li><span class="plan-tick">✓</span>Экспорт отчётов для личного анализа и контроля</li>
+            <li><span class="plan-tick">✓</span>Базовые интеграции (по списку)</li>
+          </ul>
+        </div>
+
+        <!-- Тариф: Команда (1 отдел) -->
+        <div class="plan-card featured reveal reveal-up" data-plan="oneTeam" data-delay="2">
+          <div class="plan-label">КОМАНДА</div>
+          <h3 class="plan-title">1 отдел продаж</h3>
+          <div class="plan-priceRow">
+            <div class="plan-price" id="price-oneTeam">$—</div>
+            <div class="plan-per" id="per-oneTeam">/мес</div>
+          </div>
+          <div class="plan-yearTotal" id="yearTotal-oneTeam"><span>За год:</span> $—</div>
+          <p class="plan-desc">Для компании с одним отделом продаж: до 5 менеджеров. Рост конверсии за счёт контроля и стандарта.</p>
+          <div class="plan-meta">
+            <span class="plan-chip" id="billing-oneTeam">Оплата: —</span>
+            <span class="plan-chip" id="minutes-oneTeam">Включено: —</span>
+          </div>
+          <div class="plan-cta">
+            <a class="btn btn-primary" href="/register">Попробовать</a>
+          </div>
+          <div class="plan-sectionTitle">Что входит</div>
+          <ul class="plan-features">
+            <li><span class="plan-tick">✓</span>До 5 человек</li>
+            <li><span class="plan-tick">✓</span>До 200 продаж/мес на каждого</li>
+            <li><span class="plan-tick">✓</span>Неограниченные тренировки менеджеров</li>
+            <li><span class="plan-tick">✓</span>Аналитика ваших продаж</li>
+          </ul>
+        </div>
+
+        <!-- Тариф: Система (До 3 отделов) -->
+        <div class="plan-card reveal reveal-up" data-plan="threeTeams" data-delay="3">
+          <div class="plan-label">СИСТЕМА</div>
+          <h3 class="plan-title">До 3 отделов</h3>
+          <div class="plan-priceRow">
+            <div class="plan-price" id="price-threeTeams">$—</div>
+            <div class="plan-per" id="per-threeTeams">/мес</div>
+          </div>
+          <div class="plan-yearTotal" id="yearTotal-threeTeams"><span>За год:</span> $—</div>
+          <p class="plan-desc">Для бизнеса с 2–3 отделами продаж: до 15 менеджеров. Масштабирование и единый стандарт качества.</p>
+          <div class="plan-meta">
+            <span class="plan-chip" id="billing-threeTeams">Оплата: —</span>
+            <span class="plan-chip" id="minutes-threeTeams">Включено: —</span>
+          </div>
+          <div class="plan-cta">
+            <a class="btn btn-outline" href="/register">Попробовать</a>
+          </div>
+          <div class="plan-sectionTitle">Что входит</div>
+          <ul class="plan-features">
+            <li><span class="plan-tick">✓</span>До 5 человек на точку</li>
+            <li><span class="plan-tick">✓</span>До 200 продаж/мес на каждого</li>
+            <li><span class="plan-tick">✓</span>Неограниченные тренировки менеджеров</li>
+            <li><span class="plan-tick">✓</span>Аналитика ваших продаж</li>
+            <li><span class="plan-tick">✓</span>Сравнительная аналитика по салонам</li>
+            <li><span class="plan-tick">✓</span>Анализ рынка</li>
+            <li><span class="plan-tick">✓</span>Создание корпоративных инструкций</li>
+          </ul>
+        </div>
+
+        <!-- Тариф: Enterprise -->
+        <div class="plan-card reveal reveal-up" data-plan="enterprise" data-delay="4">
+          <div class="plan-label">ENTERPRISE</div>
+          <h3 class="plan-title">Большие сети</h3>
+          <div class="plan-priceRow">
+            <div class="plan-price" id="price-enterprise">Индивид.</div>
+          </div>
+          <div class="plan-yearTotal" id="yearTotal-enterprise" style="display:none;"><span>За год:</span> —</div>
+          <p class="plan-desc">Для компаний с 4+ отделами продаж, филиальной сетью или особыми требованиями к безопасности/интеграциям.</p>
+          <div class="plan-meta">
+            <span class="plan-chip" id="billing-enterprise">Контракт: индивидуально</span>
+            <span class="plan-chip" id="minutes-enterprise">Лимиты: по объёму</span>
+          </div>
+          <div class="plan-cta">
+            <a class="btn btn-outline" href="/register">Рассчитать цену</a>
+          </div>
+          <div class="plan-sectionTitle">Что входит</div>
+          <ul class="plan-features">
+            <li><span class="plan-tick">✓</span>До 5 человек на точку</li>
+            <li><span class="plan-tick">✓</span>До 200 продаж/мес на каждого</li>
+            <li><span class="plan-tick">✓</span>Неограниченные тренировки менеджеров</li>
+            <li><span class="plan-tick">✓</span>Аналитика ваших продаж</li>
+            <li><span class="plan-tick">✓</span>Сравнительная аналитика по салонам</li>
+            <li><span class="plan-tick">✓</span>Анализ рынка</li>
+            <li><span class="plan-tick">✓</span>Создание корпоративных инструкций</li>
+            <li><span class="plan-tick">✓</span>Удержание стандартов по всей сети</li>
+            <li><span class="plan-tick">✓</span>Сравнительный анализ по регионам</li>
+            <li><span class="plan-tick">✓</span>Анализ динамики рынка</li>
+          </ul>
+        </div>
+
+      </div>
+
+      <div class="pricing-allInclude">
+        <h3>Во всех тарифах</h3>
+        <div class="pricing-includeGrid">
+          <div class="pricing-includeItem"><span class="pricing-miniTick">✓</span>Отчёты и экспорт</div>
+          <div class="pricing-includeItem"><span class="pricing-miniTick">✓</span>Базовые дашборды</div>
+          <div class="pricing-includeItem"><span class="pricing-miniTick">✓</span>Хранение и история</div>
+          <div class="pricing-includeItem"><span class="pricing-miniTick">✓</span>Шаблоны метрик</div>
+          <div class="pricing-includeItem"><span class="pricing-miniTick">✓</span>Безопасность и контроль доступа</div>
+        </div>
+        <div class="pricing-note">
+          <b>Годовая подписка:</b> скидка <b>−20%</b> от суммы 12 месяцев. Отменить можно в конце оплаченного периода.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FAQ ============ -->
+  <section id="faq" class="section">
+    <div class="container">
+      <div class="text-center" style="max-width:680px; margin:0 auto 40px">
+        <div class="badge" style="margin-bottom:16px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          Частые вопросы
+        </div>
+        <h2 class="h2">Всё, что вы хотели спросить</h2>
+      </div>
+      <div style="max-width:720px; margin:0 auto">
+        <div class="faq-item open reveal reveal-up" data-delay="1">
+          <div class="faq-q">Какие форматы аудио поддерживаются?</div>
+          <div class="faq-a">MP3, WAV, M4A, OGG — любые популярные форматы. Рекомендуем файлы до 100 МБ и до 60 минут. Для более длинных записей система автоматически разобьёт файл на части.</div>
+        </div>
+        <div class="faq-item reveal reveal-up" data-delay="2">
+          <div class="faq-q">Как разделяются роли «менеджер» и «клиент»?</div>
+          <div class="faq-a">Мы используем технологию диаризации — ИИ автоматически определяет, кто говорит. В отчёте каждая реплика привязана к роли с таймкодами для быстрого перехода.</div>
+        </div>
+        <div class="faq-item reveal reveal-up" data-delay="3">
+          <div class="faq-q">Есть ли бесплатный период?</div>
+          <div class="faq-a">Да, 14 дней полного доступа ко всем функциям тарифа Team. Без привязки карты. После окончания пробного периода вы можете продолжить на бесплатном тарифе Starter.</div>
+        </div>
+        <div class="faq-item reveal reveal-up" data-delay="4">
+          <div class="faq-q">Как обеспечивается безопасность данных?</div>
+          <div class="faq-a">Доступ по ролям, шифрование данных, приватные ссылки на файлы, полный лог событий. Данные хранятся на защищённых серверах. Готовность к корпоративным политикам безопасности.</div>
+        </div>
+        <div class="faq-item reveal reveal-up" data-delay="5">
+          <div class="faq-q">Можно ли интегрировать с CRM и телефонией?</div>
+          <div class="faq-a">Да, мы поддерживаем интеграцию с популярными CRM-системами и IP-телефонией. Звонки могут загружаться автоматически через вебхуки и REST API.</div>
+        </div>
+        <div class="faq-item reveal reveal-up" data-delay="6">
+          <div class="faq-q">Сколько времени занимает внедрение?</div>
+          <div class="faq-a">Регистрация занимает 2 минуты. Первый анализ звонка — ещё 3 минуты. Полная настройка для команды — от 1 дня. Мы помогаем на каждом этапе.</div>
+        </div>
+        <div class="faq-item reveal reveal-up" data-delay="7">
+          <div class="faq-q">Можно ли выгрузить отчёты?</div>
+          <div class="faq-a">Да, доступна выгрузка в виде текстовых отчётов, JSON-диалогов и CSV-аналитики. Все данные принадлежат вам и доступны к скачиванию в любой момент.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FINAL CTA ============ -->
+  <section class="section" style="padding-bottom:80px">
+    <div class="container">
+      <div class="cta-banner reveal reveal-up">
+        <div style="margin-bottom:8px; font-size:40px">🚀</div>
+        <h2 class="h2" style="margin-bottom:12px">Перестаньте гадать — начните управлять продажами</h2>
+        <p class="lead" style="margin-bottom:24px; max-width:560px; margin-left:auto; margin-right:auto">Присоединяйтесь к 500+ компаниям, которые уже превратили хаос в систему. Первые 14 дней — бесплатно.</p>
+        <div style="display:flex; gap:14px; justify-content:center; flex-wrap:wrap">
+          <a class="btn btn-lg" href="/register">
+            Начать бесплатно
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </a>
+          <a class="btn btn-lg" href="/login" style="background:rgba(255,255,255,.15); color:#fff; border:1px solid rgba(255,255,255,.25)">Войти в аккаунт</a>
+        </div>
+        <p style="margin-top:16px; font-size:14px; color:rgba(255,255,255,.6)">Без привязки карты · Настройка за 2 минуты · Отмена в любой момент</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FOOTER ============ -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-grid">
+        <!-- Brand -->
+        <div class="footer-brand">
+          <div class="logo">
+            <div class="logo-icon">U</div>
+            <span>UpStat</span>
+          </div>
+          <p>ИИ-платформа для управления продажами. Анализ звонков, обучение менеджеров и рост конверсии — всё в одном инструменте.</p>
+          <div class="footer-social">
+            <!-- Telegram -->
+            <a href="#" aria-label="Telegram">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M11.944 0A12 12 0 000 12a12 12 0 0012 12 12 12 0 0012-12A12 12 0 0012 0h-.056zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 01.171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.479.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/></svg>
+            </a>
+            <!-- WhatsApp -->
+            <a href="#" aria-label="WhatsApp">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+            </a>
+            <!-- Instagram -->
+            <a href="#" aria-label="Instagram">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1112.63 8 4 4 0 0116 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg>
+            </a>
+            <!-- YouTube -->
+            <a href="#" aria-label="YouTube">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M23.498 6.186a3.016 3.016 0 00-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 00.502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 002.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 002.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+            </a>
+          </div>
+        </div>
+        <!-- Product -->
+        <div class="footer-col">
+          <h4>Продукт</h4>
+          <ul>
+            <li><a href="#features">Возможности</a></li>
+            <li><a href="#how">Как работает</a></li>
+            <li><a href="#pricing">Тарифы</a></li>
+            <li><a href="#results">Результаты</a></li>
+            <li><a href="#faq">FAQ</a></li>
+          </ul>
+        </div>
+        <!-- Company -->
+        <div class="footer-col">
+          <h4>Компания</h4>
+          <ul>
+            <li><a href="/career">Карьера</a></li>
+          </ul>
+        </div>
+        <!-- Support -->
+        <div class="footer-col">
+          <h4>Поддержка</h4>
+          <ul>
+            <li><a href="#">Центр помощи</a></li>
+            <li><a href="#">Документация</a></li>
+            <li><a href="mailto:support@upstat.kz">support@upstat.kz</a></li>
+            <li><a href="tel:+77001234567">+7 700 123 45 67</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <div>&copy; <span id="footer-year">2026</span> UpStat. Все права защищены.</div>
+        <div class="footer-legal">
+          <a href="#">Политика конфиденциальности</a>
+          <a href="#">Условия использования</a>
+          <a href="#">Оферта</a>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ============ MOBILE STICKY CTA ============ -->
+  <div class="mobile-cta" id="mobile-cta">
+    <a class="btn btn-primary" href="/register">
+      Попробовать бесплатно
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    </a>
+  </div>
+
+  <!-- ============ SCRIPTS ============ -->
+  <script>
+    // ===== Logo marquee clone =====
+    const marquee = document.getElementById('logo-marquee');
+    if (marquee) {
+      const items = marquee.innerHTML;
+      marquee.innerHTML = items + items; // duplicate for seamless loop
+    }
+
+    // ===== Smooth scroll =====
+    document.querySelectorAll('a[href^="#"]').forEach(a => {
+      a.addEventListener('click', e => {
+        const id = a.getAttribute('href').slice(1);
+        const el = document.getElementById(id);
+        if (el) { e.preventDefault(); el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+      });
+    });
+
+    // ===== Mobile menu =====
+    const burger = document.getElementById('nav-burger');
+    const drawer = document.getElementById('nav-drawer');
+    if (burger && drawer) {
+      burger.addEventListener('click', () => {
+        const isOpen = drawer.classList.toggle('open');
+        burger.classList.toggle('active', isOpen);
+        burger.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      });
+      drawer.querySelectorAll('a').forEach(link => link.addEventListener('click', () => {
+        drawer.classList.remove('open');
+        burger.classList.remove('active');
+        burger.setAttribute('aria-expanded', 'false');
+      }));
+    }
+
+    // ===== Header scroll effect =====
+    const navHeader = document.getElementById('nav-header');
+    const updateHeader = () => {
+      if (!navHeader) return;
+      navHeader.classList.toggle('scrolled', window.scrollY > 10);
+    };
+    updateHeader();
+    window.addEventListener('scroll', updateHeader, { passive: true });
+
+    // ===== Mobile CTA visibility =====
+    const mobileCta = document.getElementById('mobile-cta');
+    const heroSection = document.querySelector('.hero');
+    if (mobileCta && heroSection) {
+      const ctaObserver = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+          mobileCta.style.transform = entry.isIntersecting ? 'translateY(100%)' : 'translateY(0)';
+          mobileCta.style.transition = 'transform .3s ease';
+        });
+      }, { threshold: 0.1 });
+      ctaObserver.observe(heroSection);
+    }
+
+    // ===== Scroll reveal =====
+    const revealObserver = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('is-visible');
+          revealObserver.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.1, rootMargin: '0px 0px -40px 0px' });
+    document.querySelectorAll('.reveal').forEach(el => revealObserver.observe(el));
+
+    // ===== Count-up animation =====
+    function animateCount(el, target, suffix, duration) {
+      const start = 0;
+      const startTime = performance.now();
+      const isLargeNum = target >= 10000;
+
+      function update(currentTime) {
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3); // easeOutCubic
+        let current = Math.round(start + (target - start) * eased);
+
+        if (isLargeNum && current >= 1000000) {
+          el.textContent = (current / 1000000).toFixed(1).replace('.0', '') + 'M+';
+        } else if (isLargeNum && current >= 1000) {
+          el.textContent = Math.round(current / 1000) + 'K+';
+        } else {
+          el.textContent = current + (suffix || '');
+        }
+
+        if (progress < 1) requestAnimationFrame(update);
+      }
+      requestAnimationFrame(update);
+    }
+
+    // Observe count elements
+    const countObserver = new IntersectionObserver(entries => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const el = entry.target;
+          const target = parseInt(el.dataset.count, 10);
+          const suffix = el.dataset.suffix || '';
+          animateCount(el, target, suffix, 2000);
+          countObserver.unobserve(el);
+        }
+      });
+    }, { threshold: 0.3 });
+    document.querySelectorAll('[data-count]').forEach(el => countObserver.observe(el));
+
+    // ===== Footer year =====
+    const yearEl = document.getElementById('footer-year');
+    if (yearEl) yearEl.textContent = new Date().getFullYear();
+
+    // ===== FAQ accordion =====
+    document.querySelectorAll('.faq-q').forEach(q => {
+      q.addEventListener('click', () => {
+        const item = q.parentElement;
+        const isOpen = item.classList.contains('open');
+        // Close all
+        document.querySelectorAll('.faq-item.open').forEach(i => i.classList.remove('open'));
+        // Toggle current
+        if (!isOpen) item.classList.add('open');
+      });
+    });
+  </script>
+
+  <script>
+    // =========================
+    // Live pricing toggle
+    // =========================
+    (function(){
+      var DISCOUNT_YEARLY = 0.20;
+      var MONTHLY_PRICES = {
+        personal: 49,
+        oneTeam: 99,
+        threeTeams: 199
+      };
+      var INCLUDED_MINUTES = {
+        personal: 2500,
+        oneTeam: 10000,
+        threeTeams: 25000
+      };
+      var mode = "monthly";
+      var btnMonthly = document.getElementById("btnMonthly");
+      var btnYearly = document.getElementById("btnYearly");
+
+      function formatMoney(n){
+        var fixed = (Math.round(n * 100) / 100).toFixed(2);
+        if (fixed.endsWith(".00")) return "$" + fixed.slice(0, -3);
+        return "$" + fixed;
+      }
+
+      function renderPlan(key, baseMonthly, includedMinutes){
+        var priceEl = document.getElementById("price-" + key);
+        var perEl = document.getElementById("per-" + key);
+        var billingEl = document.getElementById("billing-" + key);
+        var minutesEl = document.getElementById("minutes-" + key);
+        var yearTotalEl = document.getElementById("yearTotal-" + key);
+
+        if (mode === "monthly"){
+          priceEl.textContent = formatMoney(baseMonthly);
+          perEl.textContent = "/мес";
+          billingEl.textContent = "Оплата помесячно";
+          minutesEl.textContent = "Включено: " + includedMinutes.toLocaleString("ru-RU") + " мин/мес";
+          yearTotalEl.style.display = "none";
+        } else {
+          var yearlyTotal = baseMonthly * 12 * (1 - DISCOUNT_YEARLY);
+          var eqMonthly = yearlyTotal / 12;
+          priceEl.textContent = formatMoney(eqMonthly);
+          perEl.textContent = "/мес";
+          yearTotalEl.innerHTML = "<span>За год:</span> " + formatMoney(yearlyTotal);
+          yearTotalEl.style.display = "block";
+          billingEl.textContent = "Оплата за год (−20%)";
+          minutesEl.textContent = "Включено: " + includedMinutes.toLocaleString("ru-RU") + " мин/мес";
+        }
+      }
+
+      function setActive(){
+        var isMonthly = mode === "monthly";
+        btnMonthly.classList.toggle("active", isMonthly);
+        btnYearly.classList.toggle("active", !isMonthly);
+        btnMonthly.setAttribute("aria-selected", isMonthly ? "true" : "false");
+        btnYearly.setAttribute("aria-selected", !isMonthly ? "true" : "false");
+      }
+
+      function render(){
+        renderPlan("personal", MONTHLY_PRICES.personal, INCLUDED_MINUTES.personal);
+        renderPlan("oneTeam", MONTHLY_PRICES.oneTeam, INCLUDED_MINUTES.oneTeam);
+        renderPlan("threeTeams", MONTHLY_PRICES.threeTeams, INCLUDED_MINUTES.threeTeams);
+        setActive();
+      }
+
+      btnMonthly.addEventListener("click", function(){ mode = "monthly"; render(); });
+      btnYearly.addEventListener("click", function(){ mode = "yearly"; render(); });
+
+      render();
+    })();
+  </script>
+</body>
+</html>

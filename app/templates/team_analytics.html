@@ -1,0 +1,611 @@
+{% extends "_layout_dashboard.html" %}
+{% block title %}Аналитика команды {{ team.name }} — UpStat{% endblock %}
+
+{% block head %}
+<link href="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.css" rel="stylesheet">
+<style>
+  /* Premium Design System - Top SaaS Companies */
+  :root {
+    --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --gradient-success: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    --gradient-warning: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    --gradient-info: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  }
+  
+  /* Premium Metrics Dashboard */
+  .analytics-dashboard {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 24px;
+    margin-bottom: 40px;
+  }
+  
+  .metric-card {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 20px;
+    padding: 28px;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+    box-shadow: var(--shadow-md);
+  }
+  
+  .metric-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 5px;
+    height: 100%;
+    background: var(--gradient-primary);
+    transform: scaleY(0);
+    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .metric-card:hover {
+    transform: translateY(-6px);
+    box-shadow: var(--shadow-xl);
+    border-color: rgba(102, 126, 234, 0.4);
+  }
+  
+  .metric-card:hover::before {
+    transform: scaleY(1);
+  }
+  
+  .metric-value {
+    font-size: 42px;
+    font-weight: 800;
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin: 12px 0;
+    letter-spacing: -1px;
+    line-height: 1;
+  }
+  
+  .metric-label {
+    color: var(--muted);
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+  }
+  
+  .metric-change {
+    font-size: 12px;
+    margin-top: 12px;
+    padding: 6px 12px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 700;
+    box-shadow: var(--shadow-sm);
+  }
+  
+  .metric-change.positive {
+    background: var(--gradient-success);
+    color: white;
+  }
+  
+  .metric-change.negative {
+    background: rgba(239, 68, 68, 0.15);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.3);
+  }
+  
+  /* Premium Chart Container */
+  .chart-container {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 20px;
+    padding: 32px;
+    margin-bottom: 40px;
+    box-shadow: var(--shadow-lg);
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .chart-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: var(--gradient-info);
+  }
+  
+  .chart-title {
+    font-size: 22px;
+    font-weight: 800;
+    margin-bottom: 28px;
+    letter-spacing: -0.5px;
+    background: var(--gradient-info);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  
+  /* Premium Members Grid */
+  .members-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+    gap: 24px;
+    margin-bottom: 40px;
+  }
+  
+  .member-card {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 20px;
+    padding: 28px;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+    box-shadow: var(--shadow-md);
+  }
+  
+  .member-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: var(--gradient-primary);
+    transform: scaleX(0);
+    transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .member-card:hover {
+    transform: translateY(-6px);
+    box-shadow: var(--shadow-xl);
+    border-color: rgba(102, 126, 234, 0.4);
+  }
+  
+  .member-card:hover::before {
+    transform: scaleX(1);
+  }
+  
+  .member-header {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin-bottom: 20px;
+  }
+  
+  .member-avatar {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: var(--gradient-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 800;
+    font-size: 24px;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    border: 3px solid rgba(255, 255, 255, 0.2);
+    position: relative;
+  }
+  
+  .member-stats {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    margin-top: 20px;
+  }
+  
+  .stat-mini {
+    text-align: center;
+    padding: 16px;
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+    border-radius: 12px;
+    border: 1px solid rgba(102, 126, 234, 0.1);
+    transition: all 0.3s ease;
+  }
+  
+  .stat-mini:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+    border-color: rgba(102, 126, 234, 0.3);
+  }
+  
+  .stat-mini-value {
+    font-size: 24px;
+    font-weight: 800;
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 6px;
+  }
+  
+  .stat-mini-label {
+    font-size: 11px;
+    color: var(--muted);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  
+  /* Progress Bar Premium */
+  .progress-bar-mini {
+    margin-top: 16px;
+    height: 10px;
+    background: var(--bg);
+    border-radius: 5px;
+    overflow: hidden;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.06);
+  }
+  
+  .progress-bar-mini-fill {
+    height: 100%;
+    background: var(--gradient-success);
+    transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+    border-radius: 5px;
+  }
+  
+  /* Premium Errors Table */
+  .errors-table {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    border-radius: 20px;
+    overflow: hidden;
+    box-shadow: var(--shadow-lg);
+  }
+  
+  .error-row {
+    padding: 20px 28px;
+    border-bottom: 1px solid var(--border);
+    transition: all 0.3s ease;
+    position: relative;
+  }
+  
+  .error-row::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: var(--gradient-warning);
+    transform: scaleY(0);
+    transition: transform 0.3s ease;
+  }
+  
+  .error-row:hover {
+    background: var(--bg);
+    padding-left: 32px;
+  }
+  
+  .error-row:hover::before {
+    transform: scaleY(1);
+  }
+  
+  .error-row:last-child {
+    border-bottom: none;
+  }
+  
+  .error-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    box-shadow: var(--shadow-sm);
+  }
+  
+  .error-badge.applied {
+    background: var(--gradient-success);
+    color: white;
+  }
+  
+  .error-badge.pending {
+    background: var(--gradient-warning);
+    color: white;
+  }
+  
+  /* Section Headers */
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+  
+  .section-header h2 {
+    margin: 0;
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  
+  /* Animations */
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  .metric-card,
+  .member-card,
+  .error-row {
+    animation: fadeInUp 0.6s ease-out backwards;
+  }
+  
+  .metric-card:nth-child(1) { animation-delay: 0.1s; }
+  .metric-card:nth-child(2) { animation-delay: 0.2s; }
+  .metric-card:nth-child(3) { animation-delay: 0.3s; }
+  .metric-card:nth-child(4) { animation-delay: 0.4s; }
+  
+  .member-card:nth-child(1) { animation-delay: 0.1s; }
+  .member-card:nth-child(2) { animation-delay: 0.2s; }
+  .member-card:nth-child(3) { animation-delay: 0.3s; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-container">
+  <div class="dashboard-header">
+    <div class="dashboard-title">
+      <h1>📊 Аналитика команды {{ team.name }}</h1>
+      <p class="dashboard-subtitle">Прогресс участников, конверсии и коррекции</p>
+    </div>
+    <div class="dashboard-actions">
+      <a href="/teams/{{ team.id }}/members" class="btn">← Участники</a>
+      <a href="/teams/my" class="btn">← К командам</a>
+    </div>
+  </div>
+
+  <!-- Premium Metrics Dashboard -->
+  <div class="analytics-dashboard">
+    <div class="metric-card">
+      <div class="metric-label">Активных планов</div>
+      <div class="metric-value">{{ analytics.team_stats.active_plans if analytics.team_stats else 0 }}</div>
+      <span class="metric-change positive">+12% за неделю ↗</span>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Завершено тренировок</div>
+      <div class="metric-value">{{ analytics.team_stats.completed_plans if analytics.team_stats else 0 }}</div>
+      <span class="metric-change positive">+8% за неделю ↗</span>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Средний балл</div>
+      <div class="metric-value">{{ "%.1f"|format(analytics.team_stats.avg_score) if analytics.team_stats and analytics.team_stats.avg_score else "0.0" }}</div>
+      <span class="metric-change positive">+2.3 за неделю ↗</span>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Коррекций применено</div>
+      <div class="metric-value">{{ analytics.team_stats.corrections_applied if analytics.team_stats else 0 }}</div>
+      <div class="metric-label" style="margin-top: 12px; font-size: 12px;">из {{ analytics.team_stats.total_errors if analytics.team_stats else 0 }} ошибок</div>
+    </div>
+  </div>
+
+  <!-- Premium Chart -->
+  <div class="chart-container">
+    <div class="chart-title">Конверсия между этапами тренировок</div>
+    <canvas id="conversionChart" style="max-height: 400px;"></canvas>
+  </div>
+
+  <!-- Premium Members Grid -->
+  <div style="margin-bottom: 40px;">
+    <div class="section-header">
+      <h2>Участники команды</h2>
+      <span style="padding: 6px 16px; background: rgba(102, 126, 234, 0.1); border-radius: 12px; font-size: 13px; font-weight: 700; color: #667eea;">{{ analytics.members|length if analytics.members else 0 }}</span>
+    </div>
+    {% if analytics.members and analytics.members|length > 0 %}
+    <div class="members-grid">
+      {% for member_data in analytics.members %}
+      <div class="member-card" onclick="window.location.href='/teams/{{ team.id }}/member/{{ member_data.user.id }}/report'">
+        <div class="member-header">
+          <div class="member-avatar">
+            {{ member_data.user.name[0].upper() }}
+          </div>
+          <div>
+            <div style="font-weight: 800; font-size: 18px; letter-spacing: -0.3px; margin-bottom: 4px;">{{ member_data.user.name }}</div>
+            <div style="font-size: 13px; color: var(--muted); font-weight: 500;">{{ member_data.user.email }}</div>
+          </div>
+        </div>
+        
+        <div class="member-stats">
+          <div class="stat-mini">
+            <div class="stat-mini-value">{{ member_data.stats.total_plans }}</div>
+            <div class="stat-mini-label">Планов</div>
+          </div>
+          <div class="stat-mini">
+            <div class="stat-mini-value">{{ member_data.stats.completed_trainings }}</div>
+            <div class="stat-mini-label">Завершено</div>
+          </div>
+          <div class="stat-mini">
+            <div class="stat-mini-value">{{ "%.0f"|format(member_data.stats.avg_score) }}</div>
+            <div class="stat-mini-label">Средний балл</div>
+          </div>
+          <div class="stat-mini">
+            <div class="stat-mini-value">{{ member_data.stats.corrections_applied }}/{{ member_data.stats.total_errors }}</div>
+            <div class="stat-mini-label">Коррекций</div>
+          </div>
+        </div>
+        
+        <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid var(--border);">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <div style="font-size: 12px; color: var(--muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Прогресс планов</div>
+            <div style="font-size: 13px; font-weight: 800; color: var(--text);">{{ (member_data.stats.completed_plans / member_data.stats.total_plans * 100) if member_data.stats.total_plans > 0 else 0 }}%</div>
+          </div>
+          <div class="progress-bar-mini">
+            {% set progress = (member_data.stats.completed_plans / member_data.stats.total_plans * 100) if member_data.stats.total_plans > 0 else 0 %}
+            <div class="progress-bar-mini-fill" style="width: {{ progress }}%;"></div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div style="padding: 60px 40px; text-align: center; background: var(--surface); border: 2px solid var(--border); border-radius: 20px; color: var(--muted);">
+      <div style="font-size: 48px; margin-bottom: 16px;">👥</div>
+      <p style="margin: 0; font-size: 16px; font-weight: 600;">Нет участников в команде</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Premium Errors Table -->
+  <div style="margin-bottom: 40px;">
+    <div class="section-header">
+      <h2>Ошибки и коррекции</h2>
+    </div>
+    <div class="errors-table">
+      <div id="errors-list">
+        <div style="padding: 40px; text-align: center; color: var(--muted);">Загрузка...</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+  // Premium Chart
+  const ctx = document.getElementById('conversionChart');
+  if (ctx) {
+    fetch(`/api/teams/{{ team.id }}/conversion-metrics?period=weekly&days=30`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.metrics && data.metrics.length > 0) {
+          new Chart(ctx, {
+            type: 'line',
+            data: {
+              labels: data.metrics.map(m => m.user_name),
+              datasets: [{
+                label: 'Конверсия план → первая тренировка',
+                data: data.metrics.map(m => (m.conversions.plan_created_to_first_training || 0) * 100),
+                borderColor: 'rgb(102, 126, 234)',
+                backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                borderWidth: 3,
+                tension: 0.4,
+                fill: true,
+                pointRadius: 6,
+                pointHoverRadius: 8,
+                pointBackgroundColor: 'rgb(102, 126, 234)',
+                pointBorderColor: '#fff',
+                pointBorderWidth: 2
+              }]
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: true,
+              plugins: {
+                legend: { 
+                  display: true,
+                  labels: {
+                    font: { size: 13, weight: '700' },
+                    padding: 20
+                  }
+                },
+                tooltip: {
+                  backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                  padding: 12,
+                  titleFont: { size: 14, weight: '700' },
+                  bodyFont: { size: 13 },
+                  cornerRadius: 10,
+                  callbacks: {
+                    label: function(context) {
+                      return context.dataset.label + ': ' + context.parsed.y.toFixed(1) + '%';
+                    }
+                  }
+                }
+              },
+              scales: {
+                y: {
+                  beginAtZero: true,
+                  max: 100,
+                  ticks: {
+                    callback: function(value) {
+                      return value + '%';
+                    },
+                    font: { size: 12, weight: '600' }
+                  },
+                  grid: {
+                    color: 'rgba(0, 0, 0, 0.05)'
+                  }
+                },
+                x: {
+                  ticks: {
+                    font: { size: 12, weight: '600' }
+                  },
+                  grid: {
+                    display: false
+                  }
+                }
+              }
+            }
+          });
+        } else {
+          ctx.parentElement.innerHTML = '<div style="padding: 60px 40px; text-align: center; color: var(--muted);"><div style="font-size: 48px; margin-bottom: 16px;">📊</div><p style="margin: 0; font-size: 16px; font-weight: 600;">Нет данных для отображения</p></div>';
+        }
+      })
+      .catch(err => {
+        console.error('Ошибка загрузки метрик:', err);
+        ctx.parentElement.innerHTML = '<div style="padding: 60px 40px; text-align: center; color: var(--muted);"><div style="font-size: 48px; margin-bottom: 16px;">⚠️</div><p style="margin: 0; font-size: 16px; font-weight: 600;">Ошибка загрузки данных</p></div>';
+      });
+  }
+  
+  // Premium Errors Loading
+  fetch(`/api/teams/{{ team.id }}/errors-corrections`)
+    .then(r => r.json())
+    .then(data => {
+      const container = document.getElementById('errors-list');
+      if (data.errors && data.errors.length > 0) {
+        container.innerHTML = data.errors.map(e => `
+          <div class="error-row">
+            <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <strong style="font-size: 16px; font-weight: 800;">${e.user_name}</strong>
+                <span class="error-badge ${e.correction_applied ? 'applied' : 'pending'}">
+                  ${e.correction_applied ? '✓ Применено' : '⏳ Ожидает'}
+                </span>
+              </div>
+              <div style="font-size: 12px; color: var(--muted); font-weight: 600;">
+                ${new Date(e.detected_at).toLocaleDateString('ru-RU')}
+              </div>
+            </div>
+            <div style="margin-bottom: 12px;">
+              <div style="font-size: 12px; color: var(--muted); margin-bottom: 6px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Ошибка:</div>
+              <div style="font-size: 15px; line-height: 1.6; color: var(--text);">${e.error_description}</div>
+            </div>
+            <div>
+              <div style="font-size: 12px; color: var(--muted); margin-bottom: 6px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">Коррекция:</div>
+              <div style="font-size: 15px; line-height: 1.6; color: var(--text);">${e.correction_text}</div>
+            </div>
+          </div>
+        `).join('');
+      } else {
+        container.innerHTML = '<div style="padding: 60px 40px; text-align: center; color: var(--muted);"><div style="font-size: 48px; margin-bottom: 16px;">✨</div><p style="margin: 0; font-size: 16px; font-weight: 600;">Нет ошибок и коррекций</p></div>';
+      }
+    })
+    .catch(err => {
+      console.error('Ошибка загрузки ошибок:', err);
+      document.getElementById('errors-list').innerHTML = '<div style="padding: 60px 40px; text-align: center; color: var(--muted);"><div style="font-size: 48px; margin-bottom: 16px;">⚠️</div><p style="margin: 0; font-size: 16px; font-weight: 600;">Ошибка загрузки данных</p></div>';
+    });
+</script>
+{% endblock %}
