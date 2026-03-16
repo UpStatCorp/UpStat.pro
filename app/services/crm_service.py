@@ -161,31 +161,46 @@ class AmoCRMService(CRMService):
                 logger.error(f"API request failed: {e}")
                 return None
     
+    MIN_CALL_DURATION = 35
+
     async def get_recordings(self, db: Session, limit: int = 100) -> List[Dict[str, Any]]:
         """Получить список записей звонков из AmoCRM (из /calls, примечаний к сделкам и контактам)"""
         seen_ids: set = set()
         recordings: List[Dict[str, Any]] = []
         date_from = (datetime.utcnow() - timedelta(days=30)).timestamp()
+        skipped_short = 0
 
-        # 1) Звонки из ресурса /calls (телефония/виджет)
+        # 1) Звонки из ресурса /calls (телефония/виджет) — пагинация
         logger.info("[AmoCRM] Fetching calls from /calls endpoint...")
-        calls_data = await self._make_api_request(
-            "/calls",
-            params={
-                "filter[created_at][from]": int(date_from),
-                "limit": limit,
-                "with": "call_result"
-            }
-        )
+        page = 1
         calls_count = 0
         calls_with_link = 0
-        if calls_data and "_embedded" in calls_data:
+        while True:
+            calls_data = await self._make_api_request(
+                "/calls",
+                params={
+                    "filter[created_at][from]": int(date_from),
+                    "limit": 250,
+                    "page": page,
+                    "with": "call_result"
+                }
+            )
+            if not calls_data or "_embedded" not in calls_data:
+                if page == 1:
+                    logger.info(f"[AmoCRM] /calls returned: {json.dumps(calls_data or {}, ensure_ascii=False)[:500]}")
+                break
             calls_list = calls_data["_embedded"].get("calls", [])
-            calls_count = len(calls_list)
+            if not calls_list:
+                break
+            calls_count += len(calls_list)
             for call in calls_list:
                 if not call.get("link"):
                     continue
                 calls_with_link += 1
+                duration = call.get("duration", 0)
+                if duration < self.MIN_CALL_DURATION:
+                    skipped_short += 1
+                    continue
                 cid = str(call["id"])
                 if cid in seen_ids:
                     continue
@@ -195,7 +210,7 @@ class AmoCRMService(CRMService):
                     "crm_record_id": cid,
                     "crm_call_id": cid,
                     "call_date": datetime.fromtimestamp(call["created_at"]),
-                    "duration_seconds": call.get("duration", 0),
+                    "duration_seconds": duration,
                     "direction": "inbound" if call.get("direction") == "inbound" else "outbound",
                     "recording_url": call["link"],
                     "manager_name": call.get("responsible_user_name", ""),
@@ -209,35 +224,36 @@ class AmoCRMService(CRMService):
                         "note": call.get("note", "")
                     }
                 })
-        else:
-            logger.info(f"[AmoCRM] /calls returned: {json.dumps(calls_data or {}, ensure_ascii=False)[:500]}")
-        logger.info(f"[AmoCRM] /calls: total={calls_count}, with_link={calls_with_link}, added={len(recordings)}")
+            if len(calls_list) < 250:
+                break
+            page += 1
+        logger.info(f"[AmoCRM] /calls: total={calls_count}, with_link={calls_with_link}, "
+                     f"short(<{self.MIN_CALL_DURATION}s)={skipped_short}, added={len(recordings)}")
 
         # 2) Звонки из примечаний к сделкам (leads/notes: call_in, call_out)
-        notes_recordings = await self._get_recordings_from_notes("leads", db, date_from, limit - len(recordings), seen_ids)
+        notes_recordings = await self._get_recordings_from_notes("leads", db, date_from, seen_ids)
         recordings.extend(notes_recordings)
         logger.info(f"[AmoCRM] leads/notes: added={len(notes_recordings)}")
 
         # 3) Звонки из примечаний к контактам (contacts/notes: call_in, call_out)
-        notes_contacts = await self._get_recordings_from_notes("contacts", db, date_from, limit - len(recordings), seen_ids)
+        notes_contacts = await self._get_recordings_from_notes("contacts", db, date_from, seen_ids)
         recordings.extend(notes_contacts)
         logger.info(f"[AmoCRM] contacts/notes: added={len(notes_contacts)}")
 
         logger.info(f"[AmoCRM] Total recordings collected: {len(recordings)}")
         recordings.sort(key=lambda r: r["call_date"], reverse=True)
-        return recordings[:limit]
+        return recordings
 
     async def _get_recordings_from_notes(
-        self, entity_type: str, db: Session, date_from: float, limit: int, seen_ids: set
+        self, entity_type: str, db: Session, date_from: float, seen_ids: set
     ) -> List[Dict[str, Any]]:
         """Получить записи звонков из примечаний (call_in, call_out) к сделкам или контактам."""
         result: List[Dict[str, Any]] = []
-        if limit <= 0:
-            return result
         page = 1
-        per_page = min(250, max(limit, 50))
+        per_page = 250
+        skipped_short = 0
 
-        while len(result) < limit:
+        while True:
             params_list: List[tuple] = [
                 ("filter[updated_at][from]", int(date_from)),
                 ("limit", per_page),
@@ -254,10 +270,6 @@ class AmoCRMService(CRMService):
                 else:
                     total_notes = len(notes_data["_embedded"].get("notes", []))
                     logger.info(f"[AmoCRM] /{entity_type}/notes page 1: {total_notes} notes found")
-                    if total_notes > 0:
-                        sample = notes_data["_embedded"]["notes"][0]
-                        logger.info(f"[AmoCRM] Sample note: id={sample.get('id')}, type={sample.get('note_type')}, "
-                                    f"entity_id={sample.get('entity_id')}, params={json.dumps(sample.get('params', {}), ensure_ascii=False)[:300]}")
 
             if not notes_data or "_embedded" not in notes_data:
                 break
@@ -267,13 +279,15 @@ class AmoCRMService(CRMService):
                 break
 
             for note in notes:
-                if len(result) >= limit:
-                    break
                 params_note = note.get("params") or {}
                 link = params_note.get("link")
                 if not link or not str(link).strip():
                     continue
                 link = str(link).strip()
+                duration = int(params_note.get("duration") or 0)
+                if duration < self.MIN_CALL_DURATION:
+                    skipped_short += 1
+                    continue
                 crm_record_id = f"{entity_type}_note_{note.get('entity_id', 0)}_{note['id']}"
                 if crm_record_id in seen_ids:
                     continue
@@ -297,7 +311,7 @@ class AmoCRMService(CRMService):
                     "crm_record_id": crm_record_id,
                     "crm_call_id": str(note["id"]),
                     "call_date": datetime.fromtimestamp(note["created_at"]),
-                    "duration_seconds": int(params_note.get("duration") or 0),
+                    "duration_seconds": duration,
                     "direction": "inbound" if note.get("note_type") == "call_in" else "outbound",
                     "recording_url": link,
                     "manager_name": manager_name,
@@ -316,6 +330,8 @@ class AmoCRMService(CRMService):
                 break
             page += 1
 
+        if skipped_short:
+            logger.info(f"[AmoCRM] /{entity_type}/notes: skipped {skipped_short} short calls (<{self.MIN_CALL_DURATION}s)")
         return result
 
     async def debug_api(self) -> Dict[str, Any]:
@@ -478,7 +494,7 @@ class Bitrix24WebhookService(CRMService):
     
     async def get_recordings(self, db: Session, limit: int = 100) -> List[Dict[str, Any]]:
         """Получить список записей звонков из Bitrix24 (Webhook)"""
-        return await self._bitrix24_get_recordings(limit)
+        return await self._bitrix24_get_recordings()
 
     def _get_auth_token(self) -> str:
         """Извлечь auth-токен для подстановки в URL файлов Bitrix24"""
@@ -495,11 +511,13 @@ class Bitrix24WebhookService(CRMService):
                 pass
         return ""
 
-    async def _bitrix24_get_recordings(self, limit: int = 100) -> List[Dict[str, Any]]:
+    MIN_CALL_DURATION = 35
+
+    async def _bitrix24_get_recordings(self) -> List[Dict[str, Any]]:
         """Универсальный метод получения звонков из Bitrix24 (activity + voximplant)"""
         recordings: List[Dict[str, Any]] = []
         seen_ids: set = set()
-        date_from = (datetime.utcnow() - timedelta(days=90)).isoformat()
+        date_from = (datetime.utcnow() - timedelta(days=30)).isoformat()
         auth_token = self._get_auth_token()
 
         # --- Шаг 0: попробуем загрузить voximplant-статистику для длительности ---
@@ -564,7 +582,7 @@ class Bitrix24WebhookService(CRMService):
                 break
             all_calls.extend(batch)
             nxt = calls_data.get("next")
-            if len(all_calls) >= limit * 5 or nxt is None:
+            if nxt is None:
                 break
             start = nxt
 
@@ -575,10 +593,9 @@ class Bitrix24WebhookService(CRMService):
 
         skipped_no_file = 0
         skipped_missed = 0
+        skipped_short = 0
 
         for call in all_calls:
-            if len(recordings) >= limit:
-                break
             try:
                 call_id = str(call.get("ID", ""))
                 if call_id in seen_ids:
@@ -624,6 +641,10 @@ class Bitrix24WebhookService(CRMService):
                     if key and key in voxi_duration_map:
                         duration = voxi_duration_map[key]
 
+                if duration < self.MIN_CALL_DURATION:
+                    skipped_short += 1
+                    continue
+
                 recordings.append({
                     "crm_record_id": call_id,
                     "crm_call_id": call_id,
@@ -645,20 +666,19 @@ class Bitrix24WebhookService(CRMService):
                 logger.warning(f"[Bitrix24] Error processing activity {call.get('ID')}: {e}")
 
         logger.info(f"[Bitrix24] Activities: {len(all_calls)} total, "
-                     f"{skipped_missed} missed skipped, "
-                     f"{skipped_no_file} no file, "
-                     f"{len(recordings)} with recording")
+                     f"{skipped_missed} missed, {skipped_short} short(<{self.MIN_CALL_DURATION}s), "
+                     f"{skipped_no_file} no file, {len(recordings)} with recording")
 
         # --- Шаг 2: если из activity ничего нет — voximplant напрямую ---
         if len(recordings) == 0:
             logger.info("[Bitrix24] No recordings from activities, using voximplant fallback...")
             for vid, rec_url in voxi_url_map.items():
-                if len(recordings) >= limit:
-                    break
                 if vid in seen_ids or "_" in vid:
                     continue
                 seen_ids.add(vid)
                 dur = voxi_duration_map.get(vid, 0)
+                if dur < self.MIN_CALL_DURATION:
+                    continue
                 recordings.append({
                     "crm_record_id": vid,
                     "crm_call_id": vid,
@@ -675,7 +695,7 @@ class Bitrix24WebhookService(CRMService):
 
         logger.info(f"[Bitrix24] Total recordings collected: {len(recordings)}")
         recordings.sort(key=lambda r: r["call_date"], reverse=True)
-        return recordings[:limit]
+        return recordings
 
     async def _extract_recording_url(self, activity: dict, auth_token: str) -> Optional[str]:
         """Извлечь URL записи звонка из активности Bitrix24"""
@@ -1150,7 +1170,7 @@ class Bitrix24Service(CRMService):
     
     async def get_recordings(self, db: Session, limit: int = 100) -> List[Dict[str, Any]]:
         """Получить список записей звонков из Bitrix24 (OAuth)"""
-        return await self._bitrix24_get_recordings(limit)
+        return await self._bitrix24_get_recordings()
 
     _bitrix24_get_recordings = Bitrix24WebhookService._bitrix24_get_recordings
     _extract_recording_url = Bitrix24WebhookService._extract_recording_url
