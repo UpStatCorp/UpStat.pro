@@ -164,11 +164,11 @@
                 <td>{{ user.email }}</td>
                 <td>
                     {% if user.role == 'admin' %}
-                    <span class="badge admin">
+                    <span class="role-badge admin">
                         <i class="fas fa-user-shield"></i> Администратор
                     </span>
                     {% else %}
-                    <span class="badge user">
+                    <span class="role-badge user">
                         <i class="fas fa-user"></i> Пользователь
                     </span>
                     {% endif %}
