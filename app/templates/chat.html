@@ -76,7 +76,7 @@
   <!-- Основной чат -->
   <section class="chat-card">
     <div id="analysis-progress" class="analysis-progress hidden" role="status" aria-live="polite">
-      <span id="analysis-progress-label">GPT анализирует звонок…</span>
+      <span id="analysis-progress-label">UpStat анализирует звонок…</span>
       <div class="analysis-progress-track">
         <div class="analysis-progress-fill"></div>
       </div>
@@ -156,7 +156,7 @@
   let storedOperationId = localStorage.getItem(ANALYSIS_STORAGE_KEY);
   let displayProgress = 0;
   let animationTarget = 0;
-  let lastStageMessage = 'GPT анализирует звонок…';
+  let lastStageMessage = 'UpStat анализирует звонок…';
   let progressAnimator = null;
   let latestActualPercentage = 0;
   let latestOperationStatus = null;
@@ -183,7 +183,7 @@
     } else {
       animationTarget = Math.max(animationTarget, Math.min(99, latestActualPercentage + SIMULATION_BUFFER));
     }
-    lastStageMessage = operation.stage_message || 'GPT анализирует звонок…';
+    lastStageMessage = operation.stage_message || 'UpStat анализирует звонок…';
     applyDisplayProgress(Math.max(displayProgress, percentage));
     renderAnalysisLabel(lastStageMessage);
     showAnalysisProgress();
