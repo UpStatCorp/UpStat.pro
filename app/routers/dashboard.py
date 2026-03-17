@@ -189,6 +189,11 @@ def _collect_user_analysis_packages(db: Session, user_id: int, limit: int = 100)
                 "integration_name": recording.integration.crm_name if recording.integration else "CRM",
                 "call_date": recording.call_date,
                 "manager_name": recording.manager_name,
+                "client_name": recording.client_name,
+                "client_phone": recording.client_phone,
+                "client_company": recording.client_company,
+                "duration_seconds": recording.duration_seconds,
+                "direction": recording.direction,
             },
         })
 

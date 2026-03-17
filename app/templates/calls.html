@@ -48,9 +48,51 @@
           </div>
         </div>
 
-        {% if p.is_from_crm and p.crm_info and p.crm_info.manager_name %}
+        {% if p.is_from_crm and p.crm_info %}
         <div class="crm-details">
-          <span style="color: #94a3b8; font-size: 0.85rem;">{{ p.crm_info.manager_name }}</span>
+          {% if p.crm_info.client_name %}
+          <div class="crm-detail-row">
+            <span class="crm-detail-label">Клиент</span>
+            <span class="crm-detail-value">{{ p.crm_info.client_name }}</span>
+          </div>
+          {% endif %}
+          {% if p.crm_info.client_phone %}
+          <div class="crm-detail-row">
+            <span class="crm-detail-label">Телефон</span>
+            <span class="crm-detail-value">{{ p.crm_info.client_phone }}</span>
+          </div>
+          {% endif %}
+          {% if p.crm_info.client_company %}
+          <div class="crm-detail-row">
+            <span class="crm-detail-label">Компания</span>
+            <span class="crm-detail-value">{{ p.crm_info.client_company }}</span>
+          </div>
+          {% endif %}
+          {% if p.crm_info.manager_name %}
+          <div class="crm-detail-row">
+            <span class="crm-detail-label">Менеджер</span>
+            <span class="crm-detail-value">{{ p.crm_info.manager_name }}</span>
+          </div>
+          {% endif %}
+          <div class="crm-detail-chips">
+            {% if p.crm_info.duration_seconds %}
+            <span class="crm-chip">
+              <svg style="width:14px;height:14px;" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/></svg>
+              {{ "%d:%02d"|format(p.crm_info.duration_seconds // 60, p.crm_info.duration_seconds % 60) }}
+            </span>
+            {% endif %}
+            {% if p.crm_info.direction and p.crm_info.direction != 'unknown' %}
+            <span class="crm-chip">
+              {% if p.crm_info.direction == 'inbound' %}
+              <svg style="width:14px;height:14px;" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M14.707 12.293a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 111.414-1.414L9 14.586V3a1 1 0 012 0v11.586l2.293-2.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+              Входящий
+              {% else %}
+              <svg style="width:14px;height:14px;" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M5.293 7.707a1 1 0 010-1.414l4-4a1 1 0 011.414 0l4 4a1 1 0 01-1.414 1.414L11 5.414V17a1 1 0 11-2 0V5.414L6.707 7.707a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg>
+              Исходящий
+              {% endif %}
+            </span>
+            {% endif %}
+          </div>
         </div>
         {% endif %}
 
@@ -284,7 +326,55 @@
 }
 
 .crm-details {
-  padding: 4px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  background: rgba(16, 185, 129, 0.04);
+  border: 1px solid rgba(16, 185, 129, 0.15);
+  border-radius: 10px;
+}
+
+.crm-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.crm-detail-label {
+  font-size: 12px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.crm-detail-value {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crm-detail-chips {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.crm-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
 }
 
 .call-card-date {
