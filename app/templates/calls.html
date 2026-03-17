@@ -38,25 +38,19 @@
             {% endif %}
           </div>
           <div class="call-card-date">
+            {% if p.is_from_crm and p.crm_info and p.crm_info.call_date %}
+            <div class="date-main">{{ p.crm_info.call_date.strftime("%d.%m.%Y") }}</div>
+            <div class="date-time">{{ p.crm_info.call_date.strftime("%H:%M") }}</div>
+            {% else %}
             <div class="date-main">{{ p.created_at.strftime("%d.%m.%Y") }}</div>
             <div class="date-time">{{ p.created_at.strftime("%H:%M") }}</div>
+            {% endif %}
           </div>
         </div>
 
-        {% if p.is_from_crm and p.crm_info %}
+        {% if p.is_from_crm and p.crm_info and p.crm_info.manager_name %}
         <div class="crm-details">
-          {% if p.crm_info.manager_name %}
-          <div class="crm-detail-item">
-            <span class="crm-detail-label">Менеджер:</span>
-            <span class="crm-detail-value">{{ p.crm_info.manager_name }}</span>
-          </div>
-          {% endif %}
-          {% if p.crm_info.client_name %}
-          <div class="crm-detail-item">
-            <span class="crm-detail-label">Клиент:</span>
-            <span class="crm-detail-value">{{ p.crm_info.client_name }}</span>
-          </div>
-          {% endif %}
+          <span style="color: #94a3b8; font-size: 0.85rem;">{{ p.crm_info.manager_name }}</span>
         </div>
         {% endif %}
 
@@ -290,31 +284,7 @@
 }
 
 .crm-details {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px 12px;
-  background: var(--bg);
-  border-radius: 8px;
-  font-size: 13px;
-}
-
-.crm-detail-item {
-  display: flex;
-  gap: 8px;
-}
-
-.crm-detail-label {
-  color: var(--muted);
-  white-space: nowrap;
-}
-
-.crm-detail-value {
-  color: var(--text);
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  padding: 4px 0;
 }
 
 .call-card-date {

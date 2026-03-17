@@ -8,7 +8,7 @@ from sqlalchemy import func
 from database import get_db
 from deps import require_user
 from models import Conversation, Message, Attachment, AnalysisTrainingPlan, Training, CRMRecording, User
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 router = APIRouter(tags=["dashboard"])
 
@@ -82,6 +82,7 @@ def _collect_user_analysis_packages(db: Session, user_id: int, limit: int = 100)
     if non_crm_conv_ids:
         rows = (
             db.query(Message)
+            .options(selectinload(Message.attachments))
             .filter(
                 Message.conversation_id.in_(non_crm_conv_ids),
                 Message.role == "bot"
@@ -125,12 +126,13 @@ def _collect_user_analysis_packages(db: Session, user_id: int, limit: int = 100)
 
     crm_recordings = (
         db.query(CRMRecording)
+        .options(joinedload(CRMRecording.integration))
         .filter(
             CRMRecording.user_id == user_id,
             CRMRecording.sync_status == "completed",
             CRMRecording.conversation_id.isnot(None),
         )
-        .order_by(CRMRecording.analyzed_at.desc())
+        .order_by(CRMRecording.created_at.desc())
         .limit(limit)
         .all()
     )
@@ -138,6 +140,7 @@ def _collect_user_analysis_packages(db: Session, user_id: int, limit: int = 100)
     for recording in crm_recordings:
         report_msg = (
             db.query(Message)
+            .options(selectinload(Message.attachments))
             .filter(
                 Message.conversation_id == recording.conversation_id,
                 Message.role == "bot",
@@ -183,10 +186,9 @@ def _collect_user_analysis_packages(db: Session, user_id: int, limit: int = 100)
             "extras": trans_dialog_atts,
             "is_from_crm": True,
             "crm_info": {
-                "integration_name": recording.integration.crm_name,
+                "integration_name": recording.integration.crm_name if recording.integration else "CRM",
                 "call_date": recording.call_date,
                 "manager_name": recording.manager_name,
-                "client_name": recording.client_name,
             },
         })
 

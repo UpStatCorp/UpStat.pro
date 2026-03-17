@@ -721,19 +721,19 @@ async def _process_chat_recording(db: Session, recording: CRMRecording, integrat
         recording.error_message = f"Ошибка анализа чата: {str(e)[:400]}"
         db.commit()
         return
-    
+
     report_msg = db.query(Message).filter(
         Message.conversation_id == conversation.id, Message.role == "bot",
     ).order_by(desc(Message.id)).first()
-    
+
     analysis_score = None
     if report_msg and report_msg.text:
         analysis_score = _extract_score_from_report(report_msg.text)
-    
+
     recording.sync_status = "completed"
     recording.analyzed_at = datetime.utcnow()
     recording.analysis_score = analysis_score
-    
+
     if report_msg:
         try:
             plan = await TrainingPlanService.create_training_plan(
@@ -772,10 +772,41 @@ async def _process_call_recording(db: Session, recording: CRMRecording, integrat
     recording.sync_status = "downloading"
     db.commit()
 
+    download_url = recording.recording_url
     try:
-        success = await service.download_recording(recording.recording_url, file_path)
+        success = False
+
+        # crm_show_file.php не работает через webhook — сразу идём на voximplant
+        if "crm_show_file.php" not in (download_url or ""):
+            success = await service.download_recording(download_url, file_path)
+
+            if success and os.path.exists(file_path):
+                with open(file_path, "rb") as f:
+                    head = f.read(15)
+                if head.startswith(b"<!DOC") or head.startswith(b"<html") or head.startswith(b"<!"):
+                    os.remove(file_path)
+                    success = False
+                    logger.warning(f"Downloaded file is HTML, not audio for recording {recording.id}")
+        else:
+            logger.info(f"Skipping crm_show_file.php URL for recording {recording.id}, using voximplant")
+
+        if not success and hasattr(service, '_try_voximplant_download'):
+            logger.info(f"Trying voximplant fallback for recording {recording.id}")
+            voxi_url = await service._try_voximplant_download(recording)
+            if voxi_url:
+                success = await service.download_recording(voxi_url, file_path)
+                if success and os.path.exists(file_path):
+                    with open(file_path, "rb") as f:
+                        head = f.read(15)
+                    if head.startswith(b"<!DOC") or head.startswith(b"<html") or head.startswith(b"<!"):
+                        os.remove(file_path)
+                        success = False
+                    else:
+                        recording.recording_url = voxi_url
+
         if not success:
-            raise Exception("Не удалось скачать файл")
+            raise Exception("Не удалось скачать аудио файл")
+
         file_size = os.path.getsize(file_path)
         recording.local_file_path = os.path.relpath(file_path, start=upload_dir)
         recording.file_size_bytes = file_size
@@ -866,14 +897,24 @@ async def analyze_recording_task(recording_id: int):
         if not recording.batch_id:
             try:
                 notification_service = NotificationService()
-                score_text = f" \u2014 Оценка: {recording.analysis_score}/100" if recording.analysis_score else ""
+                if recording.sync_status == "completed":
+                    score_text = f" — Оценка: {recording.analysis_score}/100" if recording.analysis_score else ""
+                    notif_title = "Анализ завершён"
+                    notif_msg = f"Анализ записи от {recording.call_date.strftime('%d.%m.%Y %H:%M')} завершён{score_text}"
+                    notif_type = NotificationType.SUCCESS
+                    notif_url = f"/chat?conversation_id={recording.conversation_id}" if recording.conversation_id else "/crm/recordings"
+                else:
+                    notif_title = "Ошибка анализа"
+                    notif_msg = recording.error_message or f"Не удалось проанализировать запись от {recording.call_date.strftime('%d.%m.%Y %H:%M')}"
+                    notif_type = NotificationType.ERROR
+                    notif_url = "/crm/recordings"
                 notification_service.add_notification(
                     user_id=recording.user_id,
-                    type=NotificationType.SUCCESS if recording.sync_status == "completed" else NotificationType.ERROR,
-                    title="Анализ завершён",
-                    message=f"Анализ записи от {recording.call_date.strftime('%d.%m.%Y %H:%M')} завершён{score_text}",
-                    action_url=f"/chat?conversation_id={recording.conversation_id}" if recording.conversation_id else "/crm/recordings",
-                    action_label="Посмотреть результат",
+                    type=notif_type,
+                    title=notif_title,
+                    message=notif_msg,
+                    action_url=notif_url,
+                    action_label="Посмотреть результат" if recording.sync_status == "completed" else "Перейти к записям",
                 )
             except Exception as ne:
                 logger.warning(f"Could not send notification: {ne}")

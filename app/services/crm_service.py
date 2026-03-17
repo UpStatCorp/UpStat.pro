@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import logging
 import httpx
@@ -523,6 +524,14 @@ class Bitrix24WebhookService(CRMService):
         # --- Шаг 0: попробуем загрузить voximplant-статистику для длительности ---
         voxi_duration_map: Dict[str, int] = {}
         voxi_url_map: Dict[str, str] = {}
+        voxi_by_phone: Dict[str, List] = {}
+
+        def _norm_phone(p: str) -> str:
+            digits = re.sub(r"[^\d]", "", p)
+            if digits.startswith("8") and len(digits) == 11:
+                digits = "7" + digits[1:]
+            return "+" + digits if digits else ""
+
         try:
             voxi_data = await self._make_api_request(
                 "voximplant.statistic.get",
@@ -536,19 +545,23 @@ class Bitrix24WebhookService(CRMService):
                 logger.info(f"[Bitrix24] voximplant cache: {len(voxi_calls)} entries loaded")
                 for vc in voxi_calls:
                     vid = str(vc.get("CALL_ID", ""))
+                    dur = int(vc.get("CALL_DURATION", 0))
+                    rec = vc.get("CALL_RECORD_URL") or vc.get("RECORD_URL") or ""
                     if vid:
-                        voxi_duration_map[vid] = int(vc.get("CALL_DURATION", 0))
-                        rec = vc.get("RECORD_URL") or vc.get("CALL_RECORD_URL") or ""
+                        voxi_duration_map[vid] = dur
                         if rec:
                             voxi_url_map[vid] = rec
-                    phone = vc.get("PHONE_NUMBER", "")
+                    phone = _norm_phone(vc.get("PHONE_NUMBER", ""))
                     ts = vc.get("CALL_START_DATE", "")
                     if phone and ts:
                         key = f"{phone}_{ts[:16]}"
-                        voxi_duration_map[key] = int(vc.get("CALL_DURATION", 0))
-                        rec = vc.get("RECORD_URL") or vc.get("CALL_RECORD_URL") or ""
+                        voxi_duration_map[key] = dur
                         if rec:
                             voxi_url_map[key] = rec
+                    if phone and rec:
+                        voxi_by_phone.setdefault(phone, []).append({
+                            "url": rec, "ts": ts, "dur": dur,
+                        })
             else:
                 logger.info("[Bitrix24] voximplant.statistic.get unavailable or empty")
         except Exception as e:
@@ -609,12 +622,38 @@ class Bitrix24WebhookService(CRMService):
                     skipped_missed += 1
                     continue
 
-                record_url = await self._extract_recording_url(call, auth_token)
+                # Приоритет: voximplant URL (прямая ссылка) > extract из activity
+                provider_data_pre = call.get("PROVIDER_DATA") or ""
+                record_url = None
+                if provider_data_pre and provider_data_pre in voxi_url_map:
+                    record_url = voxi_url_map[provider_data_pre]
+                    logger.debug(f"[Bitrix24] Using voximplant URL for activity {call_id}")
+
+                if not record_url and voxi_by_phone:
+                    subj = call.get("SUBJECT") or ""
+                    phone_match = re.search(r"[\+\d][\d\s\-\(\)]{9,}", subj)
+                    if phone_match:
+                        act_phone = _norm_phone(phone_match.group())
+                        act_start = call.get("START_TIME", "")
+                        if act_phone in voxi_by_phone:
+                            best = None
+                            for entry in voxi_by_phone[act_phone]:
+                                if best is None:
+                                    best = entry
+                                elif act_start and entry["ts"]:
+                                    try:
+                                        a_dt = datetime.fromisoformat(act_start.replace("Z", "+00:00"))
+                                        v_dt = datetime.fromisoformat(entry["ts"].replace("Z", "+00:00"))
+                                        if best.get("_diff") is None or abs((a_dt - v_dt).total_seconds()) < best["_diff"]:
+                                            best = {**entry, "_diff": abs((a_dt - v_dt).total_seconds())}
+                                    except Exception:
+                                        pass
+                            if best and best.get("url"):
+                                record_url = best["url"]
+                                logger.debug(f"[Bitrix24] Matched voximplant by phone {act_phone} for activity {call_id}")
 
                 if not record_url:
-                    provider_data = call.get("PROVIDER_DATA") or ""
-                    if provider_data and provider_data in voxi_url_map:
-                        record_url = voxi_url_map[provider_data]
+                    record_url = await self._extract_recording_url(call, auth_token)
 
                 if not record_url:
                     skipped_no_file += 1
@@ -698,29 +737,15 @@ class Bitrix24WebhookService(CRMService):
         return recordings
 
     async def _extract_recording_url(self, activity: dict, auth_token: str) -> Optional[str]:
-        """Извлечь URL записи звонка из активности Bitrix24"""
-        # 1) FILES — Bitrix24 отдаёт список [{"id": N, "url": "..."}, ...]
-        files = activity.get("FILES")
-        if files:
-            if isinstance(files, list):
-                for f in files:
-                    if isinstance(f, dict) and f.get("url"):
-                        url = f["url"]
-                        if url.endswith("auth=") and auth_token:
-                            url += auth_token
-                        elif "auth=" in url and url.split("auth=")[-1] == "" and auth_token:
-                            url += auth_token
-                        logger.debug(f"[Bitrix24] File URL from FILES list: {url[:120]}...")
-                        return url
-            elif isinstance(files, dict):
-                for fid, finfo in files.items():
-                    if isinstance(finfo, dict) and finfo.get("url"):
-                        url = finfo["url"]
-                        if url.endswith("auth=") and auth_token:
-                            url += auth_token
-                        return url
+        """Извлечь URL записи звонка из активности Bitrix24.
 
-        # 2) STORAGE_ELEMENT_IDS → disk.file.get
+        Стратегия:
+        1. STORAGE_ELEMENT_IDS → disk.file.get (DOWNLOAD_URL уже содержит валидный auth)
+        2. voximplant.url.get по PROVIDER_DATA (CALL_ID) — прямая ссылка
+        3. FILES list/dict — подставляем auth_token (наименее надёжный вариант)
+        """
+
+        # 1) STORAGE_ELEMENT_IDS → disk.file.get — самый надёжный способ
         storage_ids = activity.get("STORAGE_ELEMENT_IDS") or []
         if storage_ids:
             for sid in storage_ids[:2]:
@@ -736,7 +761,71 @@ class Bitrix24WebhookService(CRMService):
                 except Exception as e:
                     logger.debug(f"[Bitrix24] disk.file.get error for {sid}: {e}")
 
+        # 2) voximplant.url.get по CALL_ID из PROVIDER_DATA
+        provider_data = activity.get("PROVIDER_DATA") or ""
+        if provider_data:
+            try:
+                voxi_url_data = await self._make_api_request(
+                    "voximplant.url.get", params={}
+                )
+                if voxi_url_data and "result" in voxi_url_data:
+                    base_url = voxi_url_data["result"].get("server_url", "")
+                    if base_url:
+                        logger.debug(f"[Bitrix24] voximplant base URL: {base_url}")
+            except Exception as e:
+                logger.debug(f"[Bitrix24] voximplant.url.get error: {e}")
+
+            try:
+                stat_data = await self._make_api_request(
+                    "voximplant.statistic.get",
+                    params={
+                        "FILTER": {"CALL_ID": provider_data},
+                        "LIMIT": 1,
+                    }
+                )
+                if stat_data and "result" in stat_data and stat_data["result"]:
+                    rec = stat_data["result"][0]
+                    rec_url = rec.get("CALL_RECORD_URL") or rec.get("RECORD_URL") or ""
+                    if rec_url:
+                        logger.debug(f"[Bitrix24] Recording URL from voximplant stat: {rec_url[:120]}...")
+                        return rec_url
+            except Exception as e:
+                logger.debug(f"[Bitrix24] voximplant.statistic.get by CALL_ID error: {e}")
+
+        # 3) FILES — фолбэк
+        files = activity.get("FILES")
+        if files:
+            if isinstance(files, list):
+                for f in files:
+                    if isinstance(f, dict) and f.get("url"):
+                        url = f["url"]
+                        if "crm_show_file.php" in url:
+                            url = self._fix_file_url_auth(url, auth_token)
+                        elif url.endswith("auth=") and auth_token:
+                            url += auth_token
+                        logger.debug(f"[Bitrix24] File URL from FILES list: {url[:120]}...")
+                        return url
+            elif isinstance(files, dict):
+                for fid, finfo in files.items():
+                    if isinstance(finfo, dict) and finfo.get("url"):
+                        url = finfo["url"]
+                        if "crm_show_file.php" in url:
+                            url = self._fix_file_url_auth(url, auth_token)
+                        elif url.endswith("auth=") and auth_token:
+                            url += auth_token
+                        return url
+
         return None
+
+    def _fix_file_url_auth(self, url: str, auth_token: str) -> str:
+        """Подставить auth-токен в URL crm_show_file.php корректно"""
+        if not auth_token:
+            return url
+        if "auth=" in url:
+            parts = url.split("auth=")
+            return parts[0] + "auth=" + auth_token
+        separator = "&" if "?" in url else "?"
+        return url + separator + "auth=" + auth_token
 
     @staticmethod
     def _parse_bitrix_dt(s: str) -> datetime:
@@ -1049,6 +1138,50 @@ class Bitrix24WebhookService(CRMService):
         except Exception as e:
             logger.error(f"Failed to download Bitrix24 recording: {e}")
             return False
+
+    async def _try_voximplant_download(self, recording) -> Optional[str]:
+        """Найти рабочий URL через voximplant по номеру телефона и дате"""
+        phone = recording.client_phone or ""
+        if not phone:
+            subj = getattr(recording, 'manager_name', '') or ''
+            meta_json = getattr(recording, 'crm_metadata_json', None)
+            if meta_json:
+                import json as _json
+                try:
+                    meta = _json.loads(meta_json)
+                    subj = meta.get("subject", "")
+                except Exception:
+                    pass
+            phone_match = re.search(r"[\+\d][\d\s\-\(\)]{9,}", subj)
+            if phone_match:
+                phone = phone_match.group()
+        if not phone:
+            return None
+
+        digits = re.sub(r"[^\d]", "", phone)
+        if digits.startswith("8") and len(digits) == 11:
+            digits = "7" + digits[1:]
+        norm_phone = "+" + digits
+
+        try:
+            data = await self._make_api_request(
+                "voximplant.statistic.get",
+                params={
+                    "FILTER": {"PHONE_NUMBER": norm_phone},
+                    "SORT": "CALL_START_DATE",
+                    "ORDER": "desc",
+                    "LIMIT": 10,
+                }
+            )
+            if data and "result" in data:
+                for rec in data["result"]:
+                    url = rec.get("CALL_RECORD_URL") or rec.get("RECORD_URL") or ""
+                    if url:
+                        logger.info(f"[Bitrix24] Found voximplant URL for phone {norm_phone}")
+                        return url
+        except Exception as e:
+            logger.warning(f"[Bitrix24] voximplant fallback error: {e}")
+        return None
 
 
 class Bitrix24Service(CRMService):
@@ -1419,26 +1552,88 @@ class Bitrix24Service(CRMService):
             return ""
 
     async def download_recording(self, recording_url: str, save_path: str) -> bool:
-        """Скачать запись звонка"""
-        try:
-            headers = {}
-            if self.access_token:
-                headers["Authorization"] = f"Bearer {self.access_token}"
-            
-            async with httpx.AsyncClient(timeout=300.0) as client:
-                os.makedirs(os.path.dirname(save_path), exist_ok=True)
-                
-                async with client.stream("GET", recording_url, headers=headers) as response:
-                    response.raise_for_status()
-                    
-                    with open(save_path, "wb") as f:
-                        async for chunk in response.aiter_bytes(chunk_size=8192):
-                            f.write(chunk)
-                
-                return True
-        except Exception as e:
-            logger.error(f"Failed to download Bitrix24 recording: {e}")
-            return False
+        """Скачать запись звонка (OAuth) с проверкой Content-Type и фолбэком"""
+        import asyncio
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+
+        # Попытка 1: прямое скачивание с Bearer-авторизацией
+        for attempt in range(2):
+            try:
+                headers = {}
+                if self.access_token:
+                    headers["Authorization"] = f"Bearer {self.access_token}"
+
+                async with httpx.AsyncClient(timeout=300.0) as client:
+                    async with client.stream("GET", recording_url, headers=headers) as response:
+                        response.raise_for_status()
+                        content_type = response.headers.get("content-type", "")
+                        if "text/html" in content_type:
+                            logger.warning(f"[Bitrix24 OAuth] Download attempt {attempt+1}: got HTML")
+                            if attempt < 1:
+                                # Попробуем обновить токен
+                                db = SessionLocal()
+                                try:
+                                    await self.refresh_access_token(db)
+                                finally:
+                                    db.close()
+                                await asyncio.sleep(2)
+                                continue
+                            break
+                        with open(save_path, "wb") as f:
+                            async for chunk in response.aiter_bytes(chunk_size=8192):
+                                f.write(chunk)
+                    return True
+            except Exception as e:
+                logger.error(f"[Bitrix24 OAuth] Download attempt {attempt+1} failed: {e}")
+                if attempt < 1:
+                    await asyncio.sleep(2)
+
+        # Попытка 2: URL с auth= параметром вместо Bearer
+        if self.access_token:
+            try:
+                auth_url = self._fix_file_url_auth(recording_url, self.access_token)
+                async with httpx.AsyncClient(timeout=300.0) as client:
+                    async with client.stream("GET", auth_url) as response:
+                        response.raise_for_status()
+                        ct = response.headers.get("content-type", "")
+                        if "text/html" not in ct:
+                            with open(save_path, "wb") as f:
+                                async for chunk in response.aiter_bytes(chunk_size=8192):
+                                    f.write(chunk)
+                            return True
+            except Exception as e:
+                logger.error(f"[Bitrix24 OAuth] Auth-param download failed: {e}")
+
+        # Попытка 3: disk.file.get если есть fileId
+        if "fileId=" in recording_url:
+            try:
+                from urllib.parse import parse_qs, urlparse
+                parsed = urlparse(recording_url)
+                qs = parse_qs(parsed.query)
+                file_id = qs.get("fileId", [None])[0]
+                if file_id:
+                    file_data = await self._make_api_request(
+                        "disk.file.get", params={"id": file_id}
+                    )
+                    if file_data and "result" in file_data:
+                        dl_url = file_data["result"].get("DOWNLOAD_URL")
+                        if dl_url:
+                            async with httpx.AsyncClient(timeout=300.0) as client:
+                                async with client.stream("GET", dl_url) as response:
+                                    response.raise_for_status()
+                                    ct = response.headers.get("content-type", "")
+                                    if "text/html" not in ct:
+                                        with open(save_path, "wb") as f:
+                                            async for chunk in response.aiter_bytes(chunk_size=8192):
+                                                f.write(chunk)
+                                        return True
+            except Exception as e:
+                logger.error(f"[Bitrix24 OAuth] disk.file.get fallback failed: {e}")
+
+        logger.error(f"[Bitrix24 OAuth] All download attempts failed for: {recording_url[:150]}")
+        return False
+
+    _fix_file_url_auth = Bitrix24WebhookService._fix_file_url_auth
 
 
 class CRMServiceFactory:
