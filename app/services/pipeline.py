@@ -448,6 +448,13 @@ async def run_pipeline_from_text(user_id: int, conversation_id: int, text_attach
         except Exception as e:
             logger.error(f"Ошибка извлечения ошибок из анализа: {e}", exc_info=True)
         
+        # Извлечение структурированных параметров (Слой 2 — аналитика)
+        try:
+            from services.parameter_extraction import extract_parameters
+            await extract_parameters(conversation_id, dialogue_json_str, db)
+        except Exception as e:
+            logger.error(f"Ошибка извлечения параметров: {e}", exc_info=True)
+        
         # Завершаем операцию прогресса
         tracker.complete_operation(operation_id, "Готово ✅ Отчёт во вложении.")
 
@@ -618,6 +625,13 @@ async def run_pipeline_from_raw_text(user_id: int, conversation_id: int, raw_tex
             )
         except Exception as e:
             logger.error(f"Ошибка извлечения ошибок из анализа: {e}", exc_info=True)
+        
+        # Извлечение структурированных параметров (Слой 2 — аналитика)
+        try:
+            from services.parameter_extraction import extract_parameters
+            await extract_parameters(conversation_id, dialogue_json_str, db)
+        except Exception as e:
+            logger.error(f"Ошибка извлечения параметров: {e}", exc_info=True)
         
         tracker.complete_operation(operation_id, "Готово ✅ Отчёт во вложении.")
 
@@ -881,6 +895,13 @@ async def run_pipeline(user_id: int, conversation_id: int, audio_attachment_id: 
             )
         except Exception as e:
             logger.error(f"Ошибка извлечения ошибок из анализа: {e}", exc_info=True)
+        
+        # Извлечение структурированных параметров (Слой 2 — аналитика для РОПа)
+        try:
+            from services.parameter_extraction import extract_parameters
+            await extract_parameters(conversation_id, dialogue_json_str, db)
+        except Exception as e:
+            logger.error(f"Ошибка извлечения параметров: {e}", exc_info=True)
         
         # Завершаем операцию прогресса
         tracker.complete_operation(operation_id, "Готово ✅ Отчёт во вложении.")

@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean, UniqueConstraint, Float
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean, UniqueConstraint, Float, func as sa_func
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from database import Base
 
@@ -554,3 +554,76 @@ class TrainingErrorCorrection(Base):
     message = relationship("Message")
     training_plan = relationship("AnalysisTrainingPlan")
     training = relationship("Training")
+
+
+# ─── Аналитика по параметрам (Слой 2) ───────────────────────
+
+class ParameterDefinition(Base):
+    """Справочник параметров анализа звонка (dictionary-driven)"""
+    __tablename__ = "parameter_definitions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    code: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    value_type: Mapped[str] = mapped_column(String(20), nullable=False)  # number, boolean, text
+    category: Mapped[str] = mapped_column(String(100), nullable=False)
+    unit: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, server_default=sa_func.now())
+
+    values = relationship("ParameterValue", back_populates="parameter")
+
+
+class ParameterValue(Base):
+    """Значения параметров по конкретному звонку"""
+    __tablename__ = "parameter_values"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    conversation_id: Mapped[int] = mapped_column(ForeignKey("conversations.id"), index=True, nullable=False)
+    parameter_id: Mapped[int] = mapped_column(ForeignKey("parameter_definitions.id"), index=True, nullable=False)
+
+    value_number: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    value_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    value_bool: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    confidence: Mapped[int] = mapped_column(Integer, default=80)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, server_default=sa_func.now())
+
+    __table_args__ = (
+        UniqueConstraint("conversation_id", "parameter_id", name="uq_conv_param"),
+    )
+
+    conversation = relationship("Conversation")
+    parameter = relationship("ParameterDefinition", back_populates="values")
+
+
+class CRMManagerMapping(Base):
+    """Привязка менеджеров CRM к аккаунтам UpStat"""
+    __tablename__ = "crm_manager_mappings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    integration_id: Mapped[int] = mapped_column(ForeignKey("crm_integrations.id", ondelete="CASCADE"), index=True, nullable=False)
+    crm_manager_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    crm_manager_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    user_id: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, server_default=sa_func.now())
+
+    __table_args__ = (
+        UniqueConstraint("integration_id", "crm_manager_name", name="uq_integ_crm_mgr"),
+    )
+
+    integration = relationship("CRMIntegration")
+    user = relationship("User")
+
+
+class AnalyticsMessage(Base):
+    """Сообщения чата аналитики (отдельно от основного чата)"""
+    __tablename__ = "analytics_messages"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    role: Mapped[str] = mapped_column(String(10), nullable=False)  # user, bot
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, server_default=sa_func.now())
+
+    user = relationship("User")

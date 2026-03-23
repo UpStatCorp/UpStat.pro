@@ -729,6 +729,9 @@
         <a href="/settings" class="{% if request.url.path.startswith('/settings') %}active{% endif %}" aria-label="Настройки">Настройки</a>
         <a href="/chat" class="{% if request.url.path == '/chat' %}active{% endif %}" aria-label="Чат">Чат</a>
         <a href="/crm" class="{% if request.url.path.startswith('/crm') %}active{% endif %}" aria-label="CRM Интеграции">CRM</a>
+        {% if user and (user.role == 'manager' or user.role == 'admin') %}
+        <a href="/analytics" class="{% if request.url.path.startswith('/analytics') %}active{% endif %}" aria-label="Аналитика звонков">Аналитика</a>
+        {% endif %}
         {% if user and (user.role == 'manager' or user.role == 'admin' or (user.team_memberships and user.team_memberships|length > 0)) %}
         <a href="/teams/my" class="{% if request.url.path.startswith('/teams') %}active{% endif %}" aria-label="Моя команда">Моя команда</a>
         {% endif %}

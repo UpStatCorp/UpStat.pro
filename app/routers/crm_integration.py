@@ -8,12 +8,12 @@ from datetime import datetime, timedelta
 from typing import List, Optional
 from fastapi import APIRouter, Depends, Request, HTTPException, BackgroundTasks, Form, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import desc, func, and_
 
 from database import get_db, SessionLocal
 from deps import require_user
-from models import User, CRMIntegration, CRMRecording, Conversation, Message, Attachment, AnalysisTrainingPlan
+from models import User, CRMIntegration, CRMRecording, Conversation, Message, Attachment, AnalysisTrainingPlan, CRMManagerMapping, TeamMember
 from services.crm_service import CRMServiceFactory, AmoCRMService, Bitrix24Service, Bitrix24WebhookService
 from services.pipeline import run_pipeline, run_pipeline_from_raw_text
 from services.notification_service import NotificationService, NotificationType
@@ -45,19 +45,12 @@ async def crm_page(request: Request, db: Session = Depends(get_db)):
 
     supported_crms = CRMServiceFactory.get_supported_crms()
 
-    total_recordings = db.query(func.count(CRMRecording.id)).filter(
-        CRMRecording.user_id == user.id
-    ).scalar() or 0
+    user_integ_ids = [i.id for i in integrations]
+    integ_filter = CRMRecording.integration_id.in_(user_integ_ids) if user_integ_ids else CRMRecording.id < 0
 
-    analyzed_recordings = db.query(func.count(CRMRecording.id)).filter(
-        CRMRecording.user_id == user.id,
-        CRMRecording.sync_status == "completed"
-    ).scalar() or 0
-
-    avg_score = db.query(func.avg(CRMRecording.analysis_score)).filter(
-        CRMRecording.user_id == user.id,
-        CRMRecording.analysis_score.isnot(None)
-    ).scalar()
+    total_recordings = db.query(func.count(CRMRecording.id)).filter(integ_filter).scalar() or 0
+    analyzed_recordings = db.query(func.count(CRMRecording.id)).filter(integ_filter, CRMRecording.sync_status == "completed").scalar() or 0
+    avg_score = db.query(func.avg(CRMRecording.analysis_score)).filter(integ_filter, CRMRecording.analysis_score.isnot(None)).scalar()
 
     return request.app.state.templates.TemplateResponse(
         "crm_integration.html",
@@ -268,9 +261,17 @@ async def sync_crm_recordings_task(integration_id: int):
         logger.info(f"[Sync] get_recordings returned {len(recordings_data)} items")
         status.update(phase="saving", found=len(recordings_data))
 
+        manager_map = {}
+        for m in db.query(CRMManagerMapping).filter(
+            CRMManagerMapping.integration_id == integration.id,
+            CRMManagerMapping.user_id.isnot(None),
+        ).all():
+            manager_map[m.crm_manager_name] = m.user_id
+
         new_count = 0
         updated_count = 0
         for i, rec_data in enumerate(recordings_data):
+            mapped_user_id = manager_map.get(rec_data.get("manager_name", "")) or integration.user_id
             existing = db.query(CRMRecording).filter(
                 CRMRecording.integration_id == integration.id,
                 CRMRecording.crm_record_id == rec_data["crm_record_id"],
@@ -289,11 +290,14 @@ async def sync_crm_recordings_task(integration_id: int):
                 if not existing.client_name and rec_data.get("client_name"):
                     existing.client_name = rec_data["client_name"]
                     changed = True
+                if existing.user_id != mapped_user_id:
+                    existing.user_id = mapped_user_id
+                    changed = True
                 if changed:
                     updated_count += 1
             else:
                 recording = CRMRecording(
-                    integration_id=integration.id, user_id=integration.user_id,
+                    integration_id=integration.id, user_id=mapped_user_id,
                     crm_record_id=rec_data["crm_record_id"], crm_call_id=rec_data.get("crm_call_id"),
                     call_date=rec_data["call_date"], duration_seconds=rec_data["duration_seconds"],
                     direction=rec_data["direction"], recording_url=rec_data["recording_url"],
@@ -366,9 +370,17 @@ async def sync_crm_chats_task(integration_id: int):
             return
         
         chats_data = await service.get_chats(db)
-        
+
+        manager_map = {}
+        for m in db.query(CRMManagerMapping).filter(
+            CRMManagerMapping.integration_id == integration.id,
+            CRMManagerMapping.user_id.isnot(None),
+        ).all():
+            manager_map[m.crm_manager_name] = m.user_id
+
         new_count = 0
         for chat_data in chats_data:
+            mapped_user_id = manager_map.get(chat_data.get("manager_name", "")) or integration.user_id
             existing = db.query(CRMRecording).filter(
                 CRMRecording.integration_id == integration.id,
                 CRMRecording.crm_record_id == chat_data["crm_record_id"],
@@ -376,7 +388,7 @@ async def sync_crm_chats_task(integration_id: int):
             ).first()
             if not existing:
                 recording = CRMRecording(
-                    integration_id=integration.id, user_id=integration.user_id,
+                    integration_id=integration.id, user_id=mapped_user_id,
                     crm_record_id=chat_data["crm_record_id"],
                     crm_call_id=chat_data.get("crm_call_id"),
                     call_date=chat_data["call_date"],
@@ -432,7 +444,9 @@ async def recordings_page(
 ):
     """Страница со списком записей из CRM"""
     user = require_user(request, db)
-    query = db.query(CRMRecording).filter(CRMRecording.user_id == user.id)
+    user_integ_ids = [i.id for i in db.query(CRMIntegration).filter(CRMIntegration.user_id == user.id, CRMIntegration.is_active == True).all()]
+    owns_filter = CRMRecording.integration_id.in_(user_integ_ids) if user_integ_ids else CRMRecording.id < 0
+    query = db.query(CRMRecording).filter(owns_filter)
 
     if status:
         query = query.filter(CRMRecording.sync_status == status)
@@ -461,23 +475,18 @@ async def recordings_page(
 
     integrations = db.query(CRMIntegration).filter(CRMIntegration.user_id == user.id, CRMIntegration.is_active == True).all()
 
-    managers_q = db.query(CRMRecording.manager_name).filter(
-        CRMRecording.user_id == user.id, CRMRecording.manager_name.isnot(None), CRMRecording.manager_name != ""
-    ).distinct().all()
+    managers_q = db.query(CRMRecording.manager_name).filter(owns_filter, CRMRecording.manager_name.isnot(None), CRMRecording.manager_name != "").distinct().all()
     manager_names = sorted([m[0] for m in managers_q])
 
     stats = {
         "total": total_count,
-        "available": db.query(func.count(CRMRecording.id)).filter(CRMRecording.user_id == user.id, CRMRecording.sync_status == "available").scalar() or 0,
-        "analyzing": db.query(func.count(CRMRecording.id)).filter(CRMRecording.user_id == user.id, CRMRecording.sync_status.in_(["downloading", "analyzing"])).scalar() or 0,
-        "completed": db.query(func.count(CRMRecording.id)).filter(CRMRecording.user_id == user.id, CRMRecording.sync_status == "completed").scalar() or 0,
-        "failed": db.query(func.count(CRMRecording.id)).filter(CRMRecording.user_id == user.id, CRMRecording.sync_status == "failed").scalar() or 0,
+        "available": db.query(func.count(CRMRecording.id)).filter(owns_filter, CRMRecording.sync_status == "available").scalar() or 0,
+        "analyzing": db.query(func.count(CRMRecording.id)).filter(owns_filter, CRMRecording.sync_status.in_(["downloading", "analyzing"])).scalar() or 0,
+        "completed": db.query(func.count(CRMRecording.id)).filter(owns_filter, CRMRecording.sync_status == "completed").scalar() or 0,
+        "failed": db.query(func.count(CRMRecording.id)).filter(owns_filter, CRMRecording.sync_status == "failed").scalar() or 0,
     }
 
-    active_batch = db.query(CRMRecording).filter(
-        CRMRecording.user_id == user.id, CRMRecording.batch_id.isnot(None),
-        CRMRecording.sync_status.in_(["downloading", "analyzing"]),
-    ).first()
+    active_batch = db.query(CRMRecording).filter(owns_filter, CRMRecording.batch_id.isnot(None), CRMRecording.sync_status.in_(["downloading", "analyzing"])).first()
 
     batch_progress = None
     if active_batch and active_batch.batch_id:
@@ -501,7 +510,11 @@ async def recordings_page(
 async def analyze_recording_endpoint(recording_id: int, background_tasks: BackgroundTasks, request: Request, db: Session = Depends(get_db)):
     """Начать анализ записи"""
     user = require_user(request, db)
-    recording = db.query(CRMRecording).filter(CRMRecording.id == recording_id, CRMRecording.user_id == user.id).first()
+    user_integ_ids = [i.id for i in db.query(CRMIntegration).filter(CRMIntegration.user_id == user.id).all()]
+    recording = db.query(CRMRecording).filter(
+        CRMRecording.id == recording_id,
+        CRMRecording.integration_id.in_(user_integ_ids) if user_integ_ids else CRMRecording.id < 0,
+    ).first()
     if not recording:
         raise HTTPException(404, "Запись не найдена")
     if recording.sync_status in ["downloading", "analyzing"]:
@@ -534,8 +547,10 @@ async def batch_analyze_recordings(request: Request, background_tasks: Backgroun
     if len(recording_ids) > MAX_BATCH_SIZE:
         raise HTTPException(400, f"Максимум {MAX_BATCH_SIZE} записей за раз. Выбрано: {len(recording_ids)}")
 
+    user_integ_ids = [i.id for i in db.query(CRMIntegration).filter(CRMIntegration.user_id == user.id).all()]
     recordings = db.query(CRMRecording).filter(
-        CRMRecording.id.in_(recording_ids), CRMRecording.user_id == user.id,
+        CRMRecording.id.in_(recording_ids),
+        CRMRecording.integration_id.in_(user_integ_ids) if user_integ_ids else CRMRecording.id < 0,
         CRMRecording.sync_status.in_(["available", "failed"]),
     ).all()
     if not recordings:
@@ -557,7 +572,11 @@ async def batch_analyze_recordings(request: Request, background_tasks: Backgroun
 async def get_batch_progress(batch_id: str, request: Request, db: Session = Depends(get_db)):
     """Получить прогресс пакетного анализа"""
     user = require_user(request, db)
-    recs = db.query(CRMRecording).filter(CRMRecording.batch_id == batch_id, CRMRecording.user_id == user.id).all()
+    user_integ_ids = [i.id for i in db.query(CRMIntegration).filter(CRMIntegration.user_id == user.id).all()]
+    recs = db.query(CRMRecording).filter(
+        CRMRecording.batch_id == batch_id,
+        CRMRecording.integration_id.in_(user_integ_ids) if user_integ_ids else CRMRecording.id < 0,
+    ).all()
     if not recs:
         raise HTTPException(404, "Батч не найден")
 
@@ -892,6 +911,18 @@ async def analyze_recording_task(recording_id: int):
         recording = db.query(CRMRecording).filter(CRMRecording.id == recording_id).first()
         if not recording:
             return
+
+        # Установить user_id по маппингу — результаты анализа пойдут на привязанного участника
+        if recording.manager_name and recording.integration_id:
+            m = db.query(CRMManagerMapping).filter(
+                CRMManagerMapping.integration_id == recording.integration_id,
+                CRMManagerMapping.crm_manager_name == recording.manager_name,
+                CRMManagerMapping.user_id.isnot(None),
+            ).first()
+            if m and m.user_id != recording.user_id:
+                recording.user_id = m.user_id
+                db.commit()
+
         await _process_single_recording(db, recording)
 
         if not recording.batch_id:
@@ -981,3 +1012,158 @@ async def debug_crm_api(integration_id: int, request: Request, db: Session = Dep
 
     debug_data = await service.debug_api()
     return JSONResponse(debug_data, media_type="application/json")
+
+
+# ─── CRM Manager Mapping ─────────────────────────────────────
+
+
+@router.get("/crm/integrations/{integration_id}/managers")
+async def get_crm_managers(integration_id: int, request: Request, db: Session = Depends(get_db)):
+    """Возвращает уникальных менеджеров из синхронизированных записей CRM."""
+    user = require_user(request, db)
+    integration = db.query(CRMIntegration).filter(
+        CRMIntegration.id == integration_id, CRMIntegration.user_id == user.id
+    ).first()
+    if not integration:
+        raise HTTPException(404, "Интеграция не найдена")
+
+    manager_names = (
+        db.query(CRMRecording.manager_name)
+        .filter(
+            CRMRecording.integration_id == integration_id,
+            CRMRecording.manager_name.isnot(None),
+            CRMRecording.manager_name != "",
+        )
+        .distinct()
+        .all()
+    )
+
+    existing_mappings = (
+        db.query(CRMManagerMapping)
+        .filter(CRMManagerMapping.integration_id == integration_id)
+        .all()
+    )
+    mapping_dict = {m.crm_manager_name: m for m in existing_mappings}
+
+    from models import Team
+    owned_team_ids = [t.id for t in db.query(Team).filter(Team.manager_id == user.id).all()]
+    managed_team_ids = [tm.team_id for tm in db.query(TeamMember).filter(
+        TeamMember.user_id == user.id, TeamMember.role_in_team == "manager"
+    ).all()]
+    all_team_ids = list(set(owned_team_ids + managed_team_ids))
+
+    team_members = (
+        db.query(TeamMember)
+        .join(User, User.id == TeamMember.user_id)
+        .filter(TeamMember.team_id.in_(all_team_ids))
+        .all()
+    ) if all_team_ids else []
+    team_users = []
+    seen = set()
+    for tm in team_members:
+        if tm.user_id not in seen:
+            u = db.query(User).get(tm.user_id)
+            if u:
+                team_users.append({"id": u.id, "name": u.name, "email": u.email})
+                seen.add(tm.user_id)
+
+    result = []
+    for (name,) in manager_names:
+        mapping = mapping_dict.get(name)
+        result.append({
+            "crm_manager_name": name,
+            "mapped_user_id": mapping.user_id if mapping else None,
+            "mapped_user_name": next(
+                (u["name"] for u in team_users if u["id"] == mapping.user_id), None
+            ) if mapping and mapping.user_id else None,
+        })
+
+    return JSONResponse({"managers": result, "team_users": team_users})
+
+
+@router.post("/crm/integrations/{integration_id}/manager-mapping")
+async def save_manager_mapping(
+    integration_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Сохраняет привязку менеджеров CRM к аккаунтам UpStat."""
+    user = require_user(request, db)
+    integration = db.query(CRMIntegration).filter(
+        CRMIntegration.id == integration_id, CRMIntegration.user_id == user.id
+    ).first()
+    if not integration:
+        raise HTTPException(404, "Интеграция не найдена")
+
+    body = await request.json()
+    mappings_data = body.get("mappings", [])
+
+    for item in mappings_data:
+        crm_name = item.get("crm_manager_name", "").strip()
+        target_user_id = item.get("user_id")
+        if not crm_name:
+            continue
+
+        existing = db.query(CRMManagerMapping).filter(
+            CRMManagerMapping.integration_id == integration_id,
+            CRMManagerMapping.crm_manager_name == crm_name,
+        ).first()
+
+        if existing:
+            existing.user_id = target_user_id if target_user_id else None
+        else:
+            db.add(CRMManagerMapping(
+                integration_id=integration_id,
+                crm_manager_name=crm_name,
+                user_id=target_user_id if target_user_id else None,
+            ))
+
+    db.commit()
+
+    # Обновить user_id в существующих записях и их conversations
+    for m in db.query(CRMManagerMapping).filter(
+        CRMManagerMapping.integration_id == integration_id,
+        CRMManagerMapping.user_id.isnot(None),
+    ).all():
+        recs = db.query(CRMRecording).filter(
+            CRMRecording.integration_id == integration_id,
+            CRMRecording.manager_name == m.crm_manager_name,
+            CRMRecording.user_id != m.user_id,
+        ).all()
+        for rec in recs:
+            rec.user_id = m.user_id
+            if rec.conversation_id:
+                conv = db.query(Conversation).get(rec.conversation_id)
+                if conv:
+                    conv.user_id = m.user_id
+    db.commit()
+
+    return JSONResponse({"ok": True, "saved": len(mappings_data)})
+
+
+@router.get("/crm/integrations/{integration_id}/manager-mapping")
+async def get_manager_mapping(integration_id: int, request: Request, db: Session = Depends(get_db)):
+    """Возвращает текущие привязки менеджеров CRM."""
+    user = require_user(request, db)
+    integration = db.query(CRMIntegration).filter(
+        CRMIntegration.id == integration_id, CRMIntegration.user_id == user.id
+    ).first()
+    if not integration:
+        raise HTTPException(404, "Интеграция не найдена")
+
+    mappings = (
+        db.query(CRMManagerMapping)
+        .filter(CRMManagerMapping.integration_id == integration_id)
+        .all()
+    )
+
+    return JSONResponse({
+        "mappings": [
+            {
+                "id": m.id,
+                "crm_manager_name": m.crm_manager_name,
+                "user_id": m.user_id,
+            }
+            for m in mappings
+        ]
+    })

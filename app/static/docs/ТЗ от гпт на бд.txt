@@ -1,0 +1,4530 @@
+﻿Отлично. Этого уже достаточно, чтобы выдать сильное ТЗ первой полноценной версии.
+Я сразу зафиксирую главный вывод: для UpStat нельзя строить систему как просто “таблицу из 150 столбцов”. Это будет тупик. У тебя список параметров частично плавающий, у части клиентов будут свои кастомные поля, часть источников данных будет неполной, а поверх всего этого должен работать ИИ-ассистент, который понимает голосовые и текстовые запросы и умеет сам считать агрегаты, сравнения, тренды и рекомендации. Значит, архитектура должна быть hybrid schema — гибридной схемой, а не жёсткой. Это прямо следует и из твоего описания задачи, и из внутренней логики UpStat, где система должна извлекать примерно 120–150 параметров разговора, считать вероятность сделки и потери, а также формировать рекомендации и обучение.
+Ниже даю уже не размышления, а ТЗ.
+________________
+
+
+ТЕХНИЧЕСКОЕ ЗАДАНИЕ
+Проект: UpStat
+Модуль: Structured Call Intelligence + AI Query Assistant
+Версия: V1 Architecture Spec
+________________
+
+
+1. Цель модуля
+Разработать модуль платформы UpStat, который:
+1. принимает звонок, расшифровку, переписку или иной разговорный артефакт;
+2. извлекает из него digital call avatar — цифровой аватар звонка, то есть набор структурированных параметров, сигналов, индексов и доказательств;
+3. сохраняет результат в базу данных так, чтобы:
+   * можно было быстро строить аналитику;
+   * можно было хранить версии переанализа;
+   * можно было добавлять новые параметры без миграций всей базы;
+   * можно было поддерживать кастомные параметры разных клиентов;
+4. даёт второму ИИ-слою возможность по голосовому или текстовому запросу:
+   * искать нужные данные;
+   * делать агрегаты;
+   * сравнивать менеджеров;
+   * строить тренды;
+   * выявлять слабые сигналы;
+   * генерировать рекомендации;
+   * запускать уже существующий внутренний процесс тренировки;
+   * формировать таблицы и данные для графиков;
+   * отдавать ответ в текстовом виде и, при необходимости, в голосовом.
+________________
+
+
+2. Продуктовая логика, которую система обязана соблюдать
+Система не должна ощущаться как “контроль менеджеров”. Она должна ощущаться как AI coach — ИИ-тренер и sales navigator — навигатор продаж. Внутри UpStat рекомендации не должны показываться как длинный список ошибок: менеджеру нужно показывать максимум 1–3 приоритетных действия, а владельцу — не детали звонков, а бизнес-метрики и тренды. Это прямо соответствует ранее сформулированной архитектуре продукта: показывать максимум три рекомендации, строить систему вокруг точки роста, а не вокруг обвиняющих ошибок, и разделять интерфейсы менеджера, РОПа и владельца.
+Поэтому модуль должен строиться вокруг четырёх сущностей:
+* signals — сигналы
+* skills — навыки
+* patterns — повторяющиеся паттерны
+* actions — действия / рекомендации / тренировки
+А не вокруг голых расшифровок.
+________________
+
+
+3. Поддерживаемые источники входных данных
+3.1 Поддерживаемые типы источников
+Система должна поддерживать входные данные следующих типов:
+1. audio_call — запись звонка
+2. transcript — готовая расшифровка
+3. chat_screenshot_text — текст, извлечённый из скриншота переписки
+4. chat_export — выгрузка переписки
+5. manual_text — вручную вставленный текст разговора
+6. crm_metadata — данные CRM, если есть
+7. mixed_source — комбинация нескольких источников
+3.2 Принцип отказоустойчивости к неполным данным
+Система обязана корректно работать, если часть данных отсутствует.
+Примеры:
+* нет CRM;
+* нет аудио, есть только transcript;
+* нет transcript, есть только extracted text — извлечённый текст;
+* нет данных по сделке;
+* нет данных по менеджеру;
+* нет результата звонка.
+Во всех таких случаях:
+* анализ не должен падать;
+* отсутствующие поля должны храниться как null;
+* параметры, которые нельзя надёжно вычислить, должны помечаться как:
+   * unknown — неизвестно,
+   * или low_confidence — невысокая уверенность.
+________________
+
+
+4. Ключевое архитектурное решение по данным
+4.1 Что хранить по каждому параметру
+Твой инстинкт “хранить всё сразу” в целом правильный, но в лоб это делать не надо. Если хранить вообще всё подряд без уровней важности, база быстро превратится в мусорный склад. Правильная модель — three-layer storage — трёхслойное хранение:
+Слой 1. Core value — основное значение
+Это то, что нужно для аналитики:
+* число,
+* флаг,
+* enum — значение из списка,
+* краткий текст,
+* нормализованный score — балл.
+Слой 2. Confidence + explanation — уверенность + краткое объяснение
+Это нужно для доверия к модели:
+* confidence_percent
+* reasoning_summary — краткое объяснение
+* data_source_type — источник данных
+Слой 3. Evidence — доказательство
+Это нужно для споров, аудита и обучения:
+* цитата,
+* таймкод,
+* segment_id,
+* при необходимости список фрагментов.
+4.2 Что хранить НЕ надо по каждому параметру всегда
+Не нужно по каждому параметру всегда хранить:
+* длинное reasoning — длинную цепочку рассуждений;
+* большие куски transcript;
+* дублирование одних и тех же фрагментов 20 раз;
+* полный raw prompt output — сырой ответ модели.
+Это дорого и бесполезно.
+4.3 Итоговое решение
+По каждому параметру хранить надо:
+* value_raw — сырое значение
+* value_normalized — нормализованное значение
+* value_type
+* confidence_percent
+* status (ok, unknown, low_confidence, needs_review)
+* reasoning_summary — краткое объяснение в 1–3 предложениях
+* evidence_refs — ссылки на доказательства
+* source_segments — список сегментов, на которых основан вывод
+Это лучший баланс между:
+* точностью;
+* проверяемостью;
+* стоимостью хранения;
+* скоростью аналитики.
+________________
+
+
+5. Ключевое архитектурное решение по базе данных
+5.1 Рекомендуемый стек хранения
+Для первой серьёзной версии рекомендую такой стек:
+Основной вариант — рекомендованный
+* PostgreSQL — Постгрес как основная база
+* JSONB внутри PostgreSQL для гибких и кастомных параметров
+* Object Storage — объектное хранилище для аудио, оригинальных транскриптов, JSON-артефактов анализа
+* Redis для кэша быстрых запросов
+* опционально позже:
+   * ClickHouse — Кликхаус для сверхтяжёлой аналитики
+   * Vector DB — векторная база для семантического поиска по разговорам
+Почему не чисто SQL-таблица на 150 колонок
+Потому что:
+* список параметров будет меняться;
+* часть параметров кастомные по клиентам;
+* будут разные типы входа;
+* будут версии моделей;
+* будет переанализ;
+* будут новые сигналы.
+Почему не чистый NoSQL — NoSQL, нереляционная база
+Потому что:
+* тебе нужны фильтры, агрегаты, RBAC — разграничение ролей, мультитенантность и надёжные выборки;
+* для бизнес-аналитики PostgreSQL сильнее и безопаснее.
+5.2 Вердикт
+Для UpStat V1 правильный баланс:
+PostgreSQL + JSONB + Object Storage + Redis
+Это даст:
+* простоту запуска;
+* гибкость;
+* достаточную аналитическую мощность;
+* возможность международного масштаба;
+* лёгкий апгрейд позже.
+________________
+
+
+6. Общая модель сущностей
+Ниже логическая модель.
+6.1 tenants
+Компания-клиент.
+Поля:
+* tenant_id
+* name
+* status
+* timezone
+* plan
+* created_at
+6.2 users
+Пользователи системы.
+Поля:
+* user_id
+* tenant_id
+* role_id
+* display_name
+* status
+* created_at
+6.3 roles
+Роли доступа.
+Минимум:
+* owner — владелец
+* sales_head — РОП
+* analyst_upstat — аналитик UpStat
+* manager_limited — менеджер с ограниченным доступом
+6.4 conversations
+Любой анализируемый разговор.
+Поля:
+* conversation_id
+* tenant_id
+* source_type
+* external_source_id
+* manager_user_id nullable
+* client_label nullable
+* started_at
+* duration_seconds
+* language
+* diarization_available
+* transcript_available
+* audio_available
+* crm_available
+* processing_status
+* latest_analysis_version_id
+* created_at
+6.5 conversation_segments
+Сегменты разговора.
+Поля:
+* segment_id
+* conversation_id
+* speaker_type (manager, client, unknown, system)
+* start_ms
+* end_ms
+* text
+* tokens_count
+* question_flag
+* interruption_flag
+* sentiment_hint nullable
+* metadata_json
+6.6 analysis_versions
+Версии переанализа.
+Поля:
+* analysis_version_id
+* conversation_id
+* model_family
+* model_name
+* prompt_version
+* parameter_dictionary_version
+* created_by_system
+* created_at
+* is_current
+* parent_analysis_version_id nullable
+Это позволит хранить все версии, не перетирая историю.
+6.7 parameter_definitions
+Словарь параметров.
+Поля:
+* parameter_id
+* tenant_id nullable
+* code
+* title
+* description
+* category
+* subcategory
+* value_type
+* unit
+* normalization_rule
+* default_aggregation_type
+* evidence_required boolean
+* active_from
+* active_to nullable
+* is_custom boolean
+* created_at
+Это ключевая таблица. Она решает твою проблему плавающего списка параметров.
+6.8 parameter_values
+Значения параметров по конкретному анализу.
+Поля:
+* parameter_value_id
+* analysis_version_id
+* parameter_id
+* value_number nullable
+* value_text nullable
+* value_bool nullable
+* value_json nullable
+* value_normalized nullable
+* status
+* confidence_percent
+* reasoning_summary
+* evidence_bundle_id nullable
+* source_scope (transcript, audio, crm, mixed)
+* created_at
+6.9 evidence_bundles
+Группа доказательств.
+Поля:
+* evidence_bundle_id
+* analysis_version_id
+* evidence_type (quote, time_range, segment_refs, multi)
+* short_excerpt
+* start_ms nullable
+* end_ms nullable
+* segment_refs_json
+* created_at
+6.10 signal_scores
+Высокоуровневые сигналы.
+Поля:
+* signal_score_id
+* analysis_version_id
+* signal_code
+* polarity (positive, negative, neutral)
+* score
+* weight
+* confidence_percent
+* summary
+* evidence_bundle_id nullable
+6.11 skill_scores
+Оценки навыков продавца.
+Поля:
+* skill_score_id
+* analysis_version_id
+* skill_code
+* score
+* delta_from_previous nullable
+* confidence_percent
+* summary
+Навыки должны соответствовать вашей продуктовой логике: выявление потребностей, работа с возражениями, управление разговором, закрытие сделки и т.д., что уже зафиксировано в оргполитике интерфейса UpStat.
+6.12 conversation_outcomes
+Итоги разговора / сделки, если доступны.
+Поля:
+* outcome_id
+* conversation_id
+* outcome_status
+* next_step_fixed
+* deal_probability nullable
+* loss_probability nullable
+* crm_result nullable
+* manual_review_status nullable
+6.13 recommendations
+Рекомендации по звонку.
+Поля:
+* recommendation_id
+* analysis_version_id
+* priority_rank
+* skill_code
+* recommendation_type
+* title
+* text
+* reason
+* linked_training_flow_id nullable
+* generated_at
+Важно: в интерфейсе показывать не больше 3 одновременно. Это соответствует вашей UX-логике.
+6.14 query_sessions
+Сессии общения с AI-ассистентом.
+Поля:
+* query_session_id
+* tenant_id
+* user_id
+* created_at
+* last_context_json
+6.15 query_logs
+Логи аналитических запросов.
+Поля:
+* query_log_id
+* query_session_id
+* raw_user_query
+* parsed_intent
+* resolved_filters_json
+* sql_or_pipeline_json
+* answer_text
+* chart_payload_json nullable
+* confidence_percent
+* clarification_needed boolean
+* created_at
+________________
+
+
+7. SQL-логика хранения: главное решение
+Архитектура должна быть dictionary-driven — управляемой словарём параметров.
+То есть:
+* новый параметр не требует добавлять новый столбец в таблицу conversations;
+* новый параметр добавляется в parameter_definitions;
+* значения пишутся в parameter_values;
+* кастомные параметры клиента получают свой tenant_id.
+Это самая важная инженерная развилка. Она делает систему живой, а не мёртвой.
+________________
+
+
+8. Категоризация параметров
+Параметры надо разбить минимум на 6 верхних блоков, потому что у вас уже есть продуктовая логика сигналов разговора:
+1. control_of_conversation — контроль разговора
+2. needs_discovery — выявление потребностей
+3. deal_economics — экономика сделки
+4. decision_process — процесс принятия решения
+5. client_reaction — реакция клиента
+6. closing_and_next_step — завершение и следующий шаг
+Это полностью соответствует вашему внутреннему ядру сигналов: соотношение речи, количество вопросов, выявление проблемы, бюджет, критерии выбора, следующий шаг, вопросы клиента, снижение сопротивления, фиксация договорённости и т.д.
+Дополнительно я бы ввёл ещё 4 системных блока:
+7. metadata_quality — качество исходных данных
+8. confidence_and_review — уверенность и необходимость проверки
+9. training_relevance — пригодность для тренировки
+10. prediction_indices — индексы вероятности сделки / риска потери
+________________
+
+
+9. Индексы и производные метрики
+Система должна хранить не только базовые параметры, но и derived metrics — производные метрики.
+Минимально обязательны:
+* deal_probability — вероятность сделки
+* loss_probability — вероятность потери
+* engagement_index — индекс вовлечённости клиента
+* discovery_quality_index — индекс качества выявления потребностей
+* objection_handling_index — индекс работы с возражениями
+* control_balance_index — индекс баланса разговора
+* next_step_strength_index — индекс силы следующего шага
+* recommendation_pressure_index — индекс срочности коррекции
+* skill_progress_delta — изменение навыка к прошлым звонкам
+Это логически следует из вашей архитектуры: система должна не только извлекать параметры, но и формировать вероятность сделки, вероятность потери, ключевые сигналы и рекомендации.
+________________
+
+
+10. Правила хранения evidence — доказательств без взрыва ресурсов
+Ты правильно уловил риск: evidence может раздуть хранение в 2–3 раза. Поэтому решение должно быть экономным.
+10.1 Нельзя
+* хранить полный transcript для каждого параметра;
+* хранить одинаковую цитату 15 раз;
+* хранить полные длинные reasoning-ответы модели.
+10.2 Надо
+Хранить transcript один раз по сегментам, а для параметров хранить только ссылки:
+* segment_id
+* start_ms
+* end_ms
+* short_excerpt до 200–300 символов
+10.3 Правило
+Для каждого параметра хранить:
+* максимум 1–3 evidence refs — ссылок на доказательства;
+* максимум 1 short excerpt;
+* без дублей.
+10.4 Итог
+Такой подход почти не взрывает объём, потому что:
+* основной текст уже лежит в conversation_segments;
+* параметры только ссылаются на него;
+* доказательства не дублируются.
+________________
+
+
+11. Пайплайн анализа разговора
+11.1 Этап 1. Ingestion — приём данных
+Вход:
+* аудио
+* transcript
+* chat
+* CRM metadata
+Результат:
+* запись в conversations
+11.2 Этап 2. Segmentation — сегментация
+Если transcript уже есть:
+* разбить на сегменты;
+* привязать спикера;
+* нормализовать таймкоды.
+Если transcript нет, но есть аудио:
+* ASR — автоматическое распознавание речи;
+* diarization — разделение спикеров;
+* сегментация.
+11.3 Этап 3. Feature extraction — извлечение признаков
+Извлечь низкоуровневые признаки:
+* talk ratio — соотношение речи
+* longest monologue — самый длинный монолог
+* questions count — количество вопросов
+* open questions count — количество открытых вопросов
+* interruptions — перебивания
+* pauses — паузы
+* speech tempo — темп речи
+* client response length trend — динамика длины ответов клиента
+* keyword clusters — кластеры ключевых фраз
+11.4 Этап 4. Parameter inference — вывод параметров
+Для каждого параметра из parameter_definitions:
+* вычислить значение;
+* вычислить confidence;
+* сформировать reasoning_summary;
+* подобрать evidence refs;
+* записать в parameter_values.
+11.5 Этап 5. Signal inference — вывод сигналов
+На основе параметров определить:
+* позитивные сигналы
+* негативные сигналы
+* повторяющиеся паттерны
+Например:
+* не обсуждался бюджет;
+* клиент стал говорить меньше;
+* следующий шаг не зафиксирован;
+* менеджер говорил более 70% времени.
+Это полностью ложится на вашу спецификацию сигналов.
+11.6 Этап 6. Skill scoring — оценка навыков
+Преобразовать параметры и сигналы в skill scores — оценки навыков:
+* выявление потребностей
+* управление разговором
+* экономика сделки
+* работа с возражениями
+* закрытие сделки
+11.7 Этап 7. Recommendation engine — движок рекомендаций
+Сгенерировать рекомендации не списком, а как действия:
+* максимум 3;
+* с приоритизацией;
+* с привязкой к тренировке;
+* с объяснением “почему сейчас”.
+Это соответствует правилу трёх рекомендаций и действийному формату рекомендаций в вашей оргполитике.
+11.8 Этап 8. Persistence — сохранение
+Записать:
+* analysis_version
+* parameter_values
+* signal_scores
+* skill_scores
+* recommendations
+* outcomes
+________________
+
+
+12. Логика рекомендаций
+Рекомендации должны ранжироваться так:
+Приоритет 1
+Ошибки/сигналы, напрямую влияющие на сделку:
+* отсутствует попытка закрытия;
+* не обсуждён следующий шаг;
+* не выявлена проблема;
+* клиент начал сопротивляться после цены.
+Приоритет 2
+Повторяющиеся паттерны:
+* 5 звонков подряд не обсуждается бюджет;
+* 4 звонка подряд мало открытых вопросов.
+Приоритет 3
+Редкие или косметические отклонения.
+В ответ менеджеру:
+* не писать “вы плохо сработали”;
+* писать “следующий уровень навыка — …”.
+Это жёстко соответствует вашей логике “точка роста, а не обвинение”.
+________________
+
+
+13. AI Query Assistant — ИИ-слой поверх базы
+Теперь главное: как подключить второго ИИ, который будет отвечать на вопросы.
+13.1 Архитектурная идея
+Нельзя пускать LLM — большую языковую модель напрямую в базу без промежуточного слоя.
+Нужен такой контур:
+User Query → Intent Parser → Query Planner → Safe Data Access Layer → Calculation Layer → Recommendation Layer → Response Composer → UI Renderer
+Перевод:
+пользовательский запрос → парсер намерения → планировщик запроса → безопасный слой доступа к данным → слой расчётов → слой рекомендаций → компоновщик ответа → отрисовщик интерфейса.
+13.2 Почему нельзя “просто дать ИИ доступ к SQL”
+Потому что он:
+* будет ошибаться;
+* может строить неэффективные запросы;
+* может нарушить границы ролей;
+* может перепутать текущий tenant — клиента;
+* может делать дорогие выборки.
+13.3 Правильная модель
+LLM не пишет SQL напрямую в production.
+Она генерирует structured query plan — структурированный план запроса в JSON.
+Потом backend:
+* валидирует план;
+* проверяет роль;
+* применяет tenant filters — фильтры клиента;
+* исполняет безопасные шаблоны SQL;
+* считает агрегаты;
+* только после этого отдаёт результат назад LLM для формулировки ответа.
+________________
+
+
+14. Поддерживаемые типы запросов AI-ассистента
+Обязательные классы:
+14.1 Aggregate queries — агрегатные запросы
+Примеры:
+* “За последние 5 звонков сколько в среднем процентов времени менеджер задавал вопросы?”
+* “Какой средний индекс вовлечённости клиента за март?”
+14.2 Comparison queries — сравнительные запросы
+Примеры:
+* “Сравни Ивана и Петра по выявлению потребностей за последние 30 дней.”
+* “У кого лучше следующий шаг фиксируется?”
+14.3 Trend queries — запросы по динамике
+Примеры:
+* “Покажи, как менялся индекс работы с возражениями за 3 месяца.”
+* “Стало ли лучше по бюджету?”
+14.4 Filter queries — запросы с фильтрацией
+Примеры:
+* “Найди звонки, где клиент был заинтересован, но следующий шаг не зафиксирован.”
+* “Покажи звонки с низкой уверенностью анализа.”
+14.5 Diagnostic queries — диагностические запросы
+Примеры:
+* “Какие три главные системные ошибки в отделе продаж?”
+* “Что чаще всего мешает закрытию?”
+14.6 Training queries — запросы на тренировку
+Примеры:
+* “Создай тренировку по самым частым ошибкам менеджера.”
+* “Собери тренировку по работе с возражением ‘дорого’.”
+14.7 Exploratory open queries — открытые исследовательские запросы
+Примеры:
+* “Что интересного ты видишь по нашим данным?”
+* “Из-за чего чаще всего проседает разговор после обсуждения цены?”
+Вот этот класс самый опасный. Для него нужна логика ограничений и уточнений.
+________________
+
+
+15. Режим уточнения
+15.1 Принцип
+Ассистент должен сам догадываться в 95% случаев.
+15.2 Когда уточнять
+Только если без уточнения:
+* получится 10+ равновероятных трактовок;
+* ответ будет почти наверняка бесполезен;
+* или нарушится доступ по ролям.
+15.3 Правило по умолчанию
+Если пользователь не уточнил, то по умолчанию:
+* период: последние 30 дней;
+* выборка звонков: последние 20;
+* менеджеры: доступный пользователю scope — периметр доступа;
+* tenant: текущий клиент;
+* метрика: наиболее вероятная трактовка из словаря параметров.
+15.4 Формат уточнения
+Одна короткая реплика:
+“Я могу посчитать это по последним 5, 20 или всем звонкам за 30 дней. Чтобы не показать вам случайную выборку, уточните диапазон.”
+________________
+
+
+16. Формат внутреннего JSON-плана запроса
+Пример:
+{
+  "intent": "aggregate_metric",
+  "tenant_scope": "current",
+  "role_scope": "owner",
+  "time_range": {
+    "type": "last_n_calls",
+    "value": 5
+  },
+  "subject": {
+    "entity": "manager_team",
+    "filters": []
+  },
+  "metric": {
+    "parameter_code": "manager_question_time_percent",
+    "aggregation": "avg"
+  },
+  "comparison": null,
+  "group_by": null,
+  "chart": {
+    "needed": false
+  },
+  "clarification_needed": false
+}
+
+
+Другой пример:
+{
+  "intent": "compare_managers",
+  "tenant_scope": "current",
+  "role_scope": "sales_head",
+  "time_range": {
+    "type": "date_range",
+    "from": "2026-01-01",
+    "to": "2026-03-16"
+  },
+  "subject": {
+    "entity": "managers",
+    "filters": [
+      {"field": "manager_name", "op": "in", "value": ["Иван", "Петр"]}
+    ]
+  },
+  "metric": {
+    "parameter_code": "needs_discovery_index",
+    "aggregation": "avg"
+  },
+  "comparison": "side_by_side",
+  "group_by": "manager",
+  "chart": {
+    "needed": true,
+    "type": "bar"
+  },
+  "clarification_needed": false
+}
+
+
+________________
+
+
+17. Safe Data Access Layer — безопасный слой доступа
+Этот слой должен:
+1. Проверять роль пользователя.
+2. Жёстко подставлять tenant_id.
+3. Ограничивать доступ к деталям звонков по роли.
+4. Резать опасные или слишком дорогие запросы.
+5. Запрещать произвольный SQL.
+6. Работать только через whitelisted templates — белый список шаблонов.
+________________
+
+
+18. RBAC — права доступа
+owner — владелец
+Видит:
+* агрегаты по компании;
+* тренды;
+* сравнение команд;
+* рекомендации высокого уровня;
+* графики;
+* бизнес-метрики.
+По умолчанию не видит полные детали каждого звонка, если специально не открыл.
+Это соответствует вашей логике: владелец должен видеть не детали звонков, а бизнес-метрики и влияние навыков на конверсию.
+sales_head — РОП
+Видит:
+* команду;
+* менеджеров;
+* сравнительные графики;
+* тренды;
+* звонки своей команды;
+* рекомендации;
+* паттерны;
+* тренировочные назначения.
+analyst_upstat — аналитик UpStat
+Видит:
+* всё внутри клиента в пределах согласованного доступа;
+* low confidence cases — случаи с невысокой уверенностью;
+* версии анализа;
+* служебные поля;
+* параметры модели.
+manager_limited — менеджер
+Видит:
+* только свои звонки;
+* только свои навыки;
+* только свои тренировки;
+* без сравнения с другими, если это не разрешено отдельно.
+________________
+
+
+19. Версии переанализа
+Хранить все версии надо обязательно.
+Правило:
+* каждая новая модель или новая логика создаёт новую analysis_version;
+* старая версия не удаляется;
+* одна версия помечается is_current = true;
+* ответы ассистента используют текущую версию по умолчанию;
+* аналитик UpStat может сравнить версии.
+Это критично для:
+* развития алгоритма;
+* доказуемости;
+* отладки;
+* демонстрации улучшения модели;
+* обратной совместимости.
+________________
+
+
+20. Работа с невысокой уверенностью
+Если модель не уверена, параметр всё равно записывается.
+Политика:
+* confidence >= 80 → нормально
+* 60–79 → невысокая уверенность
+* < 60 → требует проверки
+В ответах ИИ:
+* если итог построен на значительной доле таких параметров, ассистент обязан указать:
+“Часть вывода основана на данных с невысокой уверенностью модели.”
+Не писать “низкая” без необходимости; формулировка “невысокая уверенность” действительно лучше для UX.
+________________
+
+
+21. Графики и визуализация
+21.1 Принцип
+ИИ не должен сам рисовать графики напрямую.
+Он должен отдавать chart payload — полезную нагрузку для графика.
+21.2 Рекомендованный вариант
+Для веб-приложения рекомендую:
+   * Highcharts если нужен богатый enterprise-уровень,
+или
+   * Apache ECharts если нужна сильная бесплатная альтернатива.
+Если нужен мой жёсткий выбор:
+      * Highcharts быстрее даст красивый SaaS-результат,
+      * ECharts дешевле в лицензировании и гибче на длинной дистанции.
+21.3 Что должен уметь backend
+Формировать payload вида:
+{
+  "chart_type": "line",
+  "title": "Динамика открытых вопросов",
+  "x_axis": ["2026-01", "2026-02", "2026-03"],
+  "series": [
+    {
+      "name": "Иван",
+      "data": [18, 24, 31]
+    },
+    {
+      "name": "Петр",
+      "data": [14, 17, 16]
+    }
+  ],
+  "meta": {
+    "metric_code": "open_questions_count",
+    "aggregation": "avg",
+    "time_range": "monthly"
+  }
+}
+
+
+21.4 Обязательные типы графиков
+      * line — линия
+      * bar — столбцы
+      * stacked bar — накопленные столбцы
+      * area — область
+      * heatmap — тепловая карта
+      * radar — радар навыков
+      * funnel-like progression — воронкообразная динамика
+      * scorecard / KPI cards — карточки KPI
+________________
+
+
+22. Вызов внутренней тренировки
+AI-ассистент не должен сам генерировать всю тренировку с нуля, если у вас уже есть внутренний engine — движок.
+Правильная логика:
+      1. ассистент диагностирует слабый навык;
+      2. выбирает training_flow_id;
+      3. вызывает internal API — внутреннее API;
+      4. получает ссылку / идентификатор тренировки;
+      5. возвращает пользователю:
+      * краткое объяснение,
+      * почему именно эта тренировка,
+      * кнопку запуска.
+________________
+
+
+23. API-контракты верхнего уровня
+23.1 POST /api/conversations/ingest
+Принимает исходный разговор.
+23.2 POST /api/conversations/{id}/analyze
+Запускает анализ.
+23.3 GET /api/conversations/{id}/analysis/current
+Возвращает текущий анализ.
+23.4 GET /api/conversations/{id}/analysis/versions
+Возвращает версии анализа.
+23.5 POST /api/ai-query/plan
+Получает пользовательский запрос и возвращает план.
+23.6 POST /api/ai-query/execute
+Исполняет валидированный план.
+23.7 POST /api/ai-query/respond
+Формирует естественный ответ + chart payload.
+23.8 POST /api/training/launch
+Запускает тренировочный сценарий по выявленной проблеме.
+________________
+
+
+24. Cursor-ready build prompt — промпт для Cursor
+Ниже даю основу, которую можно отправить в Cursor.
+________________
+
+
+Создай backend-модуль для SaaS-платформы UpStat.
+Цель модуля:
+      1. принимать разговоры разных типов: audio_call, transcript, chat_export, manual_text, mixed_source;
+      2. сохранять сущность conversation;
+      3. поддерживать versioned analysis — версионируемый анализ;
+      4. поддерживать dictionary-driven parameter system — систему параметров, управляемую словарём;
+      5. хранить динамический набор 120–150+ параметров по каждому разговору;
+      6. поддерживать tenant-specific custom parameters — кастомные параметры конкретного клиента;
+      7. хранить evidence refs на уровне параметров через ссылки на сегменты разговора;
+      8. формировать skill scores, signal scores, recommendations;
+      9. поддерживать AI query assistant через structured query plan JSON, а не через прямой SQL от LLM;
+      10. поддерживать мультитенантность и RBAC.
+Используй:
+      * PostgreSQL
+      * JSONB
+      * Redis
+      * REST API
+      * чистую модульную архитектуру
+      * migrations
+      * typed DTOs
+      * unit tests для query planner и access control
+Нужные сущности:
+      * tenants
+      * users
+      * roles
+      * conversations
+      * conversation_segments
+      * analysis_versions
+      * parameter_definitions
+      * parameter_values
+      * evidence_bundles
+      * signal_scores
+      * skill_scores
+      * recommendations
+      * conversation_outcomes
+      * query_sessions
+      * query_logs
+Нужна логика:
+      * хранение всех версий анализа
+      * current analysis pointer
+      * flexible parameter definitions
+      * support for number/text/bool/json value types
+      * confidence percent and status
+      * evidence references to transcript segments
+      * safe query execution from JSON plans
+      * default query assumptions
+      * clarification only when ambiguity is critical
+      * chart payload generation for Highcharts or ECharts
+      * role-based restrictions:
+owner, sales_head, analyst_upstat, manager_limited
+Нужны API endpoints:
+         * ingest conversation
+         * analyze conversation
+         * fetch current analysis
+         * fetch version history
+         * plan AI query
+         * execute AI query
+         * generate response payload
+         * launch training flow
+Сделай:
+         1. SQL schema
+         2. migrations
+         3. ORM models
+         4. services
+         5. query planner
+         6. safe SQL template executor
+         7. RBAC middleware
+         8. sample JSON contracts
+         9. test fixtures
+         10. README с архитектурой.
+Не делай монолит из одной таблицы на 150 полей.
+Используй гибридную схему: relational core + JSONB extension.
+________________
+
+
+25. Самый важный инженерный вывод
+Если сформулировать жёстко:
+ядро UpStat — это не LLM и не расшифровка. Ядро UpStat — это parameter dictionary + signal model + versioned evidence-backed analytics.
+Перевод:
+ядро продукта — это не сам “умный чатик”, а:
+         * словарь параметров,
+         * модель сигналов,
+         * версионируемая аналитика,
+         * подтверждённая доказательствами.
+Именно это создаёт реальный moat — защитный ров / труднокопируемое преимущество.
+________________
+
+
+26. Мой итоговый выбор по спорным местам
+Даю уже мои жёсткие решения, чтобы разработчик не плавал:
+         * база: PostgreSQL + JSONB
+         * хранение файлов: object storage
+         * кэш: Redis
+         * модель параметров: dictionary-driven
+         * хранение значений: parameter_values, не 150 fixed columns
+         * evidence: через segment refs, не через дублирование текста
+         * версии анализа: хранить все
+         * режим уверенности: всегда записывать, но маркировать
+         * AI-ассистент: через JSON query plan, не прямой SQL
+         * графики: payload → Highcharts/ECharts
+         * рекомендации: не больше 3 одновременно
+         * владельцу: агрегаты и тренды, не поток сырых звонков
+         * менеджеру: следующий шаг, а не список ошибок
+Это всё согласуется и с твоим видением, и с уже сформулированной продуктовой логикой UpStat: система должна анализировать разговор, находить точки роста, давать тренировку и готовить к следующему разговору; владельцу показывать бизнес-метрики, а менеджеру — следующий шаг развития.
+________________
+
+
+Дальше я могу в следующем сообщении сразу добить вторую часть:
+конкретную SQL-схему таблиц, JSON contracts и примеры API-запросов/ответов.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Отлично. Добиваю вторую часть: конкретную SQL-схему, JSON-контракты, API-примеры и правила для AI-query слоя.
+Сразу ключевой принцип: система должна хранить карту сигналов разговора, находить слабые сигналы, повторяющиеся паттерны и на их основе давать тренировку. Это не просто удобно — это соответствует самой логике ядра UpStat. В оргполитике прямо зафиксировано, что AI должен анализировать каждый звонок, формировать карту сигналов, выявлять повторяющиеся паттерны и запускать тренировку именно по слабому сигналу; также система должна вычислять вероятность сделки и вероятность потери на основе примерно 120–150 параметров разговора.
+________________
+
+
+ЧАСТЬ 2. SQL-СХЕМА, JSON CONTRACTS, API И AI-QUERY LAYER
+________________
+
+
+1. SQL schema — схема таблиц
+Ниже даю PostgreSQL-схему в практичном виде.
+Это не “академический набросок”, а структура, которую уже можно отдавать разработчику или в Cursor как основу миграций.
+1.1 Базовые enum-типы
+CREATE TYPE source_type_enum AS ENUM (
+  'audio_call',
+  'transcript',
+  'chat_screenshot_text',
+  'chat_export',
+  'manual_text',
+  'crm_metadata',
+  'mixed_source'
+);
+
+
+CREATE TYPE processing_status_enum AS ENUM (
+  'pending',
+  'ingested',
+  'analyzing',
+  'analyzed',
+  'failed',
+  'archived'
+);
+
+
+CREATE TYPE parameter_value_type_enum AS ENUM (
+  'number',
+  'text',
+  'boolean',
+  'json',
+  'enum'
+);
+
+
+CREATE TYPE parameter_status_enum AS ENUM (
+  'ok',
+  'unknown',
+  'low_confidence',
+  'needs_review'
+);
+
+
+CREATE TYPE speaker_type_enum AS ENUM (
+  'manager',
+  'client',
+  'unknown',
+  'system'
+);
+
+
+CREATE TYPE polarity_enum AS ENUM (
+  'positive',
+  'negative',
+  'neutral'
+);
+
+
+CREATE TYPE recommendation_type_enum AS ENUM (
+  'coaching',
+  'warning',
+  'training',
+  'insight',
+  'action'
+);
+
+
+CREATE TYPE role_code_enum AS ENUM (
+  'owner',
+  'sales_head',
+  'analyst_upstat',
+  'manager_limited'
+);
+
+
+________________
+
+
+1.2 tenants
+CREATE TABLE tenants (
+  tenant_id UUID PRIMARY KEY,
+  name TEXT NOT NULL,
+  timezone TEXT NOT NULL DEFAULT 'Asia/Almaty',
+  plan_code TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
+  settings_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+
+________________
+
+
+1.3 roles
+CREATE TABLE roles (
+  role_id UUID PRIMARY KEY,
+  code role_code_enum NOT NULL UNIQUE,
+  title TEXT NOT NULL,
+  permissions_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+
+________________
+
+
+1.4 users
+CREATE TABLE users (
+  user_id UUID PRIMARY KEY,
+  tenant_id UUID NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+  role_id UUID NOT NULL REFERENCES roles(role_id),
+  display_name TEXT NOT NULL,
+  email TEXT,
+  external_auth_id TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
+  profile_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+
+CREATE INDEX idx_users_tenant_id ON users(tenant_id);
+CREATE INDEX idx_users_role_id ON users(role_id);
+
+
+________________
+
+
+1.5 conversations
+CREATE TABLE conversations (
+  conversation_id UUID PRIMARY KEY,
+  tenant_id UUID NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+  source_type source_type_enum NOT NULL,
+  external_source_id TEXT,
+  manager_user_id UUID REFERENCES users(user_id),
+  client_label TEXT,
+  language_code TEXT DEFAULT 'ru',
+  started_at TIMESTAMPTZ,
+  ended_at TIMESTAMPTZ,
+  duration_seconds INTEGER,
+  diarization_available BOOLEAN NOT NULL DEFAULT FALSE,
+  transcript_available BOOLEAN NOT NULL DEFAULT FALSE,
+  audio_available BOOLEAN NOT NULL DEFAULT FALSE,
+  crm_available BOOLEAN NOT NULL DEFAULT FALSE,
+  processing_status processing_status_enum NOT NULL DEFAULT 'pending',
+  latest_analysis_version_id UUID,
+  metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+
+CREATE INDEX idx_conversations_tenant_id ON conversations(tenant_id);
+CREATE INDEX idx_conversations_manager_user_id ON conversations(manager_user_id);
+CREATE INDEX idx_conversations_started_at ON conversations(started_at DESC);
+CREATE INDEX idx_conversations_status ON conversations(processing_status);
+
+
+________________
+
+
+1.6 conversation_assets
+Хранит ссылки на аудио, transcript, оригиналы.
+CREATE TABLE conversation_assets (
+  asset_id UUID PRIMARY KEY,
+  conversation_id UUID NOT NULL REFERENCES conversations(conversation_id) ON DELETE CASCADE,
+  asset_type TEXT NOT NULL, -- audio, transcript_raw, transcript_normalized, chat_image, chat_text, crm_payload
+  storage_url TEXT NOT NULL,
+  mime_type TEXT,
+  checksum TEXT,
+  size_bytes BIGINT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+
+CREATE INDEX idx_conversation_assets_conversation_id ON conversation_assets(conversation_id);
+
+
+________________
+
+
+1.7 conversation_segments
+Это одна из важнейших таблиц. Именно на неё будут ссылаться evidence bundles.
+CREATE TABLE conversation_segments (
+  segment_id UUID PRIMARY KEY,
+  conversation_id UUID NOT NULL REFERENCES conversations(conversation_id) ON DELETE CASCADE,
+  speaker_type speaker_type_enum NOT NULL,
+  speaker_label TEXT,
+  start_ms BIGINT,
+  end_ms BIGINT,
+  text TEXT NOT NULL,
+  tokens_count INTEGER,
+  features_json JSONB NOT NULL DEFAULT '{}'::jsonb, 
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+
+CREATE INDEX idx_segments_conversation_id ON conversation_segments(conversation_id);
+CREATE INDEX idx_segments_speaker_type ON conversation_segments(speaker_type);
+
+
+________________
+
+
+1.8 analysis_versions
+CREATE TABLE analysis_versions (
+  analysis_version_id UUID PRIMARY KEY,
+  conversation_id UUID NOT NULL REFERENCES conversations(conversation_id) ON DELETE CASCADE,
+  model_family TEXT NOT NULL,
+  model_name TEXT NOT NULL,
+  prompt_version TEXT NOT NULL,
+  parameter_dictionary_version TEXT NOT NULL,
+  parent_analysis_version_id UUID REFERENCES analysis_versions(analysis_version_id),
+  is_current BOOLEAN NOT NULL DEFAULT FALSE,
+  created_by_system BOOLEAN NOT NULL DEFAULT TRUE,
+  run_metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+
+CREATE INDEX idx_analysis_versions_conversation_id ON analysis_versions(conversation_id);
+CREATE INDEX idx_analysis_versions_is_current ON analysis_versions(is_current);
+
+
+________________
+
+
+1.9 parameter_definitions
+Это ядро гибкости.
+CREATE TABLE parameter_definitions (
+  parameter_id UUID PRIMARY KEY,
+  tenant_id UUID REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+  code TEXT NOT NULL,
+  title TEXT NOT NULL,
+  description TEXT,
+  category TEXT NOT NULL,
+  subcategory TEXT,
+  value_type parameter_value_type_enum NOT NULL,
+  enum_values_json JSONB,
+  unit TEXT,
+  normalization_rule_json JSONB,
+  default_aggregation_type TEXT, -- avg, sum, count, ratio, latest, distribution
+  evidence_required BOOLEAN NOT NULL DEFAULT FALSE,
+  query_synonyms_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  active_from TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  active_to TIMESTAMPTZ,
+  is_custom BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_parameter_code_per_scope UNIQUE (tenant_id, code)
+);
+
+
+CREATE INDEX idx_parameter_definitions_category ON parameter_definitions(category);
+CREATE INDEX idx_parameter_definitions_code ON parameter_definitions(code);
+
+
+Если tenant_id IS NULL, это глобальный системный параметр.
+Если tenant_id заполнен — это кастомный параметр клиента.
+________________
+
+
+1.10 evidence_bundles
+CREATE TABLE evidence_bundles (
+  evidence_bundle_id UUID PRIMARY KEY,
+  analysis_version_id UUID NOT NULL REFERENCES analysis_versions(analysis_version_id) ON DELETE CASCADE,
+  evidence_type TEXT NOT NULL, -- quote, time_range, segment_refs, multi
+  short_excerpt TEXT,
+  start_ms BIGINT,
+  end_ms BIGINT,
+  segment_refs_json JSONB NOT NULL DEFAULT '[]'::jsonb,
+  metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+
+CREATE INDEX idx_evidence_analysis_version_id ON evidence_bundles(analysis_version_id);
+
+
+________________
+
+
+1.11 parameter_values
+CREATE TABLE parameter_values (
+  parameter_value_id UUID PRIMARY KEY,
+  analysis_version_id UUID NOT NULL REFERENCES analysis_versions(analysis_version_id) ON DELETE CASCADE,
+  parameter_id UUID NOT NULL REFERENCES parameter_definitions(parameter_id) ON DELETE CASCADE,
+  value_number DOUBLE PRECISION,
+  value_text TEXT,
+  value_bool BOOLEAN,
+  value_json JSONB,
+  value_enum TEXT,
+  value_normalized DOUBLE PRECISION,
+  status parameter_status_enum NOT NULL DEFAULT 'ok',
+  confidence_percent DOUBLE PRECISION,
+  reasoning_summary TEXT,
+  evidence_bundle_id UUID REFERENCES evidence_bundles(evidence_bundle_id),
+  source_scope TEXT NOT NULL DEFAULT 'mixed',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_parameter_per_analysis UNIQUE (analysis_version_id, parameter_id)
+);
+
+
+CREATE INDEX idx_parameter_values_analysis_version_id ON parameter_values(analysis_version_id);
+CREATE INDEX idx_parameter_values_parameter_id ON parameter_values(parameter_id);
+CREATE INDEX idx_parameter_values_status ON parameter_values(status);
+CREATE INDEX idx_parameter_values_value_number ON parameter_values(value_number);
+
+
+________________
+
+
+1.12 signal_scores
+Позитивные и негативные сигналы.
+CREATE TABLE signal_scores (
+  signal_score_id UUID PRIMARY KEY,
+  analysis_version_id UUID NOT NULL REFERENCES analysis_versions(analysis_version_id) ON DELETE CASCADE,
+  signal_code TEXT NOT NULL,
+  title TEXT NOT NULL,
+  polarity polarity_enum NOT NULL,
+  score DOUBLE PRECISION NOT NULL,
+  weight DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+  confidence_percent DOUBLE PRECISION,
+  summary TEXT,
+  evidence_bundle_id UUID REFERENCES evidence_bundles(evidence_bundle_id),
+  metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+
+CREATE INDEX idx_signal_scores_analysis_version_id ON signal_scores(analysis_version_id);
+CREATE INDEX idx_signal_scores_signal_code ON signal_scores(signal_code);
+
+
+________________
+
+
+1.13 skill_scores
+CREATE TABLE skill_scores (
+  skill_score_id UUID PRIMARY KEY,
+  analysis_version_id UUID NOT NULL REFERENCES analysis_versions(analysis_version_id) ON DELETE CASCADE,
+  skill_code TEXT NOT NULL,
+  title TEXT NOT NULL,
+  score DOUBLE PRECISION NOT NULL,
+  delta_from_previous DOUBLE PRECISION,
+  confidence_percent DOUBLE PRECISION,
+  summary TEXT,
+  metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+
+CREATE INDEX idx_skill_scores_analysis_version_id ON skill_scores(analysis_version_id);
+CREATE INDEX idx_skill_scores_skill_code ON skill_scores(skill_code);
+
+
+________________
+
+
+1.14 conversation_outcomes
+CREATE TABLE conversation_outcomes (
+  outcome_id UUID PRIMARY KEY,
+  conversation_id UUID NOT NULL REFERENCES conversations(conversation_id) ON DELETE CASCADE,
+  outcome_status TEXT, -- won, lost, in_progress, unknown
+  next_step_fixed BOOLEAN,
+  deal_probability DOUBLE PRECISION,
+  loss_probability DOUBLE PRECISION,
+  crm_result TEXT,
+  manual_review_status TEXT,
+  metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+
+CREATE INDEX idx_outcomes_conversation_id ON conversation_outcomes(conversation_id);
+
+
+То, что система должна вычислять вероятность сделки и вероятность потери, в оргполитике уже зафиксировано напрямую.
+________________
+
+
+1.15 recommendations
+CREATE TABLE recommendations (
+  recommendation_id UUID PRIMARY KEY,
+  analysis_version_id UUID NOT NULL REFERENCES analysis_versions(analysis_version_id) ON DELETE CASCADE,
+  priority_rank INTEGER NOT NULL,
+  skill_code TEXT,
+  recommendation_type recommendation_type_enum NOT NULL,
+  title TEXT NOT NULL,
+  text TEXT NOT NULL,
+  reason TEXT,
+  linked_training_flow_id TEXT,
+  generated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+
+CREATE INDEX idx_recommendations_analysis_version_id ON recommendations(analysis_version_id);
+CREATE INDEX idx_recommendations_priority_rank ON recommendations(priority_rank);
+
+
+________________
+
+
+1.16 query_sessions
+CREATE TABLE query_sessions (
+  query_session_id UUID PRIMARY KEY,
+  tenant_id UUID NOT NULL REFERENCES tenants(tenant_id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
+  last_context_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+
+________________
+
+
+1.17 query_logs
+CREATE TABLE query_logs (
+  query_log_id UUID PRIMARY KEY,
+  query_session_id UUID NOT NULL REFERENCES query_sessions(query_session_id) ON DELETE CASCADE,
+  raw_user_query TEXT NOT NULL,
+  parsed_intent TEXT,
+  resolved_filters_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  query_plan_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+  execution_result_summary TEXT,
+  chart_payload_json JSONB,
+  confidence_percent DOUBLE PRECISION,
+  clarification_needed BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+
+CREATE INDEX idx_query_logs_query_session_id ON query_logs(query_session_id);
+CREATE INDEX idx_query_logs_created_at ON query_logs(created_at DESC);
+
+
+________________
+
+
+2. Полезные materialized views — материализованные представления
+Чтобы AI-ассистент не долбил каждый раз по сырой таблице parameter_values, советую сразу сделать пару витрин.
+2.1 current_analysis_per_conversation
+CREATE MATERIALIZED VIEW current_analysis_per_conversation AS
+SELECT
+  c.conversation_id,
+  c.tenant_id,
+  av.analysis_version_id,
+  c.manager_user_id,
+  c.started_at,
+  c.duration_seconds
+FROM conversations c
+JOIN analysis_versions av
+  ON av.analysis_version_id = c.latest_analysis_version_id;
+
+
+2.2 metric_flat_view
+Это денормализованный слой для быстрых выборок.
+CREATE MATERIALIZED VIEW metric_flat_view AS
+SELECT
+  c.tenant_id,
+  c.conversation_id,
+  c.manager_user_id,
+  c.started_at,
+  av.analysis_version_id,
+  pd.code AS parameter_code,
+  pd.category,
+  pd.subcategory,
+  pv.value_number,
+  pv.value_text,
+  pv.value_bool,
+  pv.value_enum,
+  pv.value_normalized,
+  pv.status,
+  pv.confidence_percent
+FROM parameter_values pv
+JOIN parameter_definitions pd ON pd.parameter_id = pv.parameter_id
+JOIN analysis_versions av ON av.analysis_version_id = pv.analysis_version_id
+JOIN conversations c ON c.conversation_id = av.conversation_id
+WHERE av.is_current = TRUE;
+
+
+________________
+
+
+3. Начальный словарь параметров
+Тебе не надо ждать, пока будет весь список 150, чтобы запустить архитектуру.
+Нужен parameter_dictionary_v1, который уже включает ядро.
+Минимальные обязательные коды:
+3.1 Control of conversation — контроль разговора
+         * manager_talk_time_percent
+         * client_talk_time_percent
+         * longest_manager_monologue_seconds
+         * manager_interruptions_count
+         * client_interruptions_count
+         * average_manager_replica_length_chars
+         * average_client_replica_length_chars
+3.2 Questions — вопросы
+         * manager_questions_count
+         * manager_open_questions_count
+         * manager_clarifying_questions_count
+         * client_questions_count
+         * question_time_percent
+3.3 Needs discovery — выявление потребностей
+         * pain_identified_flag
+         * pain_depth_score
+         * current_process_discussed_flag
+         * desired_future_state_discussed_flag
+         * decision_criteria_discussed_flag
+         * budget_discussed_flag
+3.4 Deal progression — продвижение сделки
+         * next_step_proposed_flag
+         * next_step_fixed_flag
+         * specific_agreement_flag
+         * implementation_discussed_flag
+         * integration_discussed_flag
+         * timeline_discussed_flag
+3.5 Client reaction — реакция клиента
+         * client_engagement_index
+         * client_response_length_growth_flag
+         * client_interest_questions_flag
+         * client_resistance_drop_flag
+         * client_roi_discussion_flag
+3.6 Outcome prediction — прогноз
+         * deal_probability
+         * loss_probability
+         * closing_strength_index
+         * risk_index
+Это прямо бьётся с вашими блоками: клиент задаёт вопросы, обсуждает внедрение, интеграции, сроки, соглашается на следующий шаг, разговор заканчивается договорённостью; негативные сигналы включают отсутствие следующего шага и завершение разговора без договорённости.
+________________
+
+
+4. JSON contracts — контракты данных
+________________
+
+
+4.1 Ingest request
+POST /api/conversations/ingest
+{
+  "tenant_id": "6b2dcf4e-9f2d-4d83-8e7b-8e2a8d38d001",
+  "source_type": "audio_call",
+  "manager_user_id": "0c3d0c59-a0e4-4906-8d11-149fefb63111",
+  "client_label": "lead_2026_03_16_001",
+  "language_code": "ru",
+  "started_at": "2026-03-16T10:00:00Z",
+  "duration_seconds": 812,
+  "assets": [
+    {
+      "asset_type": "audio",
+      "storage_url": "s3://bucket/tenant-x/calls/call-001.mp3",
+      "mime_type": "audio/mpeg",
+      "size_bytes": 12400000
+    },
+    {
+      "asset_type": "transcript_raw",
+      "storage_url": "s3://bucket/tenant-x/transcripts/call-001.json",
+      "mime_type": "application/json"
+    }
+  ],
+  "metadata_json": {
+    "channel": "phone",
+    "import_source": "manual_upload"
+  }
+}
+
+
+________________
+
+
+4.2 Analyze request
+POST /api/conversations/{conversation_id}/analyze
+{
+  "force_reanalyze": false,
+  "model_family": "openai",
+  "model_name": "gpt-5.4-thinking",
+  "prompt_version": "call_analysis_v1_3",
+  "parameter_dictionary_version": "parameter_dictionary_v1",
+  "include_evidence": true,
+  "include_skill_scores": true,
+  "include_recommendations": true
+}
+
+
+________________
+
+
+4.3 Analyze response
+{
+  "conversation_id": "7c7282e4-3491-4f5b-8d9b-d17dd4c8f712",
+  "analysis_version_id": "ce88280d-dca1-4f7f-b1d7-8f5d1a3d9d88",
+  "status": "accepted",
+  "queued": true
+}
+
+
+________________
+
+
+4.4 Current analysis response
+GET /api/conversations/{conversation_id}/analysis/current
+{
+  "conversation_id": "7c7282e4-3491-4f5b-8d9b-d17dd4c8f712",
+  "analysis_version_id": "ce88280d-dca1-4f7f-b1d7-8f5d1a3d9d88",
+  "summary": {
+    "deal_probability": 0.73,
+    "loss_probability": 0.27,
+    "client_engagement_index": 0.69,
+    "closing_strength_index": 0.58
+  },
+  "top_signals": [
+    {
+      "signal_code": "client_asked_integration",
+      "polarity": "positive",
+      "score": 0.88,
+      "summary": "Клиент обсуждал интеграции, что указывает на переход к стадии реализации."
+    },
+    {
+      "signal_code": "next_step_missing",
+      "polarity": "negative",
+      "score": 0.91,
+      "summary": "Разговор завершился без чётко зафиксированного следующего шага."
+    }
+  ],
+  "top_recommendations": [
+    {
+      "priority_rank": 1,
+      "title": "Фиксировать следующий шаг в конце разговора",
+      "text": "В 4 из последних 6 звонков следующий шаг не был проговорён конкретно."
+    },
+    {
+      "priority_rank": 2,
+      "title": "Углублять выявление проблемы",
+      "text": "Проблема обозначалась, но не была количественно раскрыта."
+    }
+  ]
+}
+
+
+________________
+
+
+4.5 Parameter value contract
+{
+  "parameter_code": "manager_questions_count",
+  "title": "Количество вопросов менеджера",
+  "value_type": "number",
+  "value_raw": 17,
+  "value_normalized": 0.68,
+  "unit": "count",
+  "status": "ok",
+  "confidence_percent": 93,
+  "reasoning_summary": "В разговоре найдено 17 реплик менеджера с вопросительной конструкцией.",
+  "evidence_refs": [
+    {
+      "segment_id": "2ed67fb4-a3ea-4cc4-b500-4a415dca3c82",
+      "start_ms": 84000,
+      "end_ms": 91000,
+      "excerpt": "Расскажите, как у вас сейчас устроен контроль звонков?"
+    }
+  ]
+}
+
+
+________________
+
+
+4.6 Skill score contract
+{
+  "skill_code": "needs_discovery",
+  "title": "Выявление потребностей",
+  "score": 0.61,
+  "delta_from_previous": 0.08,
+  "confidence_percent": 84,
+  "summary": "Менеджер выявил наличие проблемы, но не углубился в масштаб потерь и критерии выбора."
+}
+
+
+________________
+
+
+4.7 Recommendation contract
+{
+  "priority_rank": 1,
+  "recommendation_type": "training",
+  "skill_code": "closing",
+  "title": "Отработка закрытия на следующий шаг",
+  "text": "Менеджер доводил клиента до интереса, но не переводил разговор в конкретную договорённость.",
+  "reason": "Сигнал next_step_fixed_flag отсутствует в 5 из последних 7 звонков.",
+  "linked_training_flow_id": "closing_next_step_v2"
+}
+
+
+________________
+
+
+5. AI Query Plan JSON
+Это самый важный контракт во всей AI-архитектуре.
+________________
+
+
+5.1 Aggregate query example
+Пользователь сказал:
+“За последние 5 звонков сколько в среднем процентов времени менеджеры задавали вопросы?”
+{
+  "intent": "aggregate_metric",
+  "tenant_scope": "current",
+  "role_scope": "owner",
+  "time_range": {
+    "type": "last_n_calls",
+    "value": 5
+  },
+  "subject": {
+    "entity": "team",
+    "filters": []
+  },
+  "metric": {
+    "parameter_code": "question_time_percent",
+    "aggregation": "avg"
+  },
+  "comparison": null,
+  "group_by": null,
+  "chart": {
+    "needed": false
+  },
+  "clarification_needed": false,
+  "assumptions": [
+    "Использованы последние 5 проанализированных звонков текущего tenant."
+  ]
+}
+
+
+________________
+
+
+5.2 Comparison query example
+Пользователь сказал:
+“Сравни Ивана и Петра по выявлению потребностей за этот квартал.”
+{
+  "intent": "compare_entities",
+  "tenant_scope": "current",
+  "role_scope": "sales_head",
+  "time_range": {
+    "type": "date_range",
+    "from": "2026-01-01",
+    "to": "2026-03-31"
+  },
+  "subject": {
+    "entity": "managers",
+    "filters": [
+      {
+        "field": "manager_name",
+        "op": "in",
+        "value": ["Иван", "Петр"]
+      }
+    ]
+  },
+  "metric": {
+    "parameter_code": "pain_depth_score",
+    "aggregation": "avg"
+  },
+  "comparison": "side_by_side",
+  "group_by": "manager",
+  "chart": {
+    "needed": true,
+    "type": "bar"
+  },
+  "clarification_needed": false
+}
+
+
+________________
+
+
+5.3 Trend query example
+Пользователь сказал:
+“Покажи динамику обсуждения бюджета за последние 6 месяцев.”
+{
+  "intent": "trend_metric",
+  "tenant_scope": "current",
+  "role_scope": "owner",
+  "time_range": {
+    "type": "relative_period",
+    "unit": "month",
+    "value": 6
+  },
+  "subject": {
+    "entity": "team",
+    "filters": []
+  },
+  "metric": {
+    "parameter_code": "budget_discussed_flag",
+    "aggregation": "share_true"
+  },
+  "comparison": null,
+  "group_by": "month",
+  "chart": {
+    "needed": true,
+    "type": "line"
+  },
+  "clarification_needed": false
+}
+
+
+________________
+
+
+5.4 Diagnostic query example
+Пользователь сказал:
+“Назови три главные системные ошибки в отделе продаж.”
+{
+  "intent": "diagnostic_summary",
+  "tenant_scope": "current",
+  "role_scope": "owner",
+  "time_range": {
+    "type": "relative_period",
+    "unit": "day",
+    "value": 30
+  },
+  "subject": {
+    "entity": "team",
+    "filters": []
+  },
+  "metric_bundle": [
+    "budget_discussed_flag",
+    "next_step_fixed_flag",
+    "decision_criteria_discussed_flag",
+    "manager_talk_time_percent",
+    "manager_open_questions_count"
+  ],
+  "diagnostic_rule": "top_negative_patterns",
+  "chart": {
+    "needed": true,
+    "type": "heatmap"
+  },
+  "clarification_needed": false
+}
+
+
+________________
+
+
+5.5 Training query example
+Пользователь сказал:
+“Создай тренировку по слабым местам Ивана.”
+{
+  "intent": "launch_training",
+  "tenant_scope": "current",
+  "role_scope": "sales_head",
+  "time_range": {
+    "type": "last_n_calls",
+    "value": 10
+  },
+  "subject": {
+    "entity": "manager",
+    "filters": [
+      {
+        "field": "manager_name",
+        "op": "eq",
+        "value": "Иван"
+      }
+    ]
+  },
+  "training_rule": "top_2_weakest_skills",
+  "clarification_needed": false
+}
+
+
+________________
+
+
+6. SQL-шаблоны для AI Query Executor
+LLM не должна писать SQL.
+Она должна выбирать один из шаблонов.
+________________
+
+
+6.1 Aggregate metric template
+SELECT
+  AVG(mfv.value_number) AS metric_value,
+  COUNT(*) AS rows_used
+FROM metric_flat_view mfv
+WHERE mfv.tenant_id = $1
+  AND mfv.parameter_code = $2
+  AND mfv.started_at IS NOT NULL
+ORDER BY mfv.started_at DESC
+LIMIT $3;
+
+
+Для корректности в production лучше сначала выбрать нужные звонки CTE-блоком.
+WITH last_calls AS (
+  SELECT DISTINCT conversation_id, started_at
+  FROM metric_flat_view
+  WHERE tenant_id = $1
+  ORDER BY started_at DESC
+  LIMIT $2
+)
+SELECT
+  AVG(mfv.value_number) AS metric_value,
+  COUNT(*) AS rows_used
+FROM metric_flat_view mfv
+JOIN last_calls lc ON lc.conversation_id = mfv.conversation_id
+WHERE mfv.tenant_id = $1
+  AND mfv.parameter_code = $3;
+
+
+________________
+
+
+6.2 Compare managers template
+SELECT
+  u.display_name AS manager_name,
+  AVG(mfv.value_number) AS metric_avg,
+  COUNT(*) AS calls_count
+FROM metric_flat_view mfv
+JOIN users u ON u.user_id = mfv.manager_user_id
+WHERE mfv.tenant_id = $1
+  AND mfv.parameter_code = $2
+  AND mfv.started_at >= $3
+  AND mfv.started_at < $4
+  AND u.display_name = ANY($5)
+GROUP BY u.display_name
+ORDER BY metric_avg DESC;
+
+
+________________
+
+
+6.3 Trend template
+SELECT
+  DATE_TRUNC('month', mfv.started_at) AS period,
+  AVG(
+    CASE
+      WHEN mfv.value_bool IS TRUE THEN 1
+      WHEN mfv.value_bool IS FALSE THEN 0
+      ELSE NULL
+    END
+  ) AS share_true
+FROM metric_flat_view mfv
+WHERE mfv.tenant_id = $1
+  AND mfv.parameter_code = $2
+  AND mfv.started_at >= $3
+  AND mfv.started_at < $4
+GROUP BY 1
+ORDER BY 1;
+
+
+________________
+
+
+6.4 Top negative patterns template
+SELECT
+  mfv.parameter_code,
+  AVG(
+    CASE
+      WHEN mfv.value_bool IS FALSE THEN 1
+      ELSE 0
+    END
+  ) AS failure_rate,
+  COUNT(*) AS observations
+FROM metric_flat_view mfv
+WHERE mfv.tenant_id = $1
+  AND mfv.parameter_code = ANY($2)
+  AND mfv.started_at >= $3
+  AND mfv.started_at < $4
+GROUP BY mfv.parameter_code
+HAVING COUNT(*) >= 5
+ORDER BY failure_rate DESC, observations DESC
+LIMIT 3;
+
+
+________________
+
+
+7. Chart payload contracts
+________________
+
+
+7.1 Line chart
+{
+  "chart_type": "line",
+  "title": "Динамика обсуждения бюджета",
+  "x_axis": ["2025-10", "2025-11", "2025-12", "2026-01", "2026-02", "2026-03"],
+  "series": [
+    {
+      "name": "Доля звонков, где обсуждался бюджет",
+      "data": [0.18, 0.21, 0.26, 0.31, 0.29, 0.37]
+    }
+  ],
+  "meta": {
+    "metric_code": "budget_discussed_flag",
+    "aggregation": "share_true",
+    "time_granularity": "month"
+  }
+}
+
+
+________________
+
+
+7.2 Bar chart
+{
+  "chart_type": "bar",
+  "title": "Сравнение менеджеров по выявлению потребностей",
+  "x_axis": ["Иван", "Петр", "Алексей"],
+  "series": [
+    {
+      "name": "Средний балл",
+      "data": [0.74, 0.61, 0.69]
+    }
+  ],
+  "meta": {
+    "metric_code": "pain_depth_score",
+    "aggregation": "avg"
+  }
+}
+
+
+________________
+
+
+7.3 Heatmap
+{
+  "chart_type": "heatmap",
+  "title": "Тепловая карта слабых сигналов команды",
+  "x_axis": ["Бюджет", "Критерии выбора", "Следующий шаг", "Открытые вопросы"],
+  "y_axis": ["Иван", "Петр", "Алексей"],
+  "data": [
+    [0, 0, 0.72],
+    [0, 1, 0.61],
+    [0, 2, 0.83],
+    [1, 0, 0.41],
+    [1, 1, 0.77]
+  ],
+  "meta": {
+    "scale": "failure_rate"
+  }
+}
+
+
+________________
+
+
+8. Ответ AI-ассистента пользователю
+Ответ должен состоять из 4 частей:
+         1. Direct answer — прямой ответ
+         2. Evidence / basis — на чём основан вывод
+         3. Confidence note — пометка об уверенности
+         4. UI payloads — графики, таблицы, кнопки действий
+Пример:
+{
+  "answer_text": "За последние 5 звонков менеджеры в среднем задавали вопросы в течение 18.4% времени разговора. Это ниже желаемого диапазона для диагностических продаж.",
+  "basis": {
+    "calls_used": 5,
+    "fallback_used": false,
+    "metric_code": "question_time_percent"
+  },
+  "confidence_note": "Часть расчёта основана на данных с невысокой уверенностью в 1 из 5 звонков.",
+  "chart_payload": null,
+  "action_payload": null
+}
+
+
+Если звонков меньше:
+{
+  "answer_text": "В системе найдено только 3 последних проанализированных звонка. По ним менеджеры задавали вопросы в среднем 16.9% времени разговора.",
+  "basis": {
+    "requested_calls": 5,
+    "actual_calls_used": 3,
+    "fallback_used": true
+  }
+}
+
+
+________________
+
+
+9. Clarification policy — политика уточнений
+Чтобы AI не бесил пользователя, у него должны быть жёсткие правила.
+9.1 Не уточнять, если можно разумно предположить
+Примеры:
+         * “сравни последние звонки” → взять последние 20;
+         * “покажи динамику” → взять 30 дней, если не указан период;
+         * “по менеджерам” → взять доступную пользователю команду.
+9.2 Уточнять только если:
+         * выборка может radically alter outcome — радикально изменить результат;
+         * непонятно, про какого менеджера речь;
+         * запрос выходит за права доступа;
+         * возможно 10+ трактовок.
+9.3 Формат уточнения
+Не спрашивать тупо:
+“Уточните период.”
+Писать так:
+“Я могу посчитать это по последним 5, 20 или всем звонкам за 30 дней. Чтобы не показать вам случайную картину, уточните диапазон.”
+________________
+
+
+10. RBAC rules — правила доступа
+________________
+
+
+owner
+Может:
+         * видеть все агрегаты tenant;
+         * сравнивать менеджеров;
+         * видеть графики, паттерны, прогноз сделки, прогноз потери;
+         * запускать тренировки для команды;
+         * делать открытые исследовательские запросы.
+Не должен по умолчанию получать весь transcript без отдельного клика.
+________________
+
+
+sales_head
+Может:
+         * видеть свою команду;
+         * сравнивать менеджеров своей команды;
+         * видеть детали звонков команды;
+         * запускать тренировки;
+         * видеть low-confidence flags.
+________________
+
+
+analyst_upstat
+Может:
+         * видеть всё в рамках клиента;
+         * видеть analysis_versions;
+         * видеть parameter-level evidence;
+         * пересчитывать анализ;
+         * сравнивать версии модели.
+________________
+
+
+manager_limited
+Может:
+         * видеть только свои звонки;
+         * видеть только свои skill scores;
+         * видеть только свои рекомендации;
+         * запускать свои тренировки.
+________________
+
+
+11. Example end-to-end flow — полный сценарий
+Пользователь-владелец говорит:
+“Покажи за этот квартал, у кого лучше выявление потребностей, и построй график.”
+Шаг 1. Speech-to-text / text capture
+Фронт получает текст запроса.
+Шаг 2. LLM planner
+LLM строит JSON plan:
+{
+  "intent": "compare_entities",
+  "time_range": {
+    "type": "quarter_to_date"
+  },
+  "subject": {
+    "entity": "managers",
+    "filters": []
+  },
+  "metric": {
+    "parameter_code": "pain_depth_score",
+    "aggregation": "avg"
+  },
+  "group_by": "manager",
+  "chart": {
+    "needed": true,
+    "type": "bar"
+  }
+}
+
+
+Шаг 3. Backend validator
+         * определяет tenant;
+         * проверяет роль owner;
+         * подставляет реальный квартал;
+         * разрешает только team scope.
+Шаг 4. Template executor
+Исполняет SQL-шаблон.
+Шаг 5. Chart builder
+Строит payload для Highcharts/ECharts.
+Шаг 6. Response composer
+Формирует:
+         * текст;
+         * таблицу;
+         * bar chart.
+Шаг 7. Frontend
+Показывает:
+         * ответ;
+         * график;
+         * кнопку “создать тренировку для слабых менеджеров”.
+________________
+
+
+12. Backend modules — модули backend
+Разбей код так:
+12.1 ingestion-service
+Импорт звонков, transcript, chat.
+12.2 segmentation-service
+Разбивка по сегментам и хранение conversation_segments.
+12.3 analysis-orchestrator
+Управление анализом, версиями, вызовом модели.
+12.4 parameter-engine
+Вычисление параметров по словарю.
+12.5 signal-engine
+Позитивные/негативные сигналы.
+12.6 skill-engine
+Сборка skill scores.
+12.7 recommendation-engine
+Топ-3 рекомендации и тренировки.
+12.8 ai-query-planner
+Преобразование пользовательского запроса в JSON plan.
+12.9 query-validator
+Проверка прав, tenant scope, диапазонов.
+12.10 query-executor
+Исполнение только безопасных шаблонов.
+12.11 response-composer
+Текст, confidence note, chart payload.
+12.12 chart-adapter
+Выдача готовых структур для Highcharts/ECharts.
+________________
+
+
+13. Prompt architecture — архитектура промптов
+Нужно не один промпт, а 4 разных класса промптов.
+________________
+
+
+13.1 Parameter extraction prompt
+Задача:
+         * по сегментам разговора вычислить значения параметров;
+         * вернуть строго JSON.
+13.2 Signal inference prompt
+Задача:
+         * по параметрам и сегментам вывести positive/negative signals.
+В оргполитике прямо указано, что AI должен анализировать разговор одновременно по пяти измерениям: структура разговора, поведение менеджера, реакция клиента, динамика разговора и завершение разговора. Именно под это лучше и строить prompt decomposition — декомпозицию промптов.
+13.3 Recommendation prompt
+Задача:
+         * не перечислить ошибки;
+         * выбрать 1–3 лучших действия;
+         * объяснить, почему именно они.
+13.4 Query planning prompt
+Задача:
+         * из пользовательского запроса сделать JSON plan;
+         * не отвечать пользователю напрямую;
+         * не писать SQL.
+________________
+
+
+14. Индексация и производительность
+Минимум, что нужно сделать сразу:
+         * индекс по (tenant_id, started_at desc) в conversations
+         * индекс по (analysis_version_id, parameter_id) в parameter_values
+         * индекс по parameter_code через materialized view
+         * refresh materialized views по событию завершения анализа
+         * кэшировать частые AI-запросы на 1–5 минут
+________________
+
+
+15. Что не делать
+Вот где разработчик легко всё испортит.
+Не делать:
+         * одну giant table — гигантскую таблицу на 150–300 колонок;
+         * прямой доступ LLM к SQL;
+         * хранение полного transcript внутри каждой рекомендации;
+         * пересчёт графиков из сырых сегментов на каждый пользовательский запрос;
+         * отсутствие версий анализа;
+         * отсутствие tenant isolation — изоляции клиентов;
+         * отсутствие confidence policy — политики уверенности.
+________________
+
+
+16. Минимальный roadmap реализации
+Этап 1. Foundation
+         * tenants
+         * users
+         * roles
+         * conversations
+         * assets
+         * segments
+         * analysis_versions
+Этап 2. Analytics core
+         * parameter_definitions
+         * parameter_values
+         * evidence_bundles
+         * signal_scores
+         * skill_scores
+         * recommendations
+Этап 3. AI query
+         * query_sessions
+         * query_logs
+         * planner
+         * validator
+         * executor
+         * response composer
+Этап 4. Visualization
+         * chart payload adapter
+         * Highcharts/ECharts integration
+Этап 5. Training loop
+         * internal training API trigger
+         * recommendation-to-training mapping
+________________
+
+
+17. Cursor-ready expanded prompt
+Ниже даю уже более сильный промпт, чем в прошлом сообщении.
+________________
+
+
+Создай production-ready backend-модуль для SaaS-платформы UpStat.
+Контекст продукта:
+UpStat — это conversation intelligence platform для анализа звонков и переписок менеджеров по продажам. Система должна извлекать примерно 120–150 параметров разговора, вычислять позитивные и негативные сигналы, вероятность сделки, вероятность потери, skill scores и рекомендации. Также система должна находить повторяющиеся паттерны и запускать тренировку по слабым местам.
+Требования:
+         1. Поддержать мультитенантность.
+         2. Поддержать RBAC для ролей owner, sales_head, analyst_upstat, manager_limited.
+         3. Поддержать versioned analysis для каждого conversation.
+         4. Использовать гибридную схему хранения:
+         * PostgreSQL relational core
+         * JSONB for flexible fields
+         * object storage links for original assets
+         5. Не использовать одну таблицу на 150 фиксированных колонок.
+         6. Сделать dictionary-driven parameter system через:
+         * parameter_definitions
+         * parameter_values
+         7. Поддержать кастомные параметры клиента через tenant-scoped definitions.
+         8. Для каждого параметра хранить:
+         * raw value
+         * normalized value
+         * status
+         * confidence percent
+         * reasoning summary
+         * evidence reference
+         9. Хранить transcript по segment-level model и использовать evidence bundles как ссылки на segment IDs, а не как дублирование текста.
+         10. Сделать AI Query Assistant через structured query plans JSON, а не через прямой SQL от LLM.
+         11. Реализовать query validation layer с tenant enforcement, RBAC enforcement и safe SQL templates.
+         12. Поддержать chart payload generation для Highcharts или ECharts.
+         13. Реализовать API endpoints:
+         * POST /api/conversations/ingest
+         * POST /api/conversations/{id}/analyze
+         * GET /api/conversations/{id}/analysis/current
+         * GET /api/conversations/{id}/analysis/versions
+         * POST /api/ai-query/plan
+         * POST /api/ai-query/execute
+         * POST /api/ai-query/respond
+         * POST /api/training/launch
+         14. Создать SQL migrations, ORM models, services, validators, tests и README.
+         15. Добавить materialized view для быстрых аналитических запросов по текущим analysis versions.
+         16. Сделать так, чтобы система корректно работала при отсутствии части данных: no CRM, no audio, no transcript.
+SQL schema requirements:
+         * tenants
+         * roles
+         * users
+         * conversations
+         * conversation_assets
+         * conversation_segments
+         * analysis_versions
+         * parameter_definitions
+         * evidence_bundles
+         * parameter_values
+         * signal_scores
+         * skill_scores
+         * conversation_outcomes
+         * recommendations
+         * query_sessions
+         * query_logs
+Implementation rules:
+         * strong typing
+         * migration-friendly
+         * modular architecture
+         * production-safe defaults
+         * testable services
+         * no direct LLM-to-database access
+         * all LLM outputs strictly JSON-validated before execution
+Also provide:
+         * sample seed for global parameter definitions
+         * example query plan payloads
+         * example chart payloads
+         * tests for RBAC and query validation
+________________
+
+
+18. Главный вывод для программиста
+Если одним абзацем объяснить разработчику, что он строит:
+Вы строите не просто call analysis, а analytical operating layer — аналитический операционный слой для UpStat. Каждый разговор должен превращаться в versioned, evidence-backed, queryable structured object — версионируемый, подтверждённый доказательствами, доступный для аналитических запросов структурированный объект. Поверх этого объекта AI-ассистент должен уметь безопасно отвечать на произвольные бизнес-вопросы, строить графики, сравнивать менеджеров и запускать тренировочные сценарии.
+Именно это отражает вашу стратегическую модель: UpStat должен не просто искать ошибки, а вычислять индексы, сигналы, вероятность сделки, находить повторяющиеся паттерны и обучать продавцов на основе этих сигналов.
+________________
+
+
+Следующим сообщением я могу добить уже третью часть: готовый seed-файл параметров, примеры миграций и пример backend-структуры папок под NestJS или FastAPI на выбор.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Отлично. Добиваю третью часть уже в максимально прикладном виде: seed-файл параметров, примеры миграций и backend-структуру проекта.
+Сразу зафиксирую важный принцип, чтобы разработчик не свернул не туда: UpStat должен анализировать каждый звонок как многослойную карту сигналов, находить слабые сигналы, повторяющиеся паттерны и запускать тренировку именно по ним. Внутренняя логика системы у вас уже сформулирована очень чётко: AI анализирует разговор по 5 измерениям — структура разговора, поведение менеджера, реакция клиента, динамика разговора и завершение разговора; по итогам формируется карта сигналов, вероятность сделки, вероятность потери и рекомендации.
+Ниже я выберу один основной стек, чтобы ТЗ было не “обо всём”, а реально исполнимым.
+________________
+
+
+ЧАСТЬ 3. ГОТОВЫЙ SEED, МИГРАЦИИ И СТРУКТУРА BACKEND
+1. Мой жёсткий выбор по стеку
+Для первой сильной production-версии я рекомендую:
+FastAPI + PostgreSQL + SQLAlchemy 2.0 + Alembic + Redis + Pydantic + Celery/RQ + Object Storage
+Почему я выбираю именно это, а не NestJS.
+FastAPI здесь лучше по 5 причинам:
+         1. У вас продукт AI-heavy — с упором на анализ, пайплайны, модели, JSON-контракты, фоновые джобы.
+         2. Python естественнее для AI orchestration — оркестрации ИИ, обработки транскриптов, feature extraction и integration layer — слоя интеграции с LLM.
+         3. Быстрее писать query planner, validators и analytics services.
+         4. Легче связывать backend с ML/LLM логикой без лишних прокладок.
+         5. Проще масштабировать модульно: анализ, запросы, рекомендации, тренировки.
+NestJS я бы выбирал, если бы:
+         * у вас был тяжёлый front/backend TypeScript-only контур,
+         * команда уже очень сильна именно в Node,
+         * а AI-часть жила бы как отдельный Python-микросервис.
+Но для UpStat на текущем этапе FastAPI — более прямой и быстрый путь.
+________________
+
+
+2. Backend folder structure — структура папок
+Вот как должна выглядеть структура проекта.
+upstat-backend/
+├── app/
+│   ├── main.py
+│   ├── core/
+│   │   ├── config.py
+│   │   ├── security.py
+│   │   ├── logging.py
+│   │   ├── db.py
+│   │   ├── redis.py
+│   │   ├── enums.py
+│   │   └── exceptions.py
+│   ├── api/
+│   │   ├── deps.py
+│   │   ├── router.py
+│   │   └── v1/
+│   │       ├── conversations.py
+│   │       ├── analysis.py
+│   │       ├── ai_query.py
+│   │       ├── training.py
+│   │       ├── users.py
+│   │       └── admin.py
+│   ├── models/
+│   │   ├── tenant.py
+│   │   ├── role.py
+│   │   ├── user.py
+│   │   ├── conversation.py
+│   │   ├── conversation_asset.py
+│   │   ├── conversation_segment.py
+│   │   ├── analysis_version.py
+│   │   ├── parameter_definition.py
+│   │   ├── parameter_value.py
+│   │   ├── evidence_bundle.py
+│   │   ├── signal_score.py
+│   │   ├── skill_score.py
+│   │   ├── recommendation.py
+│   │   ├── conversation_outcome.py
+│   │   ├── query_session.py
+│   │   └── query_log.py
+│   ├── schemas/
+│   │   ├── common.py
+│   │   ├── tenant.py
+│   │   ├── user.py
+│   │   ├── conversation.py
+│   │   ├── analysis.py
+│   │   ├── parameter.py
+│   │   ├── ai_query.py
+│   │   ├── chart.py
+│   │   └── training.py
+│   ├── repositories/
+│   │   ├── tenant_repo.py
+│   │   ├── conversation_repo.py
+│   │   ├── analysis_repo.py
+│   │   ├── parameter_repo.py
+│   │   ├── query_repo.py
+│   │   └── training_repo.py
+│   ├── services/
+│   │   ├── ingestion/
+│   │   │   ├── ingest_service.py
+│   │   │   ├── transcript_normalizer.py
+│   │   │   └── asset_service.py
+│   │   ├── segmentation/
+│   │   │   ├── segmentation_service.py
+│   │   │   └── diarization_mapper.py
+│   │   ├── analysis/
+│   │   │   ├── analysis_orchestrator.py
+│   │   │   ├── feature_extractor.py
+│   │   │   ├── parameter_engine.py
+│   │   │   ├── signal_engine.py
+│   │   │   ├── skill_engine.py
+│   │   │   ├── outcome_engine.py
+│   │   │   ├── recommendation_engine.py
+│   │   │   ├── evidence_engine.py
+│   │   │   └── analysis_version_service.py
+│   │   ├── ai_query/
+│   │   │   ├── planner_service.py
+│   │   │   ├── validator_service.py
+│   │   │   ├── executor_service.py
+│   │   │   ├── response_composer.py
+│   │   │   ├── chart_builder.py
+│   │   │   ├── metric_registry.py
+│   │   │   └── clarification_policy.py
+│   │   ├── training/
+│   │   │   ├── training_launcher.py
+│   │   │   └── training_mapper.py
+│   │   └── auth/
+│   │       ├── permission_service.py
+│   │       └── tenant_scope_service.py
+│   ├── prompts/
+│   │   ├── parameter_extraction/
+│   │   │   ├── base_prompt.txt
+│   │   │   ├── sales_call_v1.txt
+│   │   │   └── chat_thread_v1.txt
+│   │   ├── signal_inference/
+│   │   │   └── base_prompt.txt
+│   │   ├── recommendation/
+│   │   │   └── base_prompt.txt
+│   │   └── ai_query/
+│   │       └── planner_prompt.txt
+│   ├── integrations/
+│   │   ├── llm/
+│   │   │   ├── client.py
+│   │   │   ├── openai_provider.py
+│   │   │   └── fallback_provider.py
+│   │   ├── storage/
+│   │   │   ├── s3_client.py
+│   │   │   └── local_storage.py
+│   │   ├── charts/
+│   │   │   ├── highcharts_adapter.py
+│   │   │   └── echarts_adapter.py
+│   │   └── crm/
+│   │       └── base_crm_client.py
+│   ├── tasks/
+│   │   ├── analysis_tasks.py
+│   │   ├── materialized_views_tasks.py
+│   │   └── cleanup_tasks.py
+│   ├── seeds/
+│   │   ├── roles_seed.py
+│   │   ├── parameter_dictionary_v1.py
+│   │   └── demo_tenant_seed.py
+│   └── tests/
+│       ├── unit/
+│       ├── integration/
+│       └── fixtures/
+├── alembic/
+│   ├── versions/
+│   └── env.py
+├── scripts/
+│   ├── seed_all.py
+│   ├── refresh_views.py
+│   └── create_admin.py
+├── .env.example
+├── pyproject.toml
+└── README.md
+
+
+Это хорошая структура потому, что она сразу отделяет:
+         * transport layer — HTTP/API слой,
+         * business logic — бизнес-логику,
+         * AI/query layer — слой ИИ-запросов,
+         * storage — хранение,
+         * integrations — внешние интеграции,
+         * tasks — фоновые задачи.
+________________
+
+
+3. Migration plan — план миграций
+Не надо делать одну миграцию на всё. Это плохая практика. Делить нужно по этапам.
+Migration 001 — tenants, roles, users
+Создаёт:
+         * enum-типы
+         * tenants
+         * roles
+         * users
+Migration 002 — conversations
+Создаёт:
+         * conversations
+         * conversation_assets
+         * conversation_segments
+Migration 003 — analysis core
+Создаёт:
+         * analysis_versions
+         * parameter_definitions
+         * evidence_bundles
+         * parameter_values
+Migration 004 — analytics output
+Создаёт:
+         * signal_scores
+         * skill_scores
+         * conversation_outcomes
+         * recommendations
+Migration 005 — AI query layer
+Создаёт:
+         * query_sessions
+         * query_logs
+Migration 006 — views and indexes
+Создаёт:
+         * materialized views
+         * дополнительные индексы
+         * refresh functions
+________________
+
+
+4. Пример Alembic migration
+Ниже даю не псевдокод, а нормальный ориентир для разработчика.
+"""create tenants roles users
+
+
+Revision ID: 001_create_identity
+Revises: 
+Create Date: 2026-03-16 17:00:00
+"""
+
+
+from alembic import op
+import sqlalchemy as sa
+from sqlalchemy.dialects import postgresql
+
+
+
+
+revision = "001_create_identity"
+down_revision = None
+branch_labels = None
+depends_on = None
+
+
+
+
+role_code_enum = postgresql.ENUM(
+    "owner",
+    "sales_head",
+    "analyst_upstat",
+    "manager_limited",
+    name="role_code_enum"
+)
+
+
+
+
+def upgrade():
+    role_code_enum.create(op.get_bind(), checkfirst=True)
+
+
+    op.create_table(
+        "tenants",
+        sa.Column("tenant_id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("name", sa.Text(), nullable=False),
+        sa.Column("timezone", sa.Text(), nullable=False, server_default="Asia/Almaty"),
+        sa.Column("plan_code", sa.Text(), nullable=True),
+        sa.Column("status", sa.Text(), nullable=False, server_default="active"),
+        sa.Column("settings_json", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default=sa.text("'{}'::jsonb")),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+    )
+
+
+    op.create_table(
+        "roles",
+        sa.Column("role_id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("code", role_code_enum, nullable=False, unique=True),
+        sa.Column("title", sa.Text(), nullable=False),
+        sa.Column("permissions_json", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default=sa.text("'{}'::jsonb")),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+    )
+
+
+    op.create_table(
+        "users",
+        sa.Column("user_id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.tenant_id", ondelete="CASCADE"), nullable=False),
+        sa.Column("role_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("roles.role_id"), nullable=False),
+        sa.Column("display_name", sa.Text(), nullable=False),
+        sa.Column("email", sa.Text(), nullable=True),
+        sa.Column("external_auth_id", sa.Text(), nullable=True),
+        sa.Column("status", sa.Text(), nullable=False, server_default="active"),
+        sa.Column("profile_json", postgresql.JSONB(astext_type=sa.Text()), nullable=False, server_default=sa.text("'{}'::jsonb")),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()),
+    )
+
+
+    op.create_index("idx_users_tenant_id", "users", ["tenant_id"])
+    op.create_index("idx_users_role_id", "users", ["role_id"])
+
+
+
+
+def downgrade():
+    op.drop_index("idx_users_role_id", table_name="users")
+    op.drop_index("idx_users_tenant_id", table_name="users")
+    op.drop_table("users")
+    op.drop_table("roles")
+    op.drop_table("tenants")
+    role_code_enum.drop(op.get_bind(), checkfirst=True)
+
+
+________________
+
+
+5. Seed file philosophy — философия seed-файла параметров
+Вот здесь очень важный момент.
+Нельзя делать seed просто как список из 150 названий параметров.
+Он должен включать по каждому параметру:
+         * code
+         * title
+         * description
+         * category
+         * subcategory
+         * value_type
+         * unit
+         * default_aggregation_type
+         * evidence_required
+         * query_synonyms
+         * normalization_rule
+         * is_custom
+Иначе AI-query слой потом не поймёт:
+         * как эту метрику агрегировать,
+         * как её искать по естественному языку,
+         * как строить графики,
+         * как понимать “похожую” формулировку запроса.
+________________
+
+
+6. Готовый seed-файл parameter_dictionary_v1.py
+Ниже даю практический пример. Он не на все 150 параметров, а как рабочий каркас, который можно масштабировать до полного словаря.
+from uuid import uuid4
+
+
+GLOBAL_PARAMETER_DEFINITIONS = [
+    {
+        "parameter_id": str(uuid4()),
+        "tenant_id": None,
+        "code": "manager_talk_time_percent",
+        "title": "Доля времени речи менеджера",
+        "description": "Процент времени разговора, в течение которого говорил менеджер.",
+        "category": "control_of_conversation",
+        "subcategory": "talk_balance",
+        "value_type": "number",
+        "unit": "percent",
+        "default_aggregation_type": "avg",
+        "evidence_required": False,
+        "query_synonyms": [
+            "сколько говорил менеджер",
+            "доля речи менеджера",
+            "процент времени говорил менеджер",
+            "talk ratio manager"
+        ],
+        "normalization_rule": {
+            "type": "range",
+            "min": 0,
+            "max": 100
+        },
+        "is_custom": False
+    },
+    {
+        "parameter_id": str(uuid4()),
+        "tenant_id": None,
+        "code": "manager_questions_count",
+        "title": "Количество вопросов менеджера",
+        "description": "Общее количество вопросов, заданных менеджером за разговор.",
+        "category": "questions",
+        "subcategory": "manager_questions",
+        "value_type": "number",
+        "unit": "count",
+        "default_aggregation_type": "avg",
+        "evidence_required": True,
+        "query_synonyms": [
+            "сколько вопросов задал менеджер",
+            "количество вопросов",
+            "questions count"
+        ],
+        "normalization_rule": {
+            "type": "minmax_soft",
+            "good_range": [8, 20]
+        },
+        "is_custom": False
+    },
+    {
+        "parameter_id": str(uuid4()),
+        "tenant_id": None,
+        "code": "manager_open_questions_count",
+        "title": "Количество открытых вопросов менеджера",
+        "description": "Количество вопросов открытого типа, направленных на выявление ситуации, проблемы, критериев выбора.",
+        "category": "questions",
+        "subcategory": "open_questions",
+        "value_type": "number",
+        "unit": "count",
+        "default_aggregation_type": "avg",
+        "evidence_required": True,
+        "query_synonyms": [
+            "открытые вопросы",
+            "сколько открытых вопросов",
+            "open questions"
+        ],
+        "normalization_rule": {
+            "type": "minmax_soft",
+            "good_range": [4, 12]
+        },
+        "is_custom": False
+    },
+    {
+        "parameter_id": str(uuid4()),
+        "tenant_id": None,
+        "code": "question_time_percent",
+        "title": "Доля времени, занятая вопросами менеджера",
+        "description": "Процент времени разговора, в котором активная часть речи менеджера была направлена на постановку вопросов.",
+        "category": "questions",
+        "subcategory": "question_density",
+        "value_type": "number",
+        "unit": "percent",
+        "default_aggregation_type": "avg",
+        "evidence_required": False,
+        "query_synonyms": [
+            "процент времени менеджер задавал вопросы",
+            "доля времени на вопросы",
+            "question time percent"
+        ],
+        "normalization_rule": {
+            "type": "range",
+            "min": 0,
+            "max": 100
+        },
+        "is_custom": False
+    },
+    {
+        "parameter_id": str(uuid4()),
+        "tenant_id": None,
+        "code": "pain_identified_flag",
+        "title": "Проблема клиента выявлена",
+        "description": "Флаг, указывающий, что менеджер выявил наличие проблемы, боли или неудовлетворённости клиента.",
+        "category": "needs_discovery",
+        "subcategory": "pain_discovery",
+        "value_type": "boolean",
+        "unit": None,
+        "default_aggregation_type": "share_true",
+        "evidence_required": True,
+        "query_synonyms": [
+            "выявлена проблема",
+            "нашёл боль клиента",
+            "pain identified"
+        ],
+        "normalization_rule": {
+            "type": "boolean_to_score",
+            "true": 1.0,
+            "false": 0.0
+        },
+        "is_custom": False
+    },
+    {
+        "parameter_id": str(uuid4()),
+        "tenant_id": None,
+        "code": "pain_depth_score",
+        "title": "Глубина раскрытия проблемы клиента",
+        "description": "Насколько глубоко менеджер раскрыл последствия, масштаб и цену проблемы клиента.",
+        "category": "needs_discovery",
+        "subcategory": "pain_depth",
+        "value_type": "number",
+        "unit": "score_0_100",
+        "default_aggregation_type": "avg",
+        "evidence_required": True,
+        "query_synonyms": [
+            "глубина выявления потребности",
+            "насколько глубоко раскрыл проблему",
+            "pain depth"
+        ],
+        "normalization_rule": {
+            "type": "range",
+            "min": 0,
+            "max": 100
+        },
+        "is_custom": False
+    },
+    {
+        "parameter_id": str(uuid4()),
+        "tenant_id": None,
+        "code": "budget_discussed_flag",
+        "title": "Бюджет обсуждался",
+        "description": "Флаг, показывающий, что в разговоре обсуждался бюджет, диапазон цены или финансовые ограничения.",
+        "category": "deal_economics",
+        "subcategory": "budget",
+        "value_type": "boolean",
+        "unit": None,
+        "default_aggregation_type": "share_true",
+        "evidence_required": True,
+        "query_synonyms": [
+            "обсуждался бюджет",
+            "говорили про деньги",
+            "говорили о цене в контексте бюджета",
+            "budget discussed"
+        ],
+        "normalization_rule": {
+            "type": "boolean_to_score",
+            "true": 1.0,
+            "false": 0.0
+        },
+        "is_custom": False
+    },
+    {
+        "parameter_id": str(uuid4()),
+        "tenant_id": None,
+        "code": "decision_criteria_discussed_flag",
+        "title": "Обсуждались критерии выбора",
+        "description": "Флаг, показывающий, что менеджер выявил критерии, по которым клиент принимает решение.",
+        "category": "decision_process",
+        "subcategory": "criteria",
+        "value_type": "boolean",
+        "unit": None,
+        "default_aggregation_type": "share_true",
+        "evidence_required": True,
+        "query_synonyms": [
+            "обсуждали критерии выбора",
+            "поняли как клиент выбирает",
+            "decision criteria"
+        ],
+        "normalization_rule": {
+            "type": "boolean_to_score",
+            "true": 1.0,
+            "false": 0.0
+        },
+        "is_custom": False
+    },
+    {
+        "parameter_id": str(uuid4()),
+        "tenant_id": None,
+        "code": "next_step_proposed_flag",
+        "title": "Менеджер предложил следующий шаг",
+        "description": "Флаг, указывающий, что менеджер предложил конкретный следующий шаг в конце разговора.",
+        "category": "closing_and_next_step",
+        "subcategory": "next_step",
+        "value_type": "boolean",
+        "unit": None,
+        "default_aggregation_type": "share_true",
+        "evidence_required": True,
+        "query_synonyms": [
+            "предложил следующий шаг",
+            "назначил демо",
+            "предложил встречу",
+            "next step proposed"
+        ],
+        "normalization_rule": {
+            "type": "boolean_to_score",
+            "true": 1.0,
+            "false": 0.0
+        },
+        "is_custom": False
+    },
+    {
+        "parameter_id": str(uuid4()),
+        "tenant_id": None,
+        "code": "next_step_fixed_flag",
+        "title": "Следующий шаг зафиксирован",
+        "description": "Флаг, показывающий, что следующий шаг был не просто упомянут, а согласован конкретно.",
+        "category": "closing_and_next_step",
+        "subcategory": "next_step_commitment",
+        "value_type": "boolean",
+        "unit": None,
+        "default_aggregation_type": "share_true",
+        "evidence_required": True,
+        "query_synonyms": [
+            "следующий шаг зафиксирован",
+            "есть договорённость",
+            "назначили следующий шаг",
+            "next step fixed"
+        ],
+        "normalization_rule": {
+            "type": "boolean_to_score",
+            "true": 1.0,
+            "false": 0.0
+        },
+        "is_custom": False
+    },
+    {
+        "parameter_id": str(uuid4()),
+        "tenant_id": None,
+        "code": "client_engagement_index",
+        "title": "Индекс вовлечённости клиента",
+        "description": "Композитный индекс, показывающий вовлечённость клиента по длине ответов, количеству уточнений, реакциям и динамике участия.",
+        "category": "client_reaction",
+        "subcategory": "engagement",
+        "value_type": "number",
+        "unit": "score_0_1",
+        "default_aggregation_type": "avg",
+        "evidence_required": False,
+        "query_synonyms": [
+            "вовлечённость клиента",
+            "насколько клиент был вовлечён",
+            "engagement"
+        ],
+        "normalization_rule": {
+            "type": "range",
+            "min": 0,
+            "max": 1
+        },
+        "is_custom": False
+    },
+    {
+        "parameter_id": str(uuid4()),
+        "tenant_id": None,
+        "code": "deal_probability",
+        "title": "Вероятность сделки",
+        "description": "Итоговая модельная вероятность того, что разговор ведёт к сделке.",
+        "category": "prediction_indices",
+        "subcategory": "deal_prediction",
+        "value_type": "number",
+        "unit": "score_0_1",
+        "default_aggregation_type": "avg",
+        "evidence_required": False,
+        "query_synonyms": [
+            "вероятность сделки",
+            "шанс сделки",
+            "deal probability"
+        ],
+        "normalization_rule": {
+            "type": "range",
+            "min": 0,
+            "max": 1
+        },
+        "is_custom": False
+    },
+    {
+        "parameter_id": str(uuid4()),
+        "tenant_id": None,
+        "code": "loss_probability",
+        "title": "Вероятность потери сделки",
+        "description": "Итоговая модельная вероятность того, что разговор ведёт к потере сделки.",
+        "category": "prediction_indices",
+        "subcategory": "loss_prediction",
+        "value_type": "number",
+        "unit": "score_0_1",
+        "default_aggregation_type": "avg",
+        "evidence_required": False,
+        "query_synonyms": [
+            "вероятность потери",
+            "риск потери сделки",
+            "loss probability"
+        ],
+        "normalization_rule": {
+            "type": "range",
+            "min": 0,
+            "max": 1
+        },
+        "is_custom": False
+    }
+]
+
+
+________________
+
+
+7. Как расширить seed до всех 150 параметров
+Чтобы не превратить словарь в хаос, его надо расширять по секциям. Я рекомендую такой порядок.
+Секция 1: control_of_conversation
+Секция 2: questions
+Секция 3: needs_discovery
+Секция 4: deal_economics
+Секция 5: decision_process
+Секция 6: client_reaction
+Секция 7: closing_and_next_step
+Секция 8: presentation_quality
+Секция 9: risk_signals
+Секция 10: prediction_indices
+Секция 11: confidence_and_review
+Секция 12: training_relevance
+Это не абстракция. У вас в оргполитике уже есть логика положительных и отрицательных сигналов: клиент обсуждает внедрение, интеграции, сроки, коллег и следующий шаг — это сильные сигналы сделки; не обсуждается следующий шаг, разговор заканчивается без договорённости, клиент просит “пришлите информацию” или уходит в неопределённость — это сигналы риска потери.
+________________
+
+
+8. Seed roles — роли и права
+roles_seed.py
+from uuid import uuid4
+
+
+ROLES = [
+    {
+        "role_id": str(uuid4()),
+        "code": "owner",
+        "title": "Владелец",
+        "permissions_json": {
+            "view_company_analytics": True,
+            "compare_managers": True,
+            "view_team_calls": True,
+            "launch_training": True,
+            "view_model_confidence": True,
+            "view_analysis_versions": False
+        }
+    },
+    {
+        "role_id": str(uuid4()),
+        "code": "sales_head",
+        "title": "РОП",
+        "permissions_json": {
+            "view_company_analytics": False,
+            "view_team_analytics": True,
+            "compare_managers": True,
+            "view_team_calls": True,
+            "launch_training": True,
+            "view_model_confidence": True,
+            "view_analysis_versions": False
+        }
+    },
+    {
+        "role_id": str(uuid4()),
+        "code": "analyst_upstat",
+        "title": "Аналитик UpStat",
+        "permissions_json": {
+            "view_company_analytics": True,
+            "view_team_analytics": True,
+            "compare_managers": True,
+            "view_team_calls": True,
+            "launch_training": True,
+            "view_model_confidence": True,
+            "view_analysis_versions": True,
+            "reanalyze_calls": True,
+            "view_parameter_evidence": True
+        }
+    },
+    {
+        "role_id": str(uuid4()),
+        "code": "manager_limited",
+        "title": "Менеджер",
+        "permissions_json": {
+            "view_self_analytics": True,
+            "view_team_analytics": False,
+            "compare_managers": False,
+            "view_team_calls": False,
+            "launch_training": True,
+            "view_model_confidence": False,
+            "view_analysis_versions": False
+        }
+    }
+]
+
+
+________________
+
+
+9. Service contracts — контракты сервисов
+Чтобы проект не расползся, каждому сервису нужен чёткий интерфейс.
+9.1 Parameter Engine
+class ParameterEngine:
+    async def compute_parameters(
+        self,
+        conversation_id: str,
+        analysis_version_id: str,
+        parameter_codes: list[str] | None = None
+    ) -> list[dict]:
+        ...
+
+
+Возвращает список объектов такого вида:
+{
+  "parameter_code": "budget_discussed_flag",
+  "value_bool": false,
+  "value_normalized": 0.0,
+  "status": "ok",
+  "confidence_percent": 87.0,
+  "reasoning_summary": "В разговоре не найдено прямого обсуждения бюджета или диапазона допустимых инвестиций.",
+  "evidence_refs": []
+}
+
+
+9.2 Signal Engine
+class SignalEngine:
+    async def infer_signals(
+        self,
+        analysis_version_id: str
+    ) -> list[dict]:
+        ...
+
+
+9.3 Recommendation Engine
+class RecommendationEngine:
+    async def generate_top_recommendations(
+        self,
+        analysis_version_id: str,
+        max_items: int = 3
+    ) -> list[dict]:
+        ...
+
+
+Это важно, потому что в вашей модели рекомендаций система должна делать не длинный список претензий, а выделять самые слабые сигналы и давать тренировку именно по ним.
+________________
+
+
+10. Query metric registry — реестр метрик для AI-запросов
+Это один из самых недооценённых компонентов.
+Нужен отдельный реестр, который объясняет AI-query слою, как интерпретировать параметры.
+metric_registry.py
+METRIC_REGISTRY = {
+    "manager_talk_time_percent": {
+        "value_type": "number",
+        "default_aggregation": "avg",
+        "chart_types": ["line", "bar", "area"],
+        "supports_group_by": ["manager", "month", "week"],
+        "human_title": "Доля речи менеджера"
+    },
+    "budget_discussed_flag": {
+        "value_type": "boolean",
+        "default_aggregation": "share_true",
+        "chart_types": ["line", "bar", "heatmap"],
+        "supports_group_by": ["manager", "month", "team"],
+        "human_title": "Обсуждение бюджета"
+    },
+    "deal_probability": {
+        "value_type": "number",
+        "default_aggregation": "avg",
+        "chart_types": ["line", "bar", "scorecard"],
+        "supports_group_by": ["manager", "month", "team"],
+        "human_title": "Вероятность сделки"
+    }
+}
+
+
+Без этого planner будет постоянно путаться:
+         * boolean считать как average или share_true;
+         * score показывать как bar или line;
+         * можно ли строить heatmap;
+         * по каким осям разумно группировать.
+________________
+
+
+11. Пример Pydantic schema для AI Query Plan
+from pydantic import BaseModel, Field
+from typing import Literal, Optional, Any
+
+
+class TimeRange(BaseModel):
+    type: Literal["last_n_calls", "date_range", "relative_period", "quarter_to_date"]
+    value: Optional[int] = None
+    unit: Optional[Literal["day", "week", "month"]] = None
+    from_date: Optional[str] = Field(default=None, alias="from")
+    to_date: Optional[str] = Field(default=None, alias="to")
+
+
+class SubjectFilter(BaseModel):
+    field: str
+    op: Literal["eq", "in", "gte", "lte"]
+    value: Any
+
+
+class Subject(BaseModel):
+    entity: Literal["team", "manager", "managers", "calls", "department"]
+    filters: list[SubjectFilter] = []
+
+
+class Metric(BaseModel):
+    parameter_code: str
+    aggregation: Literal["avg", "sum", "count", "share_true", "latest", "distribution"]
+
+
+class ChartConfig(BaseModel):
+    needed: bool = False
+    type: Optional[Literal["line", "bar", "area", "heatmap", "radar", "scorecard"]] = None
+
+
+class AIQueryPlan(BaseModel):
+    intent: Literal[
+        "aggregate_metric",
+        "compare_entities",
+        "trend_metric",
+        "diagnostic_summary",
+        "launch_training",
+        "filter_calls"
+    ]
+    tenant_scope: Literal["current"] = "current"
+    role_scope: str
+    time_range: TimeRange
+    subject: Subject
+    metric: Optional[Metric] = None
+    metric_bundle: Optional[list[str]] = None
+    comparison: Optional[str] = None
+    group_by: Optional[str] = None
+    chart: ChartConfig
+    clarification_needed: bool = False
+    assumptions: list[str] = []
+
+
+________________
+
+
+12. Analysis orchestration — как должен идти запуск анализа
+Последовательность должна быть такой:
+         1. создаётся analysis_version
+         2. подтягиваются conversation_segments
+         3. считается feature extraction
+         4. запускается parameter extraction
+         5. сохраняются parameter_values
+         6. выводятся signal_scores
+         7. выводятся skill_scores
+         8. считается deal_probability и loss_probability
+         9. генерируются recommendations
+         10. обновляется latest_analysis_version_id
+         11. обновляются materialized views
+Эта цепочка у вас полностью бьётся со стратегической логикой документа: система должна извлекать 120–150 параметров, формировать сигналы, вероятность сделки, вероятность потери и рекомендации.
+________________
+
+
+13. Feature extractor — что считать до LLM
+Очень важно не грузить LLM тем, что можно посчитать детерминированно.
+До LLM нужно считать:
+         * длительность речи менеджера
+         * длительность речи клиента
+         * ratio talk time — соотношение времени речи
+         * среднюю длину реплик
+         * longest monologue — самый длинный монолог
+         * количество перебиваний
+         * количество вопросов
+         * количество открытых вопросов по rule-based + heuristic detection
+         * паузы
+         * изменение длины ответов клиента
+         * появление вопросов со стороны клиента
+         * позицию упоминания цены
+         * позицию упоминания следующего шага
+Это прямо следует из вашего документа: для детекции сигналов используются такие признаки, как ratio talk time, longest monologue, длина реплик, тональность, темп, паузы, перебивания.
+То есть правильный инженерный подход:
+         * всё, что можно извлечь алгоритмически, считаем кодом;
+         * LLM используем только там, где нужна семантика и контекст.
+________________
+
+
+14. Parameter extraction prompt design — как должен выглядеть prompt
+LLM нельзя отправлять “проанализируй звонок как-нибудь”.
+Нужно отправлять:
+         * сегменты разговора,
+         * список только нужных параметров,
+         * строгий JSON schema output,
+         * инструкцию не рассуждать свободным текстом,
+         * инструкцию возвращать unknown, если уверенность низкая.
+Пример логики промпта:
+Ты анализируешь разговор менеджера и клиента.
+Твоя задача — вернуть строго JSON-массив параметров.
+Для каждого параметра верни:
+- parameter_code
+- value_number / value_bool / value_text / value_json
+- value_normalized
+- status
+- confidence_percent
+- reasoning_summary
+- evidence_refs
+
+
+Правила:
+1. Не придумывай данные.
+2. Если данных недостаточно, ставь status="unknown".
+3. Если вывод вероятностный, но допустимый, ставь status="low_confidence".
+4. Для evidence_refs используй только реально присутствующие segment_id.
+5. Не возвращай ничего, кроме JSON.
+
+
+________________
+
+
+15. Recommendation engine logic — точная логика рекомендаций
+Вот здесь уже надо делать умно, а не банально.
+Рекомендация должна строиться не по одному плохому звонку, а по формуле:
+Severity — серьёзность
+×
+Repeatability — повторяемость
+×
+Business impact — влияние на сделку
+×
+Trainability — пригодность к тренировке
+Псевдоформула:
+recommendation_score =
+(signal_weight * failure_rate * recency_weight * business_impact_weight * trainability_weight)
+
+
+Где:
+         * signal_weight — вес сигнала в модели,
+         * failure_rate — как часто это повторяется,
+         * recency_weight — насколько это свежая проблема,
+         * business_impact_weight — насколько это бьёт по сделке,
+         * trainability_weight — можно ли это реально исправить тренировкой.
+Поэтому рекомендация “говорил слишком много” может оказаться ниже, чем “не фиксировал следующий шаг”, потому что второе ближе к прямой потере сделки. Это соответствует вашей внутренней логике негативных сигналов: отсутствие следующего шага и отсутствие договорённости — сигналы высокого риска потери.
+________________
+
+
+16. Training mapper — связь рекомендации и тренировки
+Нужна таблица соответствий между слабым сигналом и обучающим модулем.
+Например:
+TRAINING_SIGNAL_MAP = {
+    "next_step_fixed_flag": "training_close_next_step_v1",
+    "budget_discussed_flag": "training_budget_conversation_v1",
+    "pain_depth_score": "training_deep_discovery_v1",
+    "manager_open_questions_count": "training_open_questions_v1",
+    "decision_criteria_discussed_flag": "training_decision_criteria_v1"
+}
+
+
+То есть AI не должен каждый раз с нуля сочинять, чему учить.
+Он должен:
+         * найти слабый сигнал,
+         * найти training flow,
+         * запустить его.
+________________
+
+
+17. Materialized view refresh strategy — стратегия обновления витрин
+Это важный технический нюанс.
+Не нужно обновлять материализованные представления после каждой записи одного параметра.
+Нужно обновлять их:
+         * после полного завершения анализа звонка;
+         * пакетно ночью;
+         * по админ-команде;
+         * либо по событию “analysis_version switched to current”.
+Иначе backend сам себя задушит постоянными refresh.
+________________
+
+
+18. Test matrix — матрица тестов
+Разработчик должен покрыть хотя бы это.
+Unit tests
+         * planner строит корректный JSON plan
+         * validator режет запросы вне прав доступа
+         * executor подставляет tenant scope
+         * metric registry отдаёт правильную агрегацию
+         * clarification policy срабатывает только при высокой неоднозначности
+Integration tests
+         * ingest → analyze → query
+         * reanalyze creates new version
+         * current version pointer updates correctly
+         * owner sees team-wide data
+         * manager sees only own data
+         * chart payload builds correctly
+Regression tests
+         * новый параметр можно добавить без миграции структуры parameter_values
+         * кастомный tenant parameter работает только в рамках своего клиента
+         * отсутствие CRM не ломает анализ
+         * отсутствие audio при наличии transcript не ломает анализ
+________________
+
+
+19. README structure — что должно быть в README проекта
+README должен содержать:
+         1. Что такое UpStat analysis core
+         2. Архитектурную схему
+         3. Entity model
+         4. Как запускать миграции
+         5. Как засеивать роли и параметры
+         6. Как загрузить разговор
+         7. Как запустить анализ
+         8. Как отправить AI-query
+         9. Как устроен RBAC
+         10. Как устроено versioning
+         11. Как добавить новый параметр
+         12. Как добавить кастомный tenant parameter
+         13. Как добавить новый chart adapter
+         14. Как подключить training flow
+________________
+
+
+20. Самая опасная ошибка, которую надо запретить в ТЗ
+Нужно прямо прописать программисту:
+Запрещено кодировать бизнес-логику параметров и синонимов жёстко в разных местах кода.
+Всё должно быть централизовано:
+         * словарь параметров,
+         * metric registry,
+         * signal weights,
+         * training mappings,
+         * query synonyms.
+Иначе через 3 месяца проект превратится в неуправляемый клубок if/else.
+________________
+
+
+21. Что я бы добавил сверх твоего запроса
+Вот это уже мой совет как архитектора продукта, а не просто исполнителя.
+Добавка 1. Parameter lineage — происхождение параметра
+Нужно хранить, как именно был получен параметр:
+         * rule_based
+         * llm_inferred
+         * hybrid
+         * manual_override
+Потому что позже это даст:
+         * аудит качества,
+         * сравнение моделей,
+         * улучшение пайплайна.
+Добавка 2. Manual override
+Нужен механизм, чтобы аналитик UpStat мог вручную исправить параметр или сигнал, не ломая исходную версию, а создавая override layer.
+Добавка 3. Gold dataset
+Нужен специальный набор вручную размеченных звонков, по которым вы будете:
+         * проверять новые версии модели,
+         * измерять precision/recall — точность/полноту,
+         * сравнивать старую и новую логику.
+Добавка 4. Explanation templates
+Нужен набор шаблонов объяснений, чтобы рекомендации не были каждый раз стилистически хаотичными.
+________________
+
+
+22. Готовая формулировка для разработчика
+Вот это можно буквально вставить в ТЗ как исполнительное ядро:
+Система должна поддерживать versioned, evidence-backed, dictionary-driven analytics для разговоров. Каждый разговор сохраняется как conversation, сегментируется, анализируется по словарю параметров, формирует parameter values, signal scores, skill scores, outcome predictions и top recommendations. Поверх этого строится безопасный AI-query слой, который принимает естественный запрос пользователя, преобразует его в валидируемый JSON plan, исполняет только whitelisted query templates с tenant и role enforcement, а затем возвращает текстовый ответ, confidence note и chart payload для визуализации.
+________________
+
+
+23. Мой итоговый вердикт по архитектуре
+Если говорить жёстко и по делу, то фундамент UpStat должен быть таким:
+не transcript-first, а parameter-first;
+не chat-with-data, а governed analytics layer;
+не просто AI-ассистент, а AI над нормализованной аналитической моделью.
+Именно это и превращает продукт из “очередного ИИ, который что-то рассказывает про звонок” в систему, которая:
+         * измеряет,
+         * доказывает,
+         * сравнивает,
+         * предсказывает,
+         * обучает.
+И это полностью соответствует тому ядру, которое уже заложено у вас в документе: карта сигналов, повторяющиеся паттерны, вероятность сделки, вероятность потери, выявление лучших продавцов и обучение остальных.
+Дальше я могу сделать четвёртую часть: полный seed на 40 сигналов и шаблоны prompt’ов для parameter extraction, signal inference и AI query planner.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Да. Ниже даю уже готовый комплект промптов для программирования, чтобы это можно было сразу вставлять в Cursor, Windsurf, Claude Code, Copilot Workspace или другому ИИ-разработчику.
+Я сделаю это не в виде “описания”, а в виде copy-paste ready prompts — готовых промптов для копирования и вставки.
+Лучший практический способ здесь такой:
+         1. один master prompt — главный промпт для сборки архитектуры;
+         2. несколько specialized prompts — специализированных промптов по отдельным модулям;
+         3. один seed prompt — промпт для генерации словаря сигналов и параметров;
+         4. отдельные промпты для:
+         * parameter extraction — извлечения параметров,
+         * signal inference — вывода сигналов,
+         * recommendation engine — движка рекомендаций,
+         * AI query planner — планировщика ИИ-запросов,
+         * safe query executor — безопасного исполнителя запросов,
+         * RBAC — разграничения прав доступа,
+         * chart payload builder — сборщика данных для графиков.
+Это лучше, чем один гигантский промпт, потому что один сверхдлинный промпт ИИ начнёт “размывать”. А модульные промпты дают более стабильный и управляемый результат.
+________________
+
+
+КАК ЭТО ИСПОЛЬЗОВАТЬ
+Правильный порядок работы программиста или ИИ-разработчика:
+         1. сначала вставить Prompt 1 — Master Build Prompt;
+         2. затем по очереди запускать:
+         * Prompt 2 — DB + Models
+         * Prompt 3 — Seed Dictionary
+         * Prompt 4 — Analysis Pipeline
+         * Prompt 5 — Parameter Extraction
+         * Prompt 6 — Signal Engine
+         * Prompt 7 — Recommendation Engine
+         * Prompt 8 — AI Query Planner
+         * Prompt 9 — Safe Query Executor
+         * Prompt 10 — Chart Builder
+         * Prompt 11 — RBAC
+         * Prompt 12 — Tests
+________________
+
+
+PROMPT 1 — MASTER BUILD PROMPT
+Главный промпт для сборки backend-ядра UpStat
+You are a senior backend architect and AI systems engineer.
+
+
+Build a production-ready backend module for a SaaS platform called UpStat.
+
+
+Product context:
+UpStat is a conversation intelligence and sales training platform. It analyzes sales calls, transcripts, chats, and other conversational artifacts. Each conversation must be transformed into a structured analytical object with 120–150+ parameters, positive and negative signals, skill scores, predictions, recommendations, and training triggers.
+
+
+Core product goals:
+1. Ingest conversations from multiple source types:
+  - audio_call
+  - transcript
+  - chat_screenshot_text
+  - chat_export
+  - manual_text
+  - mixed_source
+2. Store every conversation as a versioned analytical object.
+3. Support a flexible dictionary-driven parameter system.
+4. Support tenant-specific custom parameters.
+5. Extract structured parameter values with evidence references.
+6. Infer high-level signals, skill scores, and recommendations.
+7. Compute deal_probability and loss_probability.
+8. Support an AI Query Assistant that answers user questions over stored structured analytics.
+9. The AI Query Assistant must NOT access SQL directly. It must produce a structured JSON query plan, which is then validated and executed by safe backend templates.
+10. Support RBAC and multi-tenancy.
+
+
+Required tech stack:
+- FastAPI
+- PostgreSQL
+- SQLAlchemy 2.0
+- Alembic
+- Redis
+- Pydantic
+- Celery or RQ for background jobs
+- Object storage links for raw assets
+
+
+Architecture rules:
+- Do not use one giant table with 150 fixed columns.
+- Use a hybrid model:
+ - relational core
+ - JSONB for flexible extensions
+- Use these entities:
+ - tenants
+ - roles
+ - users
+ - conversations
+ - conversation_assets
+ - conversation_segments
+ - analysis_versions
+ - parameter_definitions
+ - evidence_bundles
+ - parameter_values
+ - signal_scores
+ - skill_scores
+ - conversation_outcomes
+ - recommendations
+ - query_sessions
+ - query_logs
+- Support full version history of re-analysis.
+- Store evidence as references to segment IDs and time ranges, not duplicated transcript blobs.
+- The system must work even if some data is missing:
+ - no CRM
+ - no audio
+ - no transcript
+ - only manual text
+ - only extracted text from chat screenshot
+
+
+Behavior rules:
+- Everything that can be computed deterministically should be computed in code first.
+- Use LLM inference only for semantic interpretation and contextual judgment.
+- Recommendations must be action-oriented and limited to top 3 by priority.
+- The platform should show owners aggregated business insights, not raw noisy detail by default.
+- Managers should see their own skills, weak points, and next training actions.
+
+
+Deliverables:
+1. Full project folder structure
+2. SQLAlchemy models
+3. Alembic migrations
+4. Seed files
+5. Service layer
+6. Analysis pipeline orchestration
+7. AI query planner
+8. Safe query validator and executor
+9. Chart payload builder
+10. RBAC middleware and access rules
+11. Tests
+12. README
+
+
+Implementation requirements:
+- Strong typing
+- Modular architecture
+- Production-safe defaults
+- Testable services
+- JSON contracts for all LLM outputs
+- No direct LLM-to-database execution
+- Safe query templates only
+- Materialized views for frequent analytics queries
+
+
+Output format:
+Provide implementation in phases.
+Start with:
+1. folder structure
+2. SQLAlchemy model plan
+3. migration plan
+4. seed strategy
+Then continue with code skeletons.
+Do not skip implementation details.
+Do not simplify the architecture into a prototype.
+________________
+
+
+PROMPT 2 — DATABASE + MODELS PROMPT
+Для генерации моделей, миграций и схемы БД
+Generate the database layer for the UpStat backend.
+
+
+Requirements:
+- Use PostgreSQL
+- Use SQLAlchemy 2.0 declarative models
+- Use Alembic migrations
+- Use UUID primary keys
+- Use JSONB where flexible storage is needed
+- Use enums for constrained fields
+
+
+Entities to implement:
+1. tenants
+2. roles
+3. users
+4. conversations
+5. conversation_assets
+6. conversation_segments
+7. analysis_versions
+8. parameter_definitions
+9. evidence_bundles
+10. parameter_values
+11. signal_scores
+12. skill_scores
+13. conversation_outcomes
+14. recommendations
+15. query_sessions
+16. query_logs
+
+
+Critical architecture constraints:
+- parameter_definitions must support both global and tenant-specific custom parameters
+- parameter_values must support number, text, boolean, enum, json
+- analysis_versions must support full version history and current pointer logic
+- evidence must reference segments rather than duplicate transcript content
+- multi-tenancy must be enforced at schema and repository levels
+
+
+Include:
+- models
+- indexes
+- enum definitions
+- relationship mapping
+- migration plan
+- Alembic revision examples
+
+
+Output:
+1. SQLAlchemy models
+2. Alembic migration sequence
+3. explanation of why each table exists
+4. notes on indexing strategy
+________________
+
+
+PROMPT 3 — SEED DICTIONARY PROMPT
+Для генерации seed-файла параметров и сигналов
+Здесь я сразу даю формулировку на 40 сигналов и связанную систему параметров.
+Generate a seed dictionary for UpStat.
+
+
+Goal:
+Create a production-usable initial analytical dictionary for a conversation intelligence platform.
+
+
+Need:
+1. 40 high-level signals
+2. supporting parameter definitions
+3. query synonyms for natural language AI queries
+4. default aggregation types
+5. normalization rules
+6. evidence requirements
+
+
+Output format:
+Return Python seed data structures.
+
+
+Signal categories:
+1. control_of_conversation
+2. questions
+3. needs_discovery
+4. deal_economics
+5. decision_process
+6. client_reaction
+7. closing_and_next_step
+8. risk_signals
+9. prediction_indices
+10. training_relevance
+
+
+Each signal object must include:
+- signal_code
+- title
+- description
+- category
+- polarity (positive / negative / neutral)
+- business_impact_weight
+- trainability_weight
+- query_synonyms
+- related_parameter_codes
+- evidence_required
+- suggested_recommendation_type
+
+
+Each parameter definition must include:
+- code
+- title
+- description
+- category
+- subcategory
+- value_type
+- unit
+- default_aggregation_type
+- evidence_required
+- query_synonyms
+- normalization_rule
+- is_custom
+
+
+Signal logic requirements:
+- include positive sales signals such as:
+ - client discussed implementation
+ - client discussed integration
+ - client discussed timeline
+ - client asked decision-related questions
+ - next step fixed
+ - concrete agreement reached
+- include negative sales signals such as:
+ - no next step
+ - weak pain discovery
+ - budget not discussed
+ - client disengagement
+ - excessive monologue by manager
+ - conversation ends without commitment
+ - "send me info" without commitment
+- include prediction support signals for:
+ - deal_probability
+ - loss_probability
+
+
+Important:
+Design this dictionary so it can be used by:
+- parameter extraction
+- signal inference
+- AI query planning
+- recommendation engine
+- chart rendering logic
+
+
+Output:
+1. Python list of parameter definitions
+2. Python list of signal definitions
+3. brief explanation of category design
+________________
+
+
+PROMPT 4 — ANALYSIS PIPELINE PROMPT
+Для сборки общего пайплайна анализа
+Implement the UpStat analysis pipeline.
+
+
+Goal:
+Build the orchestration layer that transforms an ingested conversation into a full analytical result.
+
+
+Pipeline stages:
+1. ingest conversation
+2. normalize transcript / text
+3. segment conversation
+4. compute deterministic features
+5. create analysis_version
+6. compute parameter values
+7. infer high-level signals
+8. compute skill scores
+9. compute outcome predictions
+10. generate top recommendations
+11. update current analysis pointer
+12. refresh analytical materialized views
+
+
+Rules:
+- deterministic features must be extracted before LLM use
+- LLM must return strictly validated JSON
+- if confidence is low, store the result with status="low_confidence"
+- if a parameter cannot be determined, store status="unknown"
+- do not fail the whole analysis if some parameters cannot be computed
+- every analysis run must create a new analysis_version
+- recommendations must be limited to top 3 by priority
+
+
+Implement:
+- analysis_orchestrator.py
+- feature_extractor.py
+- analysis_version_service.py
+- repository interaction
+- background job integration
+
+
+Output:
+Provide code skeletons, service interfaces, and orchestration logic.
+________________
+
+
+PROMPT 5 — PARAMETER EXTRACTION PROMPT
+Для модуля извлечения параметров и промпта к LLM
+Этот промпт нужен, чтобы ИИ написал тебе parameter engine и сам prompt template для анализа разговора.
+Build the parameter extraction subsystem for UpStat.
+
+
+Goal:
+Given conversation segments and a target list of parameter definitions, extract structured parameter values.
+
+
+Requirements:
+- use deterministic extraction for obvious features where possible
+- use LLM semantic extraction for contextual parameters
+- validate every LLM output against a strict schema
+- store:
+ - raw value
+ - normalized value
+ - status
+ - confidence percent
+ - reasoning summary
+ - evidence refs
+
+
+Parameter output schema:
+For each parameter return:
+- parameter_code
+- value_number (nullable)
+- value_text (nullable)
+- value_bool (nullable)
+- value_json (nullable)
+- value_enum (nullable)
+- value_normalized (nullable)
+- status (ok / unknown / low_confidence / needs_review)
+- confidence_percent
+- reasoning_summary
+- evidence_refs
+
+
+Evidence refs format:
+- segment_id
+- start_ms
+- end_ms
+- excerpt
+
+
+Tasks:
+1. Write the Python service that prepares parameter extraction input
+2. Write the strict JSON schema for parameter extraction output
+3. Write the LLM prompt template
+4. Write the validator layer
+5. Write the persistence logic
+
+
+Important prompt rules for LLM:
+- do not hallucinate
+- do not invent evidence
+- if data is insufficient, return unknown
+- if judgment is probabilistic but plausible, return low_confidence
+- only use existing segment IDs
+- return JSON only
+
+
+Output:
+1. parameter_engine.py
+2. extraction schema
+3. prompt template
+4. validator code
+5. example input/output
+________________
+
+
+PROMPT 6 — SIGNAL INFERENCE PROMPT
+Для вывода 40 сигналов из параметров
+Build the signal inference subsystem for UpStat.
+
+
+Goal:
+Infer high-level positive and negative signals from structured parameter values and conversation segments.
+
+
+Need:
+- 40 signal definitions
+- scoring logic
+- polarity
+- confidence
+- evidence refs
+- summary explanation
+
+
+Signal design principles:
+- signals must reflect real business sales movement
+- not just conversational style
+- signals should support:
+ - recommendation generation
+ - deal probability
+ - loss probability
+ - training flow selection
+
+
+Examples of positive signals:
+- client discussed implementation
+- client discussed timeline
+- client asked integration questions
+- next step fixed
+- concrete agreement made
+- client expanded answers over time
+- client asked ROI-related questions
+
+
+Examples of negative signals:
+- conversation ended without next step
+- client disengaged after pricing
+- manager dominated the call excessively
+- problem was named but not quantified
+- budget not discussed
+- criteria of decision not discussed
+- "send info" with no commitment
+- high ambiguity at end of call
+
+
+For each inferred signal store:
+- signal_code
+- title
+- polarity
+- score
+- weight
+- confidence_percent
+- summary
+- evidence_bundle
+
+
+Tasks:
+1. implement signal_engine.py
+2. define scoring logic
+3. define mapping from parameters to signals
+4. define evidence bundling strategy
+5. define persistence logic
+
+
+Output:
+- code skeleton
+- rules table
+- examples
+________________
+
+
+PROMPT 7 — RECOMMENDATION ENGINE PROMPT
+Для генерации рекомендаций и связи с тренировками
+Build the recommendation engine for UpStat.
+
+
+Goal:
+Generate top 3 actionable recommendations from signals, parameter failures, repeat patterns, and business impact.
+
+
+Requirements:
+- recommendations must not be generic
+- recommendations must be action-oriented
+- recommendations must prioritize business effect over cosmetic issues
+- recommendations must support linking to internal training flows
+
+
+Scoring formula:
+recommendation_score =
+signal_weight *
+failure_rate *
+recency_weight *
+business_impact_weight *
+trainability_weight
+
+
+Inputs:
+- current conversation signals
+- recent history of same manager
+- recent history of same team
+- skill scores
+- weak repeated patterns
+- training mappings
+
+
+Output for each recommendation:
+- priority_rank
+- recommendation_type
+- skill_code
+- title
+- text
+- reason
+- linked_training_flow_id
+
+
+Rules:
+- max 3 recommendations
+- do not generate long lists of minor issues
+- recommendations for managers must feel developmental, not accusatory
+- recommendations for owners must focus on systemic business patterns
+
+
+Tasks:
+1. implement recommendation_engine.py
+2. implement training_mapper.py
+3. define training signal map
+4. define recommendation ranking algorithm
+5. provide test cases
+
+
+Output:
+- code skeleton
+- mapping examples
+- explanation templates
+________________
+
+
+PROMPT 8 — AI QUERY PLANNER PROMPT
+Для планировщика запросов поверх базы
+Это один из самых важных промптов.
+Build the AI Query Planner for UpStat.
+
+
+Goal:
+Convert natural language user questions into structured JSON query plans for analytics over structured conversation data.
+
+
+Important:
+The planner must NOT answer the user directly.
+The planner must NOT generate SQL.
+The planner must ONLY produce validated JSON query plans.
+
+
+Supported intents:
+- aggregate_metric
+- compare_entities
+- trend_metric
+- diagnostic_summary
+- launch_training
+- filter_calls
+
+
+Planner responsibilities:
+1. infer likely intent
+2. map natural language terms to parameter codes
+3. infer time range defaults when possible
+4. infer subject scope based on role
+5. request clarification only when ambiguity is critical
+6. include assumptions used
+
+
+Default behavior:
+- if user does not specify period, default to last 30 days
+- if user says "latest calls", default to last 20 analyzed calls
+- if user does not specify manager, use role-allowed default scope
+- clarification should happen only if wrong assumption would likely make the answer useless
+
+
+Output JSON schema:
+- intent
+- tenant_scope
+- role_scope
+- time_range
+- subject
+- metric
+- metric_bundle
+- comparison
+- group_by
+- chart
+- clarification_needed
+- assumptions
+
+
+Tasks:
+1. define Pydantic schema for query plans
+2. implement planner_service.py
+3. write LLM planner prompt template
+4. implement parameter synonym mapping
+5. provide examples for at least 20 natural language queries
+
+
+Output:
+- schema
+- planner code skeleton
+- planner prompt
+- examples
+________________
+
+
+PROMPT 9 — SAFE QUERY EXECUTOR PROMPT
+Для безопасного исполнения query plans
+Build the Safe Query Executor for UpStat.
+
+
+Goal:
+Execute validated JSON query plans against the analytics database without allowing arbitrary SQL generation.
+
+
+Security rule:
+LLM must never run SQL directly.
+
+
+Architecture:
+LLM -> JSON Query Plan -> Validator -> Safe Query Executor -> SQL Templates -> Response Composer
+
+
+Required components:
+1. query_validator_service.py
+2. safe_template_registry.py
+3. executor_service.py
+4. tenant enforcement
+5. RBAC enforcement
+6. expensive query guardrails
+7. fallback behavior when sample size is smaller than requested
+
+
+Supported template classes:
+- aggregate metric
+- compare managers
+- trend metric
+- top negative patterns
+- filter calls
+- launch training trigger
+
+
+Behavior rules:
+- inject tenant_id automatically
+- enforce role visibility automatically
+- reject invalid parameter codes
+- reject unsupported grouping
+- reject expensive date ranges if necessary
+- if requested N calls not available, fall back to available sample and report it
+
+
+Output format:
+- answer_data
+- sample_size
+- chart_payload optional
+- confidence note optional
+- assumptions used
+
+
+Tasks:
+1. implement query validator
+2. implement SQL template registry
+3. implement executor service
+4. implement fallback logic
+5. implement error handling
+
+
+Output:
+- code skeleton
+- SQL template examples
+- explanation of security guarantees
+________________
+
+
+PROMPT 10 — CHART BUILDER PROMPT
+Для генерации payload под графики
+Build the chart payload generation layer for UpStat.
+
+
+Goal:
+Transform analytics query results into frontend-ready chart payloads.
+
+
+Supported chart types:
+- line
+- bar
+- stacked_bar
+- area
+- heatmap
+- radar
+- scorecard
+
+
+Requirements:
+- support Highcharts and ECharts adapters
+- chart generation must be deterministic
+- AI should request chart type, but backend should validate suitability
+- chart payloads must include title, axes, series, and metadata
+
+
+Examples:
+- line chart for metric trends
+- bar chart for manager comparison
+- heatmap for weak patterns across managers and skills
+- radar chart for skill profile
+- scorecard for KPI overview
+
+
+Tasks:
+1. implement chart_builder.py
+2. implement highcharts_adapter.py
+3. implement echarts_adapter.py
+4. define chart suitability rules by metric type
+5. provide payload examples
+
+
+Output:
+- code skeleton
+- payload schemas
+- examples
+________________
+
+
+PROMPT 11 — RBAC PROMPT
+Для прав доступа
+Build the RBAC and tenant access control layer for UpStat.
+
+
+Roles:
+- owner
+- sales_head
+- analyst_upstat
+- manager_limited
+
+
+Requirements:
+- every query and every conversation access must enforce tenant isolation
+- owner sees aggregated company-wide analytics by default
+- sales_head sees own team
+- analyst_upstat sees detailed analytical internals as allowed
+- manager_limited sees only self analytics and self training
+
+
+Need:
+1. permission model
+2. permission service
+3. tenant scope enforcement
+4. query-time access restrictions
+5. call-level access restrictions
+6. tests for role leakage prevention
+
+
+Tasks:
+1. implement permission_service.py
+2. implement tenant_scope_service.py
+3. define permissions_json logic
+4. integrate RBAC into repositories and AI query executor
+5. add tests
+
+
+Output:
+- code skeleton
+- permission map
+- examples
+________________
+
+
+PROMPT 12 — TESTS PROMPT
+Для генерации тестов
+Generate tests for the UpStat backend.
+
+
+Need:
+1. unit tests
+2. integration tests
+3. regression tests
+
+
+Cover:
+- parameter extraction validation
+- signal inference consistency
+- recommendation ranking
+- query planner correctness
+- query validator security
+- safe query executor fallback logic
+- RBAC isolation
+- multi-tenant isolation
+- versioned analysis behavior
+- chart payload correctness
+
+
+Important:
+Include test cases for:
+- missing CRM data
+- transcript-only conversations
+- manual text only
+- tenant custom parameter
+- low confidence parameter values
+- fallback when fewer calls than requested exist
+- manager cannot access other managers' data
+- owner can compare managers
+- analyst can inspect evidence-backed parameter values
+
+
+Output:
+- pytest structure
+- test file skeletons
+- example fixtures
+________________
+
+
+PROMPT 13 — PROMPT ДЛЯ ГЕНЕРАЦИИ 40 СИГНАЛОВ
+Уже узкоспециализированный, если хочешь именно seed-сигналы
+Create a production-ready seed file with exactly 40 analytical sales signals for UpStat.
+
+
+Requirements:
+- return Python code
+- create a list named GLOBAL_SIGNAL_DEFINITIONS
+- every signal must include:
+ - signal_code
+ - title
+ - description
+ - category
+ - polarity
+ - business_impact_weight
+ - trainability_weight
+ - evidence_required
+ - query_synonyms
+ - related_parameter_codes
+ - recommendation_hint
+
+
+Signal mix:
+- 15 positive signals
+- 20 negative signals
+- 5 neutral or contextual signals
+
+
+Positive signal examples:
+- client_discussed_implementation
+- client_discussed_integration
+- client_discussed_timeline
+- client_asked_roi_question
+- client_involved_other_stakeholders
+- next_step_fixed
+- concrete_agreement_reached
+- client_answer_length_increased
+- client_started_asking_decision_questions
+
+
+Negative signal examples:
+- no_next_step
+- no_concrete_commitment
+- budget_not_discussed
+- criteria_not_discussed
+- weak_pain_depth
+- manager_excessive_monologue
+- client_disengaged_after_price
+- send_info_without_commitment
+- no_problem_quantification
+- conversation_ended_ambiguously
+
+
+Neutral/contextual examples:
+- short_call_context
+- early_stage_exploration
+- technical_fit_discussion
+- external_dependency_present
+- incomplete_data_context
+
+
+Output must be valid Python only.
+________________
+
+
+PROMPT 14 — PROMPT ДЛЯ ГОТОВОГО LLM TEMPLATE
+Если хочешь, чтобы ИИ написал прямо prompt-файлы
+Generate production-ready LLM prompt templates for UpStat.
+
+
+Need 4 prompts:
+1. parameter_extraction_prompt
+2. signal_inference_prompt
+3. recommendation_prompt
+4. ai_query_planner_prompt
+
+
+Rules:
+- prompts must instruct JSON-only outputs
+- prompts must define unknown and low_confidence behavior
+- prompts must forbid hallucinated evidence
+- prompts must be ready to save as .txt files
+- prompts must be concise but strict
+- prompts must be written for backend programmatic usage, not for chat UX
+
+
+For each prompt, include:
+- system instruction
+- task instruction
+- output schema reminder
+- refusal / uncertainty handling
+- evidence handling
+- formatting constraints
+
+
+Output:
+Provide each prompt in a separate clearly labeled text block.
+________________
+
+
+ЛУЧШИЙ СПОСОБ ИСПОЛЬЗОВАНИЯ В CURSOR
+Чтобы Cursor не “размазал” работу, вот практический порядок.
+Сначала вставляешь:
+         1. PROMPT 1 — MASTER BUILD PROMPT
+Когда он построит основу, дальше по одному модулю:
+         2. PROMPT 2 — DATABASE + MODELS
+         3. PROMPT 3 — SEED DICTIONARY
+         4. PROMPT 4 — ANALYSIS PIPELINE
+         5. PROMPT 5 — PARAMETER EXTRACTION
+         6. PROMPT 6 — SIGNAL INFERENCE
+         7. PROMPT 7 — RECOMMENDATION ENGINE
+         8. PROMPT 8 — AI QUERY PLANNER
+         9. PROMPT 9 — SAFE QUERY EXECUTOR
+         10. PROMPT 10 — CHART BUILDER
+         11. PROMPT 11 — RBAC
+         12. PROMPT 12 — TESTS
+________________
+
+
+МОЙ ПРАКТИЧЕСКИЙ СОВЕТ, ЧТОБЫ ИИ ПИСАЛ ЛУЧШЕ
+В конце каждого промпта можно добавлять вот такой стабилизатор:
+Do not return high-level commentary.
+Return implementation-ready output.
+Prefer code, schemas, mappings, and concrete examples over abstract explanation.
+If a design decision is needed, make the decision and proceed.
+Do not simplify for MVP unless explicitly instructed.
+Это сильно повышает шанс, что ИИ будет писать не “советы”, а код и структуры.
+________________
+
+
+ЕЩЁ БОЛЕЕ СИЛЬНЫЙ РЕЖИМ
+Если хочешь выжать максимум, добавляй в конец специализированных промптов вот это:
+Assume this code will be used by a professional engineering team in production.
+Avoid toy examples.
+Design for maintainability, auditability, and future scale.
+Use strict contracts and explicit validation.
+________________
+
+
+ЧТО Я РЕКОМЕНДУЮ СДЕЛАТЬ СЕЙЧАС
+Самый правильный следующий шаг — не распыляться, а взять сначала только 3 промпта:
+         * Master Build Prompt
+         * Seed Dictionary Prompt
+         * AI Query Planner Prompt
+Потому что если эти три части будут построены правильно, остальное уже легче собрать вокруг них.
+Дальше я могу сразу сделать тебе ещё более прикладную версию:
+один супер-промпт именно под Cursor, который скажет ему поэтапно создать весь проект файлами, папками и кодом в нужном порядке.

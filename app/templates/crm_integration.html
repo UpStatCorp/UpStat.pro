@@ -103,6 +103,27 @@
   </div>
   {% endif %}
 
+  <!-- Manager Mapping -->
+  {% if integrations %}
+  <div class="section">
+    <h2 class="section-title">Привязка менеджеров CRM</h2>
+    <p style="color:var(--muted); margin-bottom:16px;">Свяжите менеджеров из CRM с аккаунтами вашей команды, чтобы звонки автоматически привязывались к нужным сотрудникам.</p>
+    {% for integration in integrations %}
+    {% if integration.is_active %}
+    <div class="manager-mapping-block" data-integration-id="{{ integration.id }}" style="background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:16px;">
+      <h3 style="margin:0 0 16px 0; font-size:16px;">{{ integration.crm_name }}</h3>
+      <div class="mapping-list" id="mapping-list-{{ integration.id }}">
+        <div style="text-align:center; color:var(--muted); padding:20px;">Загрузка менеджеров...</div>
+      </div>
+      <button class="btn-action btn-primary-action" onclick="saveMappings({{ integration.id }})" style="margin-top:12px;" id="save-mapping-{{ integration.id }}">
+        Сохранить привязки
+      </button>
+    </div>
+    {% endif %}
+    {% endfor %}
+  </div>
+  {% endif %}
+
   <!-- Add new CRM -->
   <div class="section">
     <h2 class="section-title">Добавить интеграцию</h2>
@@ -495,5 +516,74 @@ async function deleteCRM(id) {
   try { const r = await fetch('/crm/integrations/' + id, { method: 'DELETE' }); if (r.ok) location.reload(); else alert('Ошибка'); }
   catch (e) { alert(e.message); }
 }
+
+// Manager mapping
+async function loadMappings(integrationId) {
+  const container = document.getElementById('mapping-list-' + integrationId);
+  if (!container) return;
+  try {
+    const resp = await fetch('/crm/integrations/' + integrationId + '/managers');
+    if (!resp.ok) throw new Error('Ошибка загрузки');
+    const data = await resp.json();
+    if (!data.managers || data.managers.length === 0) {
+      container.innerHTML = '<div style="color:var(--muted); padding:12px;">Менеджеры не найдены. Сначала синхронизируйте записи.</div>';
+      return;
+    }
+    let html = '<table style="width:100%; border-collapse:collapse;">';
+    html += '<tr style="text-align:left; border-bottom:1px solid var(--border);"><th style="padding:8px;">Менеджер в CRM</th><th style="padding:8px;">Аккаунт UpStat</th></tr>';
+    data.managers.forEach(m => {
+      html += '<tr style="border-bottom:1px solid var(--border);">';
+      html += '<td style="padding:10px 8px; font-weight:500;">' + m.crm_manager_name + '</td>';
+      html += '<td style="padding:10px 8px;"><select class="mapping-select" data-crm-name="' + m.crm_manager_name.replace(/"/g,'&quot;') + '" style="padding:6px 10px; border:1px solid var(--border); border-radius:8px; background:var(--surface); min-width:200px;">';
+      html += '<option value="">— не привязан —</option>';
+      data.team_users.forEach(u => {
+        const sel = m.mapped_user_id === u.id ? ' selected' : '';
+        html += '<option value="' + u.id + '"' + sel + '>' + u.name + ' (' + u.email + ')</option>';
+      });
+      html += '</select></td></tr>';
+    });
+    html += '</table>';
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML = '<div style="color:#ef4444; padding:12px;">Ошибка загрузки: ' + e.message + '</div>';
+  }
+}
+
+async function saveMappings(integrationId) {
+  const container = document.getElementById('mapping-list-' + integrationId);
+  const selects = container.querySelectorAll('.mapping-select');
+  const mappings = [];
+  selects.forEach(sel => {
+    mappings.push({
+      crm_manager_name: sel.dataset.crmName,
+      user_id: sel.value ? parseInt(sel.value) : null,
+    });
+  });
+  const btn = document.getElementById('save-mapping-' + integrationId);
+  btn.disabled = true;
+  btn.textContent = 'Сохранение...';
+  try {
+    const resp = await fetch('/crm/integrations/' + integrationId + '/manager-mapping', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mappings }),
+    });
+    if (!resp.ok) throw new Error('Ошибка сохранения');
+    btn.textContent = 'Сохранено!';
+    btn.style.background = 'rgba(16,185,129,0.2)';
+    btn.style.color = '#059669';
+    setTimeout(() => { btn.textContent = 'Сохранить привязки'; btn.disabled = false; btn.style.background = ''; btn.style.color = ''; }, 2000);
+  } catch (e) {
+    alert(e.message);
+    btn.disabled = false;
+    btn.textContent = 'Сохранить привязки';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.manager-mapping-block').forEach(block => {
+    loadMappings(parseInt(block.dataset.integrationId));
+  });
+});
 </script>
 {% endblock %}

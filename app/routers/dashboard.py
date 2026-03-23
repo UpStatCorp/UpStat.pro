@@ -7,7 +7,7 @@ from sqlalchemy import func
 
 from database import get_db
 from deps import require_user
-from models import Conversation, Message, Attachment, AnalysisTrainingPlan, Training, CRMRecording, User
+from models import Conversation, Message, Attachment, AnalysisTrainingPlan, Training, CRMRecording, CRMIntegration, User
 from sqlalchemy.orm import joinedload, selectinload
 
 router = APIRouter(tags=["dashboard"])
@@ -59,21 +59,18 @@ def _collect_user_analysis_packages(db: Session, user_id: int, limit: int = 100)
     Собирает все анализы пользователя из ВСЕХ его конверсаций,
     включая анализы записей из CRM систем (без дублирования).
     """
+    user_integ_ids = [i.id for i in db.query(CRMIntegration.id).filter(CRMIntegration.user_id == user_id).all()]
     crm_conv_ids_q = (
         db.query(CRMRecording.conversation_id)
         .filter(
-            CRMRecording.user_id == user_id,
+            CRMRecording.integration_id.in_(user_integ_ids) if user_integ_ids else CRMRecording.id < 0,
             CRMRecording.conversation_id.isnot(None),
         )
         .all()
     )
     crm_conv_ids = {r[0] for r in crm_conv_ids_q}
 
-    user_conversations = (
-        db.query(Conversation.id)
-        .filter(Conversation.user_id == user_id)
-        .all()
-    )
+    user_conversations = db.query(Conversation.id).filter(Conversation.user_id == user_id).all()
     non_crm_conv_ids = [c.id for c in user_conversations if c.id not in crm_conv_ids]
 
     packages = []
@@ -128,7 +125,7 @@ def _collect_user_analysis_packages(db: Session, user_id: int, limit: int = 100)
         db.query(CRMRecording)
         .options(joinedload(CRMRecording.integration))
         .filter(
-            CRMRecording.user_id == user_id,
+            CRMRecording.integration_id.in_(user_integ_ids) if user_integ_ids else CRMRecording.id < 0,
             CRMRecording.sync_status == "completed",
             CRMRecording.conversation_id.isnot(None),
         )

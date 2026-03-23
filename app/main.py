@@ -10,7 +10,7 @@ from starlette.requests import Request
 import logging
 
 from database import Base, engine
-from routers import auth, chat, chat_trener, dashboard, public, settings, zoom_meetings, webrtc_meetings, admin, admin_prompts, tts_proxy, training_plans, crm_integration, teams, team_analytics, sales
+from routers import auth, chat, chat_trener, dashboard, public, settings, zoom_meetings, webrtc_meetings, admin, admin_prompts, tts_proxy, training_plans, crm_integration, teams, team_analytics, sales, analytics
 import sqlite3
 
 
@@ -412,6 +412,7 @@ def create_app() -> FastAPI:
     app.include_router(teams.router)  # Роутер команд и приглашений
     app.include_router(team_analytics.router)  # Роутер аналитики команды
     app.include_router(sales.router)  # Роутер панели продаж (Sale Manager)
+    app.include_router(analytics.router)  # Роутер аналитики звонков (ИИ-ассистент для РОПа)
     
     # Добавляем роутер уведомлений, прогресса и производительности
     from routers import notifications, progress, performance

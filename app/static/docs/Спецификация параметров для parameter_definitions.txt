@@ -1,0 +1,429 @@
+﻿Спецификация параметров для parameter_definitions
+Принципы
+* number — метрики, проценты, оценки (0–100)
+* boolean — да/нет, факт
+* text — JSON или список строк (например, типы возражений)
+________________
+
+
+БЛОК 0: УСТАНОВЛЕНИЕ КОНТАКТА (contact_establishment)
+code
+	title
+	value_type
+	unit
+	notes
+	greeting_quality
+	Качество приветствия
+	number
+	%
+	0–100
+	rapport_established
+	Открытое общение клиента установлено
+	boolean
+	
+
+	
+
+	client_engagement_start
+	Вовлечённость клиента в начале
+	number
+	слов
+	длина ответа
+	opening_clarity
+	Ясность цели звонка
+	boolean
+	
+
+	цель + причина
+	permission_granted
+	Разрешение на разговор
+	boolean
+	
+
+	
+
+	trust_signal_start
+	Сигнал доверия в начале
+	boolean
+	
+
+	
+
+	resistance_at_start
+	Сопротивление в начале
+	boolean
+	
+
+	
+
+	________________
+
+
+БЛОК 1: СТРУКТУРА (structure)
+code
+	title
+	value_type
+	unit
+	notes
+	structure_followed
+	Соблюдена структура
+	boolean
+	
+
+	
+
+	stage_sequence_correct
+	Правильная последовательность этапов
+	boolean
+	
+
+	
+
+	conversation_control
+	Контроль разговора
+	text
+	
+
+	"manager"/"client"/"balanced"
+	clarity_of_flow
+	Ясность хода разговора
+	number
+	%
+	0–100
+	stage_completion_rate
+	Процент завершённых этапов
+	number
+	%
+	0–100
+	chaos_flag
+	Хаос в разговоре
+	boolean
+	
+
+	
+
+	________________
+
+
+БЛОК 2: ВЫЯВЛЕНИЕ ПОТРЕБНОСТЕЙ (needs_discovery)
+code
+	title
+	value_type
+	unit
+	notes
+	questions_count
+	Количество вопросов
+	number
+	шт
+	дубликат manager_questions_count?
+	open_questions_ratio
+	Доля открытых вопросов
+	number
+	%
+	0–100
+	depth_of_questions
+	Глубина вопросов
+	number
+	%
+	0–100
+	needs_identified
+	Потребности выявлены
+	boolean
+	
+
+	
+
+	needs_clarity
+	Чёткость понимания потребностей
+	number
+	%
+	0–100
+	client_engagement
+	Вовлечённость клиента
+	number
+	%
+	0–100
+	manager_interruptions
+	Перебивания менеджером
+	number
+	шт
+	
+
+	listening_quality
+	Качество слушания
+	number
+	%
+	0–100
+	________________
+
+
+БЛОК 3: ПРЕЗЕНТАЦИЯ (presentation)
+code
+	title
+	value_type
+	unit
+	notes
+	features_vs_benefits_ratio
+	Соотношение функции/выгоды
+	number
+	%
+	доля выгод 0–100
+	benefits_presented
+	Выгоды представлены
+	boolean
+	
+
+	
+
+	benefit_clarity
+	Ясность выгод
+	number
+	%
+	0–100
+	benefit_personalization
+	Персонализация выгод
+	boolean
+	
+
+	
+
+	value_linked_to_needs
+	Связка ценности с потребностями
+	boolean
+	
+
+	
+
+	client_interest_during_presentation
+	Интерес клиента при презентации
+	boolean
+	
+
+	
+
+	client_questions
+	Вопросы клиента
+	number
+	шт
+	
+
+	overload_of_information
+	Перегруз информацией
+	boolean
+	
+
+	
+
+	clarity_of_explanation
+	Ясность объяснения
+	number
+	%
+	0–100
+	emotional_impact
+	Эмоциональный эффект
+	number
+	%
+	0–100
+	value_confirmation
+	Подтверждение ценности
+	boolean
+	
+
+	
+
+	________________
+
+
+БЛОК 4: ВОЗРАЖЕНИЯ (objections)
+code
+	title
+	value_type
+	unit
+	notes
+	objections_count
+	Количество возражений
+	number
+	шт
+	уже есть
+	objection_types
+	Типы возражений
+	text
+	
+
+	JSON: ["дорого","подумаю"]
+	objection_handled
+	Возражение обработано
+	boolean
+	
+
+	на одно возражение
+	handling_quality
+	Качество обработки
+	number
+	%
+	0–100
+	objection_ignored
+	Возражение проигнорировано
+	boolean
+	
+
+	
+
+	defensive_behavior
+	Защитное поведение
+	boolean
+	
+
+	
+
+	objection_reframed
+	Возражение переформулировано
+	boolean
+	
+
+	
+
+	client_reaction
+	Реакция клиента
+	number
+	%
+	0–100
+	________________
+
+
+БЛОК 5: ЗАКРЫТИЕ (closing)
+code
+	title
+	value_type
+	unit
+	notes
+	closing_attempt
+	Попытка закрытия
+	boolean
+	
+
+	
+
+	closing_timing
+	Тайминг закрытия
+	number
+	%
+	0–100
+	next_step_defined
+	Следующий шаг определён
+	boolean
+	
+
+	
+
+	next_step_confirmed
+	Следующий шаг подтверждён
+	boolean
+	
+
+	
+
+	client_commitment
+	Обязательства клиента
+	boolean
+	
+
+	
+
+	urgency_created
+	Срочность создана
+	boolean
+	
+
+	
+
+	deal_momentum
+	Импульс сделки
+	number
+	%
+	0–100
+	________________
+
+
+БЛОК 6: ОБЩЕЕ ПОВЕДЕНИЕ (general_behavior)
+code
+	title
+	value_type
+	unit
+	notes
+	filler_words
+	Слова-паразиты
+	number
+	шт
+	
+
+	confidence
+	Уверенность
+	number
+	%
+	0–100
+	speech_clarity
+	Чёткость речи
+	number
+	%
+	0–100
+	over_talking
+	Чрезмерная речь
+	boolean
+	
+
+	
+
+	client_ratio
+	Доля речи клиента
+	number
+	%
+	0–100, обратно talk_listen_ratio
+	pressure_behavior
+	Давление на клиента
+	boolean
+	
+
+	
+
+	empathy
+	Взаимопонимание
+	number
+	%
+	0–100
+	value_quality
+	Качество ценности
+	number
+	%
+	0–100
+	critical_error
+	Критическая ошибка
+	boolean
+	
+
+	
+
+	strong_moment
+	Сильный момент
+	boolean
+	
+
+	
+
+	________________
+
+
+Важные моменты
+1. Дубликаты / близкие параметры(сделай как считаешь правильным)
+* questions_count ≈ manager_questions_count — либо оставить один, либо явно разделить назначение.
+* client_ratio = 100 - talk_listen_ratio — можно не заводить и считать в аналитике.
+2. objection_handled — одно или много?(ответ много)
+Если возражений несколько, варианты:
+* objection_handled как number (процент обработанных),
+* или boolean — «хотя бы одно обработано».
+3. objection_types — формат(сделай как считаешь правильным)
+["дорого", "подумаю", "не сейчас"]
+Или текст: "дорого, подумаю".
+4. conversation_control(сделай как считаешь правильным)
+* text: "manager" / "client" / "balanced",
+* или number: 0 = клиент, 100 = менеджер.

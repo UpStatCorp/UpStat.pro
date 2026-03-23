@@ -1,0 +1,15 @@
+<div class="messages">
+  {% for m in messages %}
+    <div class="msg {{ 'you' if m.role=='user' else 'bot' }}" data-id="{{ m.id }}">
+      <div class="bubble">
+        <div class="meta">
+          <span class="role">{{ 'Вы' if m.role=='user' else 'Аналитик' }}</span>
+          <span class="time">{{ m.created_at.strftime('%H:%M') }}</span>
+        </div>
+        {% if m.text and m.text.strip() %}
+          <div class="text">{{ m.text | e }}</div>
+        {% endif %}
+      </div>
+    </div>
+  {% endfor %}
+</div>

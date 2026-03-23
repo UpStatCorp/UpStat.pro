@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse, FileResponse
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import Conversation, Message, Attachment
+from models import Conversation, Message, Attachment, CRMRecording, CRMIntegration
 from deps import require_user
 from services.pipeline import run_pipeline, run_pipeline_from_text, run_pipeline_from_raw_text
 from services.image_pipeline import run_pipeline_from_images
@@ -614,9 +614,23 @@ def export_zip_by_report(report_message_id: int, request: Request, db: Session =
     if not msg or msg.role != "bot":
         raise HTTPException(status_code=404, detail="Пакет не найден")
 
-    # доступ только к своим
     conv = db.query(Conversation).filter(Conversation.id == msg.conversation_id).first()
-    if not conv or conv.user_id != user.id:
+    if not conv:
+        raise HTTPException(status_code=403)
+    # Доступ: владелец conversation или владелец интеграции CRM (ROP видит анализы команды)
+    has_access = conv.user_id == user.id
+    if not has_access:
+        crm_rec = (
+            db.query(CRMRecording)
+            .join(CRMIntegration, CRMRecording.integration_id == CRMIntegration.id)
+            .filter(
+                CRMRecording.conversation_id == conv.id,
+                CRMIntegration.user_id == user.id,
+            )
+            .first()
+        )
+        has_access = crm_rec is not None
+    if not has_access:
         raise HTTPException(status_code=403)
 
     report_atts = [a for a in msg.attachments if a.file_name.startswith("analysis_")]
