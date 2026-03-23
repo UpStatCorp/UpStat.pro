@@ -8,6 +8,7 @@ from typing import List
 
 from fastapi import APIRouter, Depends, Request, Form, Response, Query
 from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case, Integer, exists
 
@@ -150,11 +151,25 @@ def _get_team_member_ids(db: Session, user_id: int) -> List[int]:
 # ─── API: данные для графиков ───────────────────────────────
 
 
+def _parse_period(period: str) -> int:
+    """Преобразует строку периода в количество дней (0 = всё время)."""
+    mapping = {
+        "2d": 2,
+        "5d": 5,
+        "7d": 7,
+        "1m": 30,
+        "3m": 90,
+        "1y": 365,
+        "all": 0,
+    }
+    return mapping.get(period, 30)
+
+
 @router.get("/analytics/api/summary")
 def api_summary(
     request: Request,
     db: Session = Depends(get_db),
-    days: int = Query(30, ge=1, le=365),
+    period: str = Query("1m"),
 ):
     """Карточки-сводка: всего звонков, средний talk%, среднее кол-во вопросов, возражения."""
     user = require_user(request, db)
@@ -162,30 +177,32 @@ def api_summary(
     if not member_ids:
         return JSONResponse({"total_calls": 0, "avg_talk": 0, "avg_questions": 0, "avg_objections": 0})
 
-    since = datetime.utcnow() - timedelta(days=days)
+    days = _parse_period(period)
 
     def _avg_for(code: str):
         pd = db.query(ParameterDefinition).filter(ParameterDefinition.code == code).first()
         if not pd:
             return 0
-        val = (
+        query = (
             db.query(func.avg(ParameterValue.value_number))
             .join(Conversation, Conversation.id == ParameterValue.conversation_id)
             .filter(
                 ParameterValue.parameter_id == pd.id,
                 Conversation.user_id.in_(member_ids),
-                ParameterValue.created_at >= since,
             )
-            .scalar()
         )
+        if days > 0:
+            since = datetime.utcnow() - timedelta(days=days)
+            query = query.filter(ParameterValue.created_at >= since)
+        val = query.scalar()
         return round(float(val), 1) if val else 0
 
     has_params = exists().where(ParameterValue.conversation_id == Conversation.id)
-    total = (
-        db.query(func.count(Conversation.id))
-        .filter(Conversation.user_id.in_(member_ids), Conversation.created_at >= since, has_params)
-        .scalar()
-    ) or 0
+    query = db.query(func.count(Conversation.id)).filter(Conversation.user_id.in_(member_ids), has_params)
+    if days > 0:
+        since = datetime.utcnow() - timedelta(days=days)
+        query = query.filter(Conversation.created_at >= since)
+    total = query.scalar() or 0
 
     return JSONResponse({
         "total_calls": total,
@@ -195,52 +212,136 @@ def api_summary(
     })
 
 
+def _get_friday_of_week(d) -> datetime:
+    """Возвращает пятницу недели для даты (неделя: пт–чт)."""
+    from datetime import date
+    if isinstance(d, date) and not isinstance(d, datetime):
+        d = datetime.combine(d, datetime.min.time())
+    dow = d.weekday()  # 0=пн, 4=пт, 6=вс
+    if dow >= 4:  # пт(4), сб(5), вс(6) — пятница этой недели
+        days_since_fri = dow - 4
+    else:  # пн(0), вт(1), ср(2), чт(3) — пятница прошлой недели
+        days_since_fri = dow + 3
+    return (d - timedelta(days=days_since_fri)).date()
+
+
+def _get_period_key(d, interval: str):
+    """Возвращает ключ группировки для даты в зависимости от интервала."""
+    from datetime import date
+    if isinstance(d, str):
+        d = datetime.strptime(d, "%Y-%m-%d").date()
+    elif isinstance(d, datetime):
+        d = d.date()
+
+    if interval == "1d":
+        return d
+    elif interval == "7d":
+        return _get_friday_of_week(d)
+    elif interval == "1m":
+        return d.replace(day=1)
+    elif interval == "3m":
+        quarter = (d.month - 1) // 3
+        return d.replace(month=quarter * 3 + 1, day=1)
+    elif interval == "1y":
+        return d.replace(month=1, day=1)
+    return d
+
+
+def _format_period_label(key, interval: str) -> str:
+    """Форматирует метку для оси X в зависимости от интервала."""
+    if interval == "1d":
+        return key.strftime("%d.%m")
+    elif interval == "7d":
+        end = key + timedelta(days=6)
+        return f"{key.strftime('%d.%m')}–{end.strftime('%d.%m')}"
+    elif interval == "1m":
+        months_ru = ["", "Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"]
+        return f"{months_ru[key.month]} {key.year}"
+    elif interval == "3m":
+        quarter = (key.month - 1) // 3 + 1
+        return f"Q{quarter} {key.year}"
+    elif interval == "1y":
+        return str(key.year)
+    return str(key)
+
+
 @router.get("/analytics/api/trend")
 def api_trend(
     request: Request,
     db: Session = Depends(get_db),
     metric: str = Query("talk_listen_ratio"),
-    days: int = Query(30, ge=1, le=365),
+    period: str = Query("1m"),
+    interval: str = Query("7d"),
+    manager_id: int = Query(None),
 ):
-    """Тренд числового параметра по дням."""
+    """Тренд числового параметра с настраиваемым интервалом и периодом."""
     user = require_user(request, db)
     member_ids = _get_team_member_ids(db, user.id)
     if not member_ids:
-        return JSONResponse({"labels": [], "values": [], "title": ""})
+        return JSONResponse({"labels": [], "values": [], "title": "", "unit": "", "interval": interval})
+
+    if manager_id and manager_id in member_ids:
+        filter_ids = [manager_id]
+    else:
+        filter_ids = member_ids
 
     pd = db.query(ParameterDefinition).filter(ParameterDefinition.code == metric).first()
     if not pd:
-        return JSONResponse({"labels": [], "values": [], "title": "Параметр не найден"})
+        return JSONResponse({"labels": [], "values": [], "title": "Параметр не найден", "unit": "", "interval": interval})
 
-    since = datetime.utcnow() - timedelta(days=days)
+    days = _parse_period(period)
 
-    rows = (
+    query = (
         db.query(
             func.date(Conversation.created_at).label("d"),
-            func.avg(ParameterValue.value_number).label("avg_val"),
+            ParameterValue.value_number,
         )
         .join(ParameterValue, ParameterValue.conversation_id == Conversation.id)
         .filter(
             ParameterValue.parameter_id == pd.id,
-            Conversation.user_id.in_(member_ids),
-            ParameterValue.created_at >= since,
+            Conversation.user_id.in_(filter_ids),
         )
-        .group_by(func.date(Conversation.created_at))
-        .order_by(func.date(Conversation.created_at))
-        .all()
     )
+
+    if days > 0:
+        since = datetime.utcnow() - timedelta(days=days)
+        query = query.filter(ParameterValue.created_at >= since)
+
+    rows = query.all()
+
+    from collections import defaultdict
+    period_data = defaultdict(list)
+    for r in rows:
+        key = _get_period_key(r.d, interval)
+        if r.value_number is not None:
+            period_data[key].append(r.value_number)
+
+    sorted_keys = sorted(period_data.keys())
 
     labels = []
     values = []
-    for r in rows:
-        d = r.d
-        if isinstance(d, str):
-            labels.append(d)
-        else:
-            labels.append(d.strftime("%d.%m"))
-        values.append(round(float(r.avg_val), 1) if r.avg_val else 0)
+    for key in sorted_keys:
+        label = _format_period_label(key, interval)
+        labels.append(label)
+        avg_val = sum(period_data[key]) / len(period_data[key]) if period_data[key] else 0
+        values.append(round(avg_val, 1))
 
-    return JSONResponse({"labels": labels, "values": values, "title": pd.title, "unit": pd.unit or ""})
+    interval_names = {
+        "1d": "день",
+        "7d": "неделя (пт–чт)",
+        "1m": "месяц",
+        "3m": "квартал",
+        "1y": "год",
+    }
+
+    return JSONResponse({
+        "labels": labels,
+        "values": values,
+        "title": pd.title,
+        "unit": pd.unit or "",
+        "interval": interval,
+        "interval_name": interval_names.get(interval, interval),
+    })
 
 
 @router.get("/analytics/api/comparison")
@@ -248,7 +349,7 @@ def api_comparison(
     request: Request,
     db: Session = Depends(get_db),
     metric: str = Query("talk_listen_ratio"),
-    days: int = Query(30, ge=1, le=365),
+    period: str = Query("1m"),
 ):
     """Сравнение менеджеров по числовому параметру (bar chart)."""
     user = require_user(request, db)
@@ -260,9 +361,9 @@ def api_comparison(
     if not pd:
         return JSONResponse({"labels": [], "values": [], "title": "Параметр не найден"})
 
-    since = datetime.utcnow() - timedelta(days=days)
+    days = _parse_period(period)
 
-    rows = (
+    query = (
         db.query(
             User.name,
             func.avg(ParameterValue.value_number).label("avg_val"),
@@ -273,12 +374,14 @@ def api_comparison(
         .filter(
             ParameterValue.parameter_id == pd.id,
             User.id.in_(member_ids),
-            ParameterValue.created_at >= since,
         )
-        .group_by(User.name)
-        .order_by(func.avg(ParameterValue.value_number).desc())
-        .all()
     )
+
+    if days > 0:
+        since = datetime.utcnow() - timedelta(days=days)
+        query = query.filter(ParameterValue.created_at >= since)
+
+    rows = query.group_by(User.name).order_by(func.avg(ParameterValue.value_number).desc()).all()
 
     labels = [r.name for r in rows]
     values = [round(float(r.avg_val), 1) if r.avg_val else 0 for r in rows]
@@ -297,7 +400,7 @@ def api_comparison(
 def api_boolean_stats(
     request: Request,
     db: Session = Depends(get_db),
-    days: int = Query(30, ge=1, le=365),
+    period: str = Query("1m"),
 ):
     """Статистика по boolean-параметрам (doughnut chart)."""
     user = require_user(request, db)
@@ -305,10 +408,10 @@ def api_boolean_stats(
     if not member_ids:
         return JSONResponse({"params": []})
 
-    since = datetime.utcnow() - timedelta(days=days)
+    days = _parse_period(period)
     true_expr = func.sum(case((ParameterValue.value_bool == True, 1), else_=0).cast(Integer))
 
-    rows = (
+    query = (
         db.query(
             ParameterDefinition.code,
             ParameterDefinition.title,
@@ -320,11 +423,14 @@ def api_boolean_stats(
         .filter(
             ParameterDefinition.value_type == "boolean",
             Conversation.user_id.in_(member_ids),
-            ParameterValue.created_at >= since,
         )
-        .group_by(ParameterDefinition.code, ParameterDefinition.title)
-        .all()
     )
+
+    if days > 0:
+        since = datetime.utcnow() - timedelta(days=days)
+        query = query.filter(ParameterValue.created_at >= since)
+
+    rows = query.group_by(ParameterDefinition.code, ParameterDefinition.title).all()
 
     params = []
     for r in rows:
@@ -355,4 +461,101 @@ def api_metrics_list(request: Request, db: Session = Depends(get_db)):
     )
     return JSONResponse({
         "metrics": [{"code": d.code, "title": d.title, "unit": d.unit or ""} for d in defs]
+    })
+
+
+@router.get("/analytics/api/team-members")
+def api_team_members(request: Request, db: Session = Depends(get_db)):
+    """Список менеджеров команды для фильтра."""
+    user = require_user(request, db)
+    member_ids = _get_team_member_ids(db, user.id)
+    if not member_ids:
+        return JSONResponse({"members": []})
+
+    members = db.query(User).filter(User.id.in_(member_ids)).order_by(User.name).all()
+    return JSONResponse({
+        "members": [{"id": m.id, "name": m.name or m.email.split("@")[0]} for m in members]
+    })
+
+
+# ─── API: кнопочная навигация в чате ─────────────────────────
+
+
+@router.get("/analytics/api/buttons")
+def api_buttons(
+    request: Request,
+    ctx: str = Query("main_menu"),
+    db: Session = Depends(get_db),
+):
+    """Возвращает кнопки для текущего уровня навигации."""
+    user = require_user(request, db)
+
+    from services.analytics_buttons import get_context
+    block = get_context(ctx)
+
+    if "buttons" in block:
+        items = [
+            {"id": b["id"], "label": b["label"], "full": b.get("full", b["label"]), "type": "nav"}
+            for b in block["buttons"]
+        ]
+    elif "questions" in block:
+        items = [
+            {"id": q["id"], "label": q["short"], "full": q["full"], "type": "question"}
+            for q in block["questions"]
+        ]
+    else:
+        items = []
+
+    return JSONResponse({
+        "context": ctx,
+        "label": block.get("label", ""),
+        "parent": block.get("parent"),
+        "buttons": items,
+    })
+
+
+class QueryRequest(BaseModel):
+    question_id: str
+    days: int = 30
+
+
+@router.post("/analytics/query")
+async def api_query(
+    request: Request,
+    body: QueryRequest,
+    db: Session = Depends(get_db),
+):
+    """Выполняет SQL-запрос для выбранного вопроса и форматирует ответ через AI."""
+    user = require_user(request, db)
+
+    from services.analytics_buttons import find_question
+    from services.analytics_queries import execute_query, format_with_ai, get_team_member_ids
+
+    block_id, question = find_question(body.question_id)
+    if not question:
+        return JSONResponse({"error": "Вопрос не найден"}, status_code=404)
+
+    member_ids = get_team_member_ids(db, user.id)
+    if not member_ids:
+        return JSONResponse({
+            "response": "У вас пока нет команды. Создайте команду и пригласите менеджеров.",
+            "question_full": question["full"],
+            "block_id": block_id,
+        })
+
+    raw_data = execute_query(question, db, member_ids, body.days)
+    formatted = await format_with_ai(question["full"], raw_data)
+
+    user_msg = AnalyticsMessage(user_id=user.id, role="user", text=question["full"])
+    db.add(user_msg)
+    bot_msg = AnalyticsMessage(user_id=user.id, role="bot", text=formatted)
+    db.add(bot_msg)
+    db.commit()
+
+    return JSONResponse({
+        "response": formatted,
+        "question_full": question["full"],
+        "block_id": block_id,
+        "user_msg_id": user_msg.id,
+        "bot_msg_id": bot_msg.id,
     })

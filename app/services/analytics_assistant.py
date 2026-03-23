@@ -32,18 +32,23 @@ _client = OpenAI(api_key=OPENAI_API_KEY)
 
 SYSTEM_PROMPT = """Ты — ИИ-аналитик продаж платформы UpStat. Ты помогаешь РОПу (руководителю отдела продаж) анализировать звонки своей команды.
 
-У тебя есть доступ к данным по 11 параметрам, извлечённым из звонков:
-1. talk_listen_ratio — % речи менеджера (оптимально 30-40%)
-2. avg_manager_reply_len — средняя длина реплики менеджера (слов)
-3. avg_client_reply_len — средняя длина реплики клиента (слов)
-4. dialogue_density — плотность диалога (реплик/мин)
-5. manager_questions_count — количество вопросов менеджера (оптимально >8)
-6. questions_by_stage — распределение вопросов по этапам
-7. system_identified — выявлена ли система клиента (true/false)
-8. problem_identified — выявлена ли проблема клиента (true/false)
-9. consequences_identified — обсуждены ли последствия (true/false)
-10. price_devaluation — обесценивал ли менеджер цену (true/false, плохо если true)
-11. objections_count — количество возражений клиента
+У тебя есть доступ к данным по 65 параметрам, извлечённым из звонков. Вот основные категории:
+
+УСТАНОВЛЕНИЕ КОНТАКТА: greeting_quality (оценка приветствия), rapport_established (установлен раппорт), opening_clarity (ясность цели звонка), permission_granted (разрешение на разговор), resistance_at_start (сопротивление в начале).
+
+СТРУКТУРА РАЗГОВОРА: structure_followed (соблюдена структура), stage_sequence_correct (правильный порядок этапов), stage_completion_rate (% завершённых этапов), clarity_of_flow (ясность хода), chaos_flag (хаос в разговоре).
+
+ВЫЯВЛЕНИЕ ПОТРЕБНОСТЕЙ: manager_questions_count (кол-во вопросов), open_questions_ratio (% открытых вопросов), needs_identified (потребности выявлены), listening_quality (качество слушания), manager_interruptions (перебивания).
+
+ПРЕЗЕНТАЦИЯ: features_vs_benefits_ratio (функции vs выгоды), benefits_presented (выгоды представлены), benefit_personalization (персонализация), value_linked_to_needs (связка с потребностями), overload_of_information (перегруз), client_interest_during_presentation (интерес клиента).
+
+ВОЗРАЖЕНИЯ: objections_count (кол-во возражений), objection_handled (% обработанных), handling_quality (качество обработки), objection_ignored (проигнорировано), defensive_behavior (защитное поведение).
+
+ЗАКРЫТИЕ: closing_attempt (попытка закрытия), next_step_defined (следующий шаг), next_step_confirmed (шаг подтверждён), client_commitment (обязательства клиента), urgency_created (срочность), deal_momentum (импульс сделки).
+
+ОБЩЕЕ ПОВЕДЕНИЕ: talk_listen_ratio (% речи менеджера), confidence (уверенность), filler_words (слова-паразиты), empathy (эмпатия), over_talking (чрезмерная речь), pressure_behavior (давление), critical_error (критические ошибки).
+
+ДОПОЛНИТЕЛЬНЫЕ: avg_manager_reply_len, avg_client_reply_len, dialogue_density, questions_by_stage, system_identified, problem_identified, consequences_identified, price_devaluation.
 
 В контексте также есть «Реестр звонков» — построчно каждый проанализированный звонок с conversation_id, датой, менеджером, CRM-данными (если есть) и ключевыми параметрами. Используй его для вопросов про конкретные звонки, периоды, сравнение по звонкам.
 
@@ -412,3 +417,12 @@ async def get_ai_response(db: Session, user_id: int, question: str) -> str:
     except Exception as e:
         logger.error(f"Ошибка ИИ-ассистента: {e}", exc_info=True)
         return f"Произошла ошибка при обработке вашего запроса. Попробуйте позже."
+
+
+async def format_response_with_ai(question_label: str, data_dict: dict) -> str:
+    """Лёгкий вызов GPT-4o-mini для форматирования предвычисленных данных в текст.
+    Используется кнопочной аналитикой (analytics_queries.format_with_ai — основной путь,
+    эта функция — альтернативный entrypoint из assistant-модуля).
+    """
+    from services.analytics_queries import format_with_ai
+    return await format_with_ai(question_label, data_dict)
