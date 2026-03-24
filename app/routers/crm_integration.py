@@ -714,7 +714,8 @@ async def _process_chat_recording(db: Session, recording: CRMRecording, integrat
     type_label = "Чат"
     conversation = Conversation(
         user_id=recording.user_id,
-        title=f"CRM {type_label}: {recording.manager_name or 'Переписка'} \u2014 {recording.call_date.strftime('%d.%m.%Y %H:%M')}",
+        title=f"CRM {type_label}: {recording.manager_name or 'Переписка'} — {recording.call_date.strftime('%d.%m.%Y %H:%M')}",
+        created_at=recording.call_date,
     )
     db.add(conversation)
     db.flush()
@@ -840,7 +841,8 @@ async def _process_call_recording(db: Session, recording: CRMRecording, integrat
 
     conversation = Conversation(
         user_id=recording.user_id,
-        title=f"CRM: {recording.manager_name or 'Звонок'} \u2014 {recording.call_date.strftime('%d.%m.%Y %H:%M')}",
+        title=f"CRM: {recording.manager_name or 'Звонок'} — {recording.call_date.strftime('%d.%m.%Y %H:%M')}",
+        created_at=recording.call_date,
     )
     db.add(conversation)
     db.flush()
