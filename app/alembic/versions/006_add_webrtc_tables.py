@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = '006'
-down_revision = '005_add_google_oauth_fields'
+down_revision = '005'
 branch_labels = None
 depends_on = None
 
