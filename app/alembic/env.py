@@ -35,7 +35,10 @@ def run_migrations_offline() -> None:
     script output.
 
     """
-    url = "sqlite:///app.db"
+    url = os.getenv("DATABASE_URL") or config.get_main_option("sqlalchemy.url")
+    if not url or "sqlite" in url.lower():
+        raise ValueError("DATABASE_URL должен указывать на PostgreSQL")
+    
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -55,7 +58,11 @@ def run_migrations_online() -> None:
 
     """
     configuration = config.get_section(config.config_ini_section)
-    configuration['sqlalchemy.url'] = "sqlite:///app.db"
+    db_url = os.getenv("DATABASE_URL") or config.get_main_option("sqlalchemy.url")
+    if not db_url or "sqlite" in db_url.lower():
+        raise ValueError("DATABASE_URL должен указывать на PostgreSQL")
+    
+    configuration['sqlalchemy.url'] = db_url
     
     connectable = engine_from_config(
         configuration,
