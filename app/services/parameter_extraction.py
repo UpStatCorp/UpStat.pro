@@ -12,7 +12,7 @@ from typing import Optional, List
 from openai import OpenAI
 from sqlalchemy.orm import Session
 
-from models import ParameterDefinition, ParameterValue
+from models import ParameterDefinition, ParameterValue, Conversation
 from database import SessionLocal
 
 import os
@@ -89,6 +89,14 @@ async def extract_parameters(conversation_id: int, dialogue_json_str: str, db: O
         db = SessionLocal()
 
     try:
+        # Получаем дату звонка из conversation
+        conversation = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+        if not conversation:
+            logger.warning(f"Conversation {conversation_id} не найдена — пропускаю извлечение")
+            return
+        
+        call_date = conversation.created_at
+        
         param_defs = db.query(ParameterDefinition).filter(
             ParameterDefinition.is_active == True
         ).order_by(ParameterDefinition.id).all()
@@ -131,6 +139,7 @@ async def extract_parameters(conversation_id: int, dialogue_json_str: str, db: O
                 conversation_id=conversation_id,
                 parameter_id=pdef.id,
                 confidence=confidence,
+                created_at=call_date,
             )
 
             if pdef.value_type == "number":
