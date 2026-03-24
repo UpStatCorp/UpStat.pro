@@ -316,7 +316,14 @@ def api_trend(
         if r.value_number is not None:
             period_data[key].append(r.value_number)
 
-    sorted_keys = sorted(period_data.keys())
+    # Фильтруем ключи: показываем только те периоды, которые попадают в выбранный диапазон
+    if days > 0:
+        since_date = (datetime.utcnow() - timedelta(days=days)).date()
+        filtered_keys = [k for k in period_data.keys() if k >= since_date]
+    else:
+        filtered_keys = list(period_data.keys())
+    
+    sorted_keys = sorted(filtered_keys)
 
     labels = []
     values = []
