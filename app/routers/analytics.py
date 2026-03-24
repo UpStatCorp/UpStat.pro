@@ -193,7 +193,7 @@ def api_summary(
         )
         if days > 0:
             since = datetime.utcnow() - timedelta(days=days)
-            query = query.filter(ParameterValue.created_at >= since)
+            query = query.filter(Conversation.created_at >= since)
         val = query.scalar()
         return round(float(val), 1) if val else 0
 
@@ -305,7 +305,7 @@ def api_trend(
 
     if days > 0:
         since = datetime.utcnow() - timedelta(days=days)
-        query = query.filter(ParameterValue.created_at >= since)
+        query = query.filter(Conversation.created_at >= since)
 
     rows = query.all()
 
@@ -379,7 +379,7 @@ def api_comparison(
 
     if days > 0:
         since = datetime.utcnow() - timedelta(days=days)
-        query = query.filter(ParameterValue.created_at >= since)
+        query = query.filter(Conversation.created_at >= since)
 
     rows = query.group_by(User.name).order_by(func.avg(ParameterValue.value_number).desc()).all()
 
@@ -428,7 +428,7 @@ def api_boolean_stats(
 
     if days > 0:
         since = datetime.utcnow() - timedelta(days=days)
-        query = query.filter(ParameterValue.created_at >= since)
+        query = query.filter(Conversation.created_at >= since)
 
     rows = query.group_by(ParameterDefinition.code, ParameterDefinition.title).all()
 
