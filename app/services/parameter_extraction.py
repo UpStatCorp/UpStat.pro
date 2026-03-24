@@ -2,12 +2,17 @@
 Сервис извлечения структурированных параметров из транскрипта звонка.
 Работает последовательно ПОСЛЕ основного анализа pipeline.
 Параметры берутся динамически из таблицы parameter_definitions.
+
+Гибридный подход:
+- Первые 4 числовых параметра (talk_listen_ratio, avg_manager_reply_len, avg_client_reply_len, dialogue_density) 
+  рассчитываются программно из dialogue_json
+- Остальные 61 параметр извлекаются через GPT-4o
 """
 
 import json
 import asyncio
 import logging
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 from openai import OpenAI
 from sqlalchemy.orm import Session
@@ -26,14 +31,83 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 _client = OpenAI(api_key=OPENAI_API_KEY)
 
 
+def _calculate_dialogue_metrics(dialogue_json_str: str) -> Dict[str, Any]:
+    """
+    Программно рассчитывает 4 базовых числовых параметра из dialogue_json:
+    1. talk_listen_ratio - процент времени речи менеджера
+    2. avg_manager_reply_len - средняя длина реплики менеджера (слов)
+    3. avg_client_reply_len - средняя длина реплики клиента (слов)
+    4. dialogue_density - количество смен ролей на минуту
+    """
+    try:
+        dialogue = json.loads(dialogue_json_str)
+        
+        manager_words = 0
+        client_words = 0
+        manager_turns = 0
+        client_turns = 0
+        total_turns = 0
+        
+        # Определяем роли
+        manager_roles = {"Менеджер", "Manager", "manager", "Продавец", "Seller"}
+        
+        for item in dialogue:
+            role = item.get("role", "")
+            text = item.get("text", "")
+            words = len(text.split())
+            
+            is_manager = any(mr in role for mr in manager_roles)
+            
+            if is_manager:
+                manager_words += words
+                manager_turns += 1
+            else:
+                client_words += words
+                client_turns += 1
+            
+            total_turns += 1
+        
+        total_words = manager_words + client_words
+        
+        # 1. talk_listen_ratio
+        talk_listen_ratio = round((manager_words / total_words * 100), 1) if total_words > 0 else 50.0
+        
+        # 2. avg_manager_reply_len
+        avg_manager_reply_len = round(manager_words / manager_turns, 1) if manager_turns > 0 else 0.0
+        
+        # 3. avg_client_reply_len
+        avg_client_reply_len = round(client_words / client_turns, 1) if client_turns > 0 else 0.0
+        
+        # 4. dialogue_density (реплик/минуту, предполагаем ~5 слов/сек = 300 слов/мин)
+        estimated_duration_min = total_words / 150  # примерная длительность в минутах
+        dialogue_density = round(total_turns / estimated_duration_min, 1) if estimated_duration_min > 0 else 0.0
+        
+        return {
+            "talk_listen_ratio": {"value": talk_listen_ratio, "confidence": 95},
+            "avg_manager_reply_len": {"value": avg_manager_reply_len, "confidence": 95},
+            "avg_client_reply_len": {"value": avg_client_reply_len, "confidence": 95},
+            "dialogue_density": {"value": dialogue_density, "confidence": 85},
+        }
+    
+    except Exception as e:
+        logger.warning(f"Ошибка расчёта метрик диалога: {e}")
+        return {}
+
+
 def _build_extraction_prompt(param_defs: List[ParameterDefinition]) -> str:
     """
     Генерирует промпт для извлечения параметров динамически из справочника.
+    Исключает параметры, которые рассчитываются программно.
     """
+    # Исключаем параметры, которые рассчитываем программно
+    excluded_codes = {"talk_listen_ratio", "avg_manager_reply_len", "avg_client_reply_len", "dialogue_density"}
+    
     params_desc = []
     example_json = {}
     
-    for i, p in enumerate(param_defs, start=1):
+    filtered_params = [p for p in param_defs if p.code not in excluded_codes]
+    
+    for i, p in enumerate(filtered_params, start=1):
         unit_str = f" (единица: {p.unit})" if p.unit else ""
         type_hint = ""
         example_val = None
@@ -59,7 +133,7 @@ def _build_extraction_prompt(param_defs: List[ParameterDefinition]) -> str:
     
     prompt = f"""Ты — аналитик телефонных продаж. Проанализируй транскрипт звонка и извлеки параметры.
 
-ПАРАМЕТРЫ ({len(param_defs)} шт):
+ПАРАМЕТРЫ ({len(filtered_params)} шт):
 {params_list}
 
 ПРАВИЛА:
@@ -82,7 +156,10 @@ async def extract_parameters(conversation_id: int, dialogue_json_str: str, db: O
     """
     Извлекает все активные параметры из транскрипта и сохраняет в parameter_values.
     Вызывается последовательно после основного анализа pipeline.
-    Параметры генерируются динамически из справочника parameter_definitions.
+    
+    Гибридный подход:
+    - Первые 4 числовых параметра рассчитываются программно
+    - Остальные 61 параметр извлекаются через GPT-4o
     """
     own_session = db is None
     if own_session:
@@ -109,6 +186,10 @@ async def extract_parameters(conversation_id: int, dialogue_json_str: str, db: O
         
         logger.info(f"Извлечение {len(param_defs)} параметров для conversation_id={conversation_id}")
 
+        # 1. Программно рассчитываем первые 4 метрики
+        calculated_metrics = _calculate_dialogue_metrics(dialogue_json_str)
+        
+        # 2. Извлекаем остальные параметры через GPT
         prompt = _build_extraction_prompt(param_defs) + dialogue_json_str
 
         response = await asyncio.to_thread(
@@ -121,7 +202,10 @@ async def extract_parameters(conversation_id: int, dialogue_json_str: str, db: O
         )
 
         raw = response.choices[0].message.content.strip()
-        data = json.loads(raw)
+        gpt_data = json.loads(raw)
+        
+        # 3. Объединяем программные расчёты и GPT результаты
+        data = {**calculated_metrics, **gpt_data}
 
         saved = 0
         for code, pdef in code_to_def.items():
@@ -153,7 +237,7 @@ async def extract_parameters(conversation_id: int, dialogue_json_str: str, db: O
             saved += 1
 
         db.commit()
-        logger.info(f"Параметры извлечены: {saved}/{len(code_to_def)} для conversation_id={conversation_id}")
+        logger.info(f"Параметры извлечены: {saved}/{len(code_to_def)} для conversation_id={conversation_id} (4 программных + {saved-4} через GPT)")
 
     except json.JSONDecodeError as e:
         logger.error(f"Ошибка парсинга JSON от GPT при извлечении параметров: {e}")
