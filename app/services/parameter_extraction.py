@@ -1,12 +1,13 @@
 """
-Сервис извлечения 11 структурированных параметров из транскрипта звонка.
+Сервис извлечения структурированных параметров из транскрипта звонка.
 Работает последовательно ПОСЛЕ основного анализа pipeline.
+Параметры берутся динамически из таблицы parameter_definitions.
 """
 
 import json
 import asyncio
 import logging
-from typing import Optional
+from typing import Optional, List
 
 from openai import OpenAI
 from sqlalchemy.orm import Session
@@ -24,52 +25,64 @@ logger = logging.getLogger("main")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 _client = OpenAI(api_key=OPENAI_API_KEY)
 
-EXTRACTION_PROMPT = """Ты — аналитик телефонных продаж. Проанализируй транскрипт звонка и извлеки 11 параметров.
 
-ПАРАМЕТРЫ:
-1. talk_listen_ratio — Процент времени речи менеджера (число 0–100). Если менеджер говорит 70% времени → 70.
-2. avg_manager_reply_len — Среднее кол-во слов в одной реплике менеджера (число).
-3. avg_client_reply_len — Среднее кол-во слов в одной реплике клиента (число).
-4. dialogue_density — Кол-во смен реплик (ролей) за минуту разговора (число). Посчитай общее число реплик / примерную длительность разговора в минутах.
-5. manager_questions_count — Сколько вопросов задал менеджер (число).
-6. questions_by_stage — JSON-объект: распределение вопросов менеджера по этапам. Этапы: "greeting", "needs_discovery", "presentation", "objection_handling", "closing". Пример: {"greeting": 1, "needs_discovery": 5, "presentation": 2, "objection_handling": 1, "closing": 1}
-7. system_identified — Выявил ли менеджер текущую систему/процесс клиента (true/false).
-8. problem_identified — Выявил ли менеджер проблему/боль клиента (true/false).
-9. consequences_identified — Обсудил ли менеджер последствия нерешённой проблемы (true/false).
-10. price_devaluation — Обесценивал ли менеджер собственный продукт/цену, давал необоснованные скидки (true/false).
-11. objections_count — Сколько возражений высказал клиент (число).
+def _build_extraction_prompt(param_defs: List[ParameterDefinition]) -> str:
+    """
+    Генерирует промпт для извлечения параметров динамически из справочника.
+    """
+    params_desc = []
+    example_json = {}
+    
+    for i, p in enumerate(param_defs, start=1):
+        unit_str = f" (единица: {p.unit})" if p.unit else ""
+        type_hint = ""
+        example_val = None
+        
+        if p.value_type == "number":
+            type_hint = "число"
+            example_val = 75 if "%" in (p.unit or "") else 10
+        elif p.value_type == "boolean":
+            type_hint = "true/false"
+            example_val = True
+        elif p.value_type == "text":
+            type_hint = "текст/JSON"
+            example_val = "example_value"
+        
+        params_desc.append(
+            f"{i}. {p.code} — {p.title}: {p.description or 'N/A'}{unit_str} [{type_hint}]"
+        )
+        
+        example_json[p.code] = {"value": example_val, "confidence": 80}
+    
+    params_list = "\n".join(params_desc)
+    example_str = json.dumps(example_json, ensure_ascii=False, indent=2)
+    
+    prompt = f"""Ты — аналитик телефонных продаж. Проанализируй транскрипт звонка и извлеки параметры.
+
+ПАРАМЕТРЫ ({len(param_defs)} шт):
+{params_list}
 
 ПРАВИЛА:
 - Верни строго JSON-объект с ключами = кодам параметров.
 - Для числовых параметров — число (int или float).
 - Для boolean — true или false.
-- Для questions_by_stage — JSON-объект строкой.
+- Для text параметров — строка (если JSON — оставь как строку).
 - Добавь поле "confidence" (0-100) для каждого параметра — насколько ты уверен в значении.
-- Если параметр невозможно определить из текста — поставь null.
+- Если параметр невозможно определить из текста — поставь null или пропусти.
 
 ФОРМАТ ОТВЕТА (строго JSON, без markdown):
-{
-  "talk_listen_ratio": {"value": 65, "confidence": 80},
-  "avg_manager_reply_len": {"value": 18, "confidence": 85},
-  "avg_client_reply_len": {"value": 12, "confidence": 85},
-  "dialogue_density": {"value": 6.5, "confidence": 70},
-  "manager_questions_count": {"value": 8, "confidence": 90},
-  "questions_by_stage": {"value": "{\\"greeting\\": 1, \\"needs_discovery\\": 4, \\"presentation\\": 2, \\"objection_handling\\": 0, \\"closing\\": 1}", "confidence": 75},
-  "system_identified": {"value": true, "confidence": 85},
-  "problem_identified": {"value": true, "confidence": 90},
-  "consequences_identified": {"value": false, "confidence": 80},
-  "price_devaluation": {"value": false, "confidence": 95},
-  "objections_count": {"value": 3, "confidence": 85}
-}
+{example_str}
 
 ТРАНСКРИПТ:
 """
+    return prompt
 
 
 async def extract_parameters(conversation_id: int, dialogue_json_str: str, db: Optional[Session] = None):
     """
-    Извлекает 11 параметров из транскрипта и сохраняет в parameter_values.
+    Извлекает все активные параметры из транскрипта и сохраняет в parameter_values.
     Вызывается последовательно после основного анализа pipeline.
+    Параметры генерируются динамически из справочника parameter_definitions.
     """
     own_session = db is None
     if own_session:
@@ -78,14 +91,17 @@ async def extract_parameters(conversation_id: int, dialogue_json_str: str, db: O
     try:
         param_defs = db.query(ParameterDefinition).filter(
             ParameterDefinition.is_active == True
-        ).all()
+        ).order_by(ParameterDefinition.id).all()
+        
         if not param_defs:
             logger.warning("Справочник параметров пуст — пропускаю извлечение")
             return
 
         code_to_def = {p.code: p for p in param_defs}
+        
+        logger.info(f"Извлечение {len(param_defs)} параметров для conversation_id={conversation_id}")
 
-        prompt = EXTRACTION_PROMPT + dialogue_json_str
+        prompt = _build_extraction_prompt(param_defs) + dialogue_json_str
 
         response = await asyncio.to_thread(
             lambda: _client.chat.completions.create(
