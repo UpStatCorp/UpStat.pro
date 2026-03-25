@@ -41,8 +41,8 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
-  gap: var(--space-md);
-  padding: var(--space-md);
+  gap: 8px;
+  padding: 12px 16px 8px 16px;
   background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 50%, #e8f0fe 100%);
   box-sizing: border-box;
   width: 100%;
@@ -144,7 +144,7 @@
 
 .training-status,
 .training-time,
-.training-participants {
+.training-meta-pill {
   display: inline-flex;
   align-items: center;
   gap: var(--space-xs);
@@ -165,7 +165,7 @@
 /* Hover effect */
 .training-status:hover,
 .training-time:hover,
-.training-participants:hover {
+.training-meta-pill:hover {
   transform: translateY(-1px);
   box-shadow: var(--elevation-2);
   border-color: rgba(59, 130, 246, 0.2);
@@ -315,17 +315,44 @@
   100% { left: 100%; }
 }
 
-/* ===== Основная область ===== */
+/* ===== Основная область (референс: чат слева ~75%, справа колонка) ===== */
 .training-main {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(240px, 280px);
-  gap: 12px;
+  grid-template-columns: 1fr minmax(260px, 28%);
+  gap: 16px;
   flex: 1;
   min-height: 0;
   width: 100%;
   box-sizing: border-box;
-  overflow: visible;
-  align-items: start;
+  overflow: hidden;
+  align-items: stretch;
+}
+
+.training-chat-area {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.training-side-column {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.training-side-column .training-header {
+  flex-shrink: 0;
+  padding: 12px 16px;
+}
+
+.training-side-column .training-title {
+  font-size: clamp(16px, 1.4vw, 20px);
 }
 
 /* ===== Чат ===== */
@@ -339,6 +366,7 @@
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
   overflow: hidden;
+  flex: 1;
   min-height: 0;
   height: 100%;
   position: relative;
@@ -385,6 +413,24 @@
   gap: 8px;
   color: #1f2937;
   letter-spacing: -0.01em;
+}
+
+.chat-title-text {
+  white-space: nowrap;
+}
+
+.chat-header-sep {
+  width: 1px;
+  height: 16px;
+  background: rgba(59, 130, 246, 0.35);
+  flex-shrink: 0;
+}
+
+.chat-connection-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  white-space: nowrap;
 }
 
 .chat-actions {
@@ -446,10 +492,10 @@
 .chat-messages {
   flex: 1;
   overflow-y: auto;
-  padding: 14px;
+  padding: 10px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
   scroll-behavior: smooth;
 }
 
@@ -699,33 +745,32 @@
   font-weight: 500;
 }
 
-/* ===== Панель участников - Discord стиль ===== */
-.training-participants {
+/* ===== Панель участников (правая колонка, под заголовком) ===== */
+.training-participants-panel {
   background: rgba(32, 34, 37, 0.95);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: var(--radius-lg);
-  padding: 12px;
-  box-shadow: 
+  padding: 16px;
+  box-shadow:
     0 2px 8px rgba(0, 0, 0, 0.3),
     0 0 0 1px rgba(0, 0, 0, 0.1),
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   overflow-y: auto;
-  overflow-x: visible;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
+  flex: 1;
   min-height: 0;
-  height: 100%;
-  max-height: 100%;
   position: relative;
   z-index: 1;
   transition: all var(--transition-base);
   box-sizing: border-box;
 }
 
-.training-participants:hover {
+.training-participants-panel:hover {
   box-shadow: 
     0 4px 12px rgba(0, 0, 0, 0.4),
     0 0 0 1px rgba(0, 0, 0, 0.15),
@@ -996,10 +1041,10 @@
   line-height: 1;
 }
 
-/* Достижения - Discord стиль */
+/* Достижения в панели участников */
 .achievements-section {
-  margin-top: 20px;
-  padding-top: 20px;
+  margin-top: 16px;
+  padding-top: 16px;
   border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
@@ -1104,20 +1149,22 @@
 .training-controls {
   background: rgba(43, 45, 49, 0.95);
   border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: var(--radius-lg);
-  padding: 20px 24px;
+  border-radius: 999px;
+  padding: 10px 16px;
   box-shadow: 
     0 -4px 24px rgba(0, 0, 0, 0.4),
     0 0 0 1px rgba(0, 0, 0, 0.1),
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
-  width: 100%;
+  width: min(640px, 100%);
   box-sizing: border-box;
   position: relative;
   z-index: 2;
   flex-shrink: 0;
   transition: all var(--transition-base);
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .training-controls::before {
@@ -1138,7 +1185,7 @@
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  gap: 16px;
+  gap: 8px;
   width: 100%;
   max-width: 800px;
   margin: 0 auto;
@@ -1146,8 +1193,8 @@
 
 /* Большая кнопка микрофона - Discord стиль */
 .mic-button {
-  width: 88px;
-  height: 88px;
+  width: 70px;
+  height: 70px;
   border-radius: 50%;
   border: 2px solid rgba(255, 255, 255, 0.1);
   background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%);
@@ -1288,15 +1335,21 @@
   margin-top: 2px;
   opacity: 0.85;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  display: none; /* убираем подпись "Подключение..." под кнопкой микрофона */
+}
+
+/* Гарантированно скрываем подпись под микрофоном на всех ширинах экрана */
+#mic-status {
+  display: none !important;
 }
 
 /* Дополнительные кнопки управления - Discord стиль */
 .control-buttons {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   justify-content: center;
   align-items: center;
-  flex: 1;
+  flex: 0 0 auto; /* чтобы кнопки шли ближе к микрофону */
 }
 
 .control-btn {
@@ -1304,12 +1357,12 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 10px 18px;
-  border-radius: 8px;
+  padding: 8px 14px;
+  border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.06);
   background: rgba(47, 49, 54, 0.8);
   color: #dcddde;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -1318,8 +1371,8 @@
   box-shadow: 
     0 2px 4px rgba(0, 0, 0, 0.2),
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  min-height: 40px;
-  min-width: 40px;
+  min-height: 36px;
+  min-width: 36px;
 }
 
 .control-btn::before {
@@ -1379,8 +1432,8 @@
 }
 
 .control-btn .btn-icon {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
 }
 
@@ -1397,9 +1450,10 @@
 
 /* Статус и индикаторы */
 .status-panel {
-  margin-top: 12px;
-  padding-top: 12px;
+  margin-top: 6px;
+  padding-top: 6px;
   border-top: 1px solid var(--border);
+  display: none !important; /* убираем дублирующий текст "Подключено к серверу" под панелью кнопок */
 }
 
 .status-indicators {
@@ -1863,11 +1917,10 @@
 /* Большие экраны (1400px и выше) */
 @media (min-width: 1400px) {
   .training-main {
-    grid-template-columns: minmax(0, 1fr) minmax(320px, 360px);
-    max-height: calc(100vh - 360px);
+    grid-template-columns: 1fr minmax(300px, 26%);
     gap: 24px;
   }
-  
+
   .voice-training-container {
     padding: 24px;
     gap: 24px;
@@ -1880,7 +1933,7 @@
     grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);
   }
   
-  .training-participants {
+  .training-participants-panel {
     padding: 16px;
   }
   
@@ -1898,22 +1951,27 @@
   
   .training-main {
     grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
+    grid-template-rows: minmax(320px, 1fr) auto;
     max-height: none;
     min-height: auto;
     margin-bottom: 16px;
   }
   
-  .training-participants {
-    grid-row: 1;
-    order: -1;
-    height: auto;
-    min-height: auto;
-    max-height: 350px;
+  .training-chat-area {
+    min-height: 320px;
+  }
+  
+  .training-side-column {
+    flex-direction: column;
+    max-height: none;
+  }
+  
+  .training-participants-panel {
+    max-height: min(360px, 45vh);
   }
   
   .training-chat {
-    min-height: 450px;
+    min-height: 280px;
     height: auto;
   }
   
@@ -1957,7 +2015,7 @@
   
   .training-status,
   .training-time,
-  .training-participants {
+  .training-meta-pill {
     padding: 5px 10px;
     font-size: 11px;
   }
@@ -1986,7 +2044,7 @@
   }
   
   /* Панель участников - bottom sheet на планшетах */
-  .training-participants {
+  .training-participants-panel {
     position: fixed;
     bottom: -100%;
     left: 0;
@@ -2000,12 +2058,12 @@
     -webkit-overflow-scrolling: touch;
   }
   
-  .training-participants.mobile-open {
+  .training-participants-panel.mobile-open {
     bottom: 0;
   }
   
   /* Индикатор для bottom sheet */
-  .training-participants::before {
+  .training-participants-panel::before {
     content: '';
     position: absolute;
     top: 12px;
@@ -2113,7 +2171,7 @@
   
   /* Улучшенная прокрутка */
   .chat-messages,
-  .training-participants {
+  .training-participants-panel {
     scroll-behavior: smooth;
     -webkit-overflow-scrolling: touch;
   }
@@ -2208,7 +2266,7 @@
   
   .training-status,
   .training-time,
-  .training-participants {
+  .training-meta-pill {
     padding: 5px 10px;
     font-size: 11px;
     border-radius: 12px;
@@ -2241,7 +2299,7 @@
     background: rgba(255, 255, 255, 0.12);
   }
   
-  /* Основная область - вертикальный стек */
+  /* Основная область - вертикальный стек: сверху компактная инфо-панель, ниже чат */
   .training-main {
     display: flex;
     flex-direction: column;
@@ -2250,6 +2308,21 @@
     min-height: 0;
     overflow: hidden;
     pointer-events: auto;
+  }
+  
+  .training-side-column {
+    order: -1;
+    max-height: 34vh;
+    overflow-y: auto;
+    flex-shrink: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  
+  .training-chat-area {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
   }
   
   /* Чат - темный Discord-стиль */
@@ -2376,9 +2449,10 @@
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
   
-  /* Панель участников - скрыта по умолчанию, показывается через bottom sheet */
-  .training-participants {
-    display: none; /* Будет показываться через bottom sheet на мобильных */
+  .training-participants-panel {
+    display: flex;
+    max-height: none;
+    flex: 0 1 auto;
   }
   
   /* Элементы управления - компактная панель с встроенной кнопкой микрофона */
@@ -2759,7 +2833,7 @@
   }
   
   .training-chat,
-  .training-participants {
+  .training-participants-panel {
     border-width: 0.5px;
   }
 }
@@ -2791,7 +2865,7 @@
   
   .training-status,
   .training-time,
-  .training-participants {
+  .training-meta-pill {
     padding: 4px 8px;
     font-size: 10px;
   }
@@ -2845,7 +2919,7 @@
     font-size: 14px;
   }
   
-  .training-participants {
+  .training-participants-panel {
     grid-row: auto;
     order: 0;
     max-height: none;
@@ -2954,7 +3028,7 @@
   
   /* Bottom sheet для участников на маленьких мобильных */
   @media (max-width: 480px) {
-    .training-participants {
+    .training-participants-panel {
       position: fixed;
       bottom: -100%;
       left: 0;
@@ -2970,12 +3044,12 @@
       padding-top: 24px;
     }
     
-    .training-participants.mobile-open {
+    .training-participants-panel.mobile-open {
       bottom: 0;
     }
     
     /* Индикатор для bottom sheet */
-    .training-participants::before {
+    .training-participants-panel::before {
       content: '';
       position: absolute;
       top: 12px;
@@ -2993,15 +3067,15 @@
 
 /* Скрытие скроллбара на панели участников для мобильных */
 @media (max-width: 1024px) {
-  .training-participants::-webkit-scrollbar {
+  .training-participants-panel::-webkit-scrollbar {
     width: 4px;
   }
   
-  .training-participants::-webkit-scrollbar-track {
+  .training-participants-panel::-webkit-scrollbar-track {
     background: transparent;
   }
   
-  .training-participants::-webkit-scrollbar-thumb {
+  .training-participants-panel::-webkit-scrollbar-thumb {
     background: var(--border);
     border-radius: 2px;
   }
@@ -3019,15 +3093,16 @@
 }
 
 /* Предотвращение наложения элементов */
+.training-chat-area,
 .training-chat,
-.training-participants,
+.training-participants-panel,
 .training-controls {
   contain: layout style paint;
 }
 
 /* Плавная прокрутка для всех контейнеров */
 .chat-messages,
-.training-participants,
+.training-participants-panel,
 .checklist-items {
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;
@@ -3056,7 +3131,8 @@
 
 /* Фикс для Safari */
 @supports (-webkit-touch-callout: none) {
-  .training-main {
+  .training-main,
+  .training-chat-area {
     min-height: -webkit-fill-available;
   }
   
@@ -3082,7 +3158,7 @@
 /* Режим печати */
 @media print {
   .training-controls,
-  .training-participants,
+  .training-participants-panel,
   .checklist-sidebar,
   .notifications-container {
     display: none;
@@ -3141,7 +3217,7 @@
 
 /* Очень маленькая высота (альбомная ориентация на маленьких экранах) */
 @media (max-height: 500px) {
-  .training-participants {
+  .training-participants-panel {
     display: none;
   }
   
@@ -3310,10 +3386,10 @@ body.dark .training-title,
 
 body.dark .training-status,
 body.dark .training-time,
-body.dark .training-participants,
+body.dark .training-meta-pill,
 [data-theme="dark"] .training-status,
 [data-theme="dark"] .training-time,
-[data-theme="dark"] .training-participants {
+[data-theme="dark"] .training-meta-pill {
     background: rgba(30, 41, 59, 0.6);
     border: 1px solid var(--vt-border);
     color: var(--vt-text-secondary);
@@ -3379,6 +3455,16 @@ body.dark .chat-header,
 body.dark .chat-header h3,
 [data-theme="dark"] .chat-header h3 {
     color: var(--vt-text-primary);
+}
+
+body.dark .chat-connection-text,
+[data-theme="dark"] .chat-connection-text {
+  color: var(--vt-text-secondary);
+}
+
+body.dark .chat-header-sep,
+[data-theme="dark"] .chat-header-sep {
+  background: rgba(96, 165, 250, 0.35);
 }
 
 body.dark .icon-btn,
@@ -3470,8 +3556,8 @@ body.dark .speaking-text,
 }
 
 /* Панель участников */
-body.dark .training-participants,
-[data-theme="dark"] .training-participants {
+body.dark .training-participants-panel,
+[data-theme="dark"] .training-participants-panel {
     background: var(--vt-surface-elevated);
     border: 1px solid var(--vt-border);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
@@ -3577,18 +3663,18 @@ body.dark .training-time,
 }
 
 /* Скроллбары для панели участников */
-body.dark .training-participants::-webkit-scrollbar-track,
-[data-theme="dark"] .training-participants::-webkit-scrollbar-track {
+body.dark .training-participants-panel::-webkit-scrollbar-track,
+[data-theme="dark"] .training-participants-panel::-webkit-scrollbar-track {
     background: var(--vt-surface);
 }
 
-body.dark .training-participants::-webkit-scrollbar-thumb,
-[data-theme="dark"] .training-participants::-webkit-scrollbar-thumb {
+body.dark .training-participants-panel::-webkit-scrollbar-thumb,
+[data-theme="dark"] .training-participants-panel::-webkit-scrollbar-thumb {
     background: var(--vt-border);
 }
 
-body.dark .training-participants::-webkit-scrollbar-thumb:hover,
-[data-theme="dark"] .training-participants::-webkit-scrollbar-thumb:hover {
+body.dark .training-participants-panel::-webkit-scrollbar-thumb:hover,
+[data-theme="dark"] .training-participants-panel::-webkit-scrollbar-thumb:hover {
     background: var(--vt-border-hover);
 }
 
@@ -3678,8 +3764,8 @@ body.dark .achievements-title,
                     0 0 0 0 rgba(52, 211, 153, 0.7);
     }
     
-    body.dark .training-participants,
-    [data-theme="dark"] .training-participants {
+    body.dark .training-participants-panel,
+    [data-theme="dark"] .training-participants-panel {
         background: var(--vt-surface-elevated);
         box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.4);
     }
@@ -3723,7 +3809,7 @@ body.dark .achievements-title,
     
     /* Предотвращение выделения текста при свайпе */
     .chat-messages,
-    .training-participants {
+    .training-participants-panel {
         -webkit-user-select: none;
         user-select: none;
     }

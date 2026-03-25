@@ -68,8 +68,13 @@ def _build_extraction_prompt(param_defs: List[ParameterDefinition]) -> str:
 - Для числовых параметров — число (int или float).
 - Для boolean — true или false.
 - Для text параметров — строка (если JSON — оставь как строку).
-- Добавь поле "confidence" (0-100) для каждого параметра — насколько ты уверен в значении.
-- Если параметр невозможно определить из текста — поставь null или пропусти.
+- Добавь поле "confidence" для каждого параметра. Используй ТОЛЬКО эти значения:
+  * 0 — параметр невозможно определить (value = null)
+  * 50 — очень низкая уверенность, данных почти нет
+  * 75 — средняя уверенность, данные неоднозначные
+  * 90 — высокая уверенность, данные чёткие
+  * 99 — абсолютная уверенность, прямое упоминание в тексте
+- Если параметр невозможно определить — поставь value: null и confidence: 0.
 
 ФОРМАТ ОТВЕТА (строго JSON, без markdown):
 {example_str}
@@ -123,18 +128,39 @@ async def extract_parameters(conversation_id: int, dialogue_json_str: str, db: O
 
         raw = response.choices[0].message.content.strip()
         data = json.loads(raw)
+        
+        # Логируем ответ GPT для отладки
+        logger.info(f"GPT вернул {len(data)} ключей верхнего уровня: {list(data.keys())[:10]}...")
+        
+        # Логируем первые 5 значений для отладки
+        sample_items = list(data.items())[:5]
+        for k, v in sample_items:
+            logger.info(f"  Пример: {k} = {v}")
+        
+        # Если GPT вернул вложенную структуру (например, {"parameters": {...}})
+        if len(data) == 1 and isinstance(list(data.values())[0], dict):
+            nested_key = list(data.keys())[0]
+            if nested_key not in code_to_def:
+                logger.info(f"Распаковываем вложенный объект из ключа '{nested_key}'")
+                data = data[nested_key]
 
         saved = 0
+        saved_with_value = 0
+        saved_null = 0
+        
         for code, pdef in code_to_def.items():
             entry = data.get(code)
+            
+            # Извлекаем значение и confidence
             if entry is None:
-                continue
-
-            val = entry.get("value") if isinstance(entry, dict) else entry
-            confidence = entry.get("confidence", 80) if isinstance(entry, dict) else 80
-
-            if val is None:
-                continue
+                val = None
+                confidence = 0
+            elif isinstance(entry, dict):
+                val = entry.get("value")
+                confidence = entry.get("confidence", 0) if val is None else entry.get("confidence", 80)
+            else:
+                val = entry
+                confidence = 80
 
             pv = ParameterValue(
                 conversation_id=conversation_id,
@@ -143,18 +169,23 @@ async def extract_parameters(conversation_id: int, dialogue_json_str: str, db: O
                 created_at=call_date,
             )
 
+            # Записываем значение (или null)
             if pdef.value_type == "number":
                 pv.value_number = float(val) if val is not None else None
             elif pdef.value_type == "boolean":
-                pv.value_bool = bool(val)
+                pv.value_bool = bool(val) if val is not None else None
             elif pdef.value_type == "text":
                 pv.value_text = str(val) if val is not None else None
 
             db.add(pv)
             saved += 1
+            if val is not None:
+                saved_with_value += 1
+            else:
+                saved_null += 1
 
         db.commit()
-        logger.info(f"Параметры извлечены: {saved}/{len(code_to_def)} для conversation_id={conversation_id}")
+        logger.info(f"Параметры записаны: {saved}/{len(code_to_def)} для conversation_id={conversation_id} ({saved_with_value} со значением, {saved_null} null)")
 
     except json.JSONDecodeError as e:
         logger.error(f"Ошибка парсинга JSON от GPT при извлечении параметров: {e}")

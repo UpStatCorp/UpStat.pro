@@ -92,6 +92,10 @@
             <select id="trend-manager" class="a-select small">
               <option value="">Все менеджеры</option>
             </select>
+            <label class="a-checkbox-label" title="Показать все периоды, даже без данных">
+              <input type="checkbox" id="show-all-periods">
+              <span>Все периоды</span>
+            </label>
           </div>
         </div>
         <div class="chart-wrap">
@@ -194,6 +198,17 @@
   }
   .a-select:focus { border-color: var(--primary); }
   .a-select.small { padding: 5px 8px; font-size: 12px; border-radius: 8px; max-width: 200px; }
+  
+  .a-checkbox-label {
+    display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted);
+    cursor: pointer; white-space: nowrap; padding: 5px 8px;
+    border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
+    transition: border-color .2s, color .2s;
+  }
+  .a-checkbox-label:hover { border-color: var(--primary); color: var(--text); }
+  .a-checkbox-label input[type="checkbox"] {
+    width: 14px; height: 14px; cursor: pointer; accent-color: var(--primary);
+  }
 
   /* Табы */
   .analytics-tabs {
@@ -488,14 +503,17 @@
   }
 
   // ─── Тренд ───
+  const showAllPeriodsCheckbox = document.getElementById('show-all-periods');
+  
   async function loadTrend() {
     const period = periodSelect.value;
     const interval = intervalSelect.value;
     const metric = trendMetricSel.value;
     const managerId = trendManagerSel.value;
+    const fillGaps = showAllPeriodsCheckbox.checked;
     if (!metric) return;
     try {
-      let url = `/analytics/api/trend?metric=${metric}&period=${period}&interval=${interval}`;
+      let url = `/analytics/api/trend?metric=${metric}&period=${period}&interval=${interval}&fill_gaps=${fillGaps}`;
       if (managerId) url += `&manager_id=${managerId}`;
       const resp = await fetch(url);
       const d = await resp.json();
@@ -719,6 +737,7 @@
   intervalSelect.addEventListener('change', loadTrend);
   trendMetricSel.addEventListener('change', loadTrend);
   trendManagerSel.addEventListener('change', loadTrend);
+  showAllPeriodsCheckbox.addEventListener('change', loadTrend);
   compMetricSel.addEventListener('change', loadComparison);
 
   loadAll();

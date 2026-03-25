@@ -85,6 +85,8 @@ class VoiceTraining {
         // Статус
         this.connectionDot = document.getElementById('connection-dot');
         this.connectionStatus = document.getElementById('connection-status');
+        this.chatConnectionDot = document.getElementById('chat-connection-dot');
+        this.chatConnectionText = document.getElementById('chat-connection-text');
         this.micStatus = document.getElementById('mic-status');
         this.recordingContainer = document.getElementById('recording-container');
         this.trainingStatus = document.getElementById('training-status');
@@ -2077,6 +2079,14 @@ class VoiceTraining {
         
         if (this.connectionStatus) {
             this.connectionStatus.textContent = text;
+        }
+        
+        // Показываем рядом с заголовком чата
+        if (this.chatConnectionText) {
+            this.chatConnectionText.textContent = text;
+        }
+        if (this.chatConnectionDot) {
+            this.chatConnectionDot.className = `status-dot ${status}`;
         }
     }
     

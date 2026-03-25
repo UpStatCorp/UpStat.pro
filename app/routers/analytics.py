@@ -188,6 +188,7 @@ def api_summary(
             .join(Conversation, Conversation.id == ParameterValue.conversation_id)
             .filter(
                 ParameterValue.parameter_id == pd.id,
+                ParameterValue.confidence >= 75,  # Только надёжные данные
                 Conversation.user_id.in_(member_ids),
             )
         )
@@ -247,6 +248,43 @@ def _get_period_key(d, interval: str):
     return d
 
 
+def _generate_all_period_keys(start_date, end_date, interval: str):
+    """Генерирует все ключи периодов между start_date и end_date."""
+    from datetime import date
+    from calendar import monthrange
+    
+    keys = []
+    current = _get_period_key(start_date, interval)
+    end_key = _get_period_key(end_date, interval)
+    
+    while current <= end_key:
+        keys.append(current)
+        
+        if interval == "1d":
+            current = current + timedelta(days=1)
+        elif interval == "7d":
+            current = current + timedelta(days=7)
+        elif interval == "1m":
+            # Следующий месяц
+            if current.month == 12:
+                current = current.replace(year=current.year + 1, month=1)
+            else:
+                current = current.replace(month=current.month + 1)
+        elif interval == "3m":
+            # Следующий квартал
+            new_month = current.month + 3
+            if new_month > 12:
+                current = current.replace(year=current.year + 1, month=new_month - 12)
+            else:
+                current = current.replace(month=new_month)
+        elif interval == "1y":
+            current = current.replace(year=current.year + 1)
+        else:
+            current = current + timedelta(days=1)
+    
+    return keys
+
+
 def _format_period_label(key, interval: str) -> str:
     """Форматирует метку для оси X в зависимости от интервала."""
     if interval == "1d":
@@ -273,6 +311,7 @@ def api_trend(
     period: str = Query("1m"),
     interval: str = Query("7d"),
     manager_id: int = Query(None),
+    fill_gaps: bool = Query(False),
 ):
     """Тренд числового параметра с настраиваемым интервалом и периодом."""
     user = require_user(request, db)
@@ -299,6 +338,7 @@ def api_trend(
         .join(ParameterValue, ParameterValue.conversation_id == Conversation.id)
         .filter(
             ParameterValue.parameter_id == pd.id,
+            ParameterValue.confidence >= 75,  # Только надёжные данные
             Conversation.user_id.in_(filter_ids),
         )
     )
@@ -316,14 +356,27 @@ def api_trend(
         if r.value_number is not None:
             period_data[key].append(r.value_number)
 
-    # Фильтруем ключи: показываем только те периоды, которые попадают в выбранный диапазон
+    # Определяем диапазон дат
     if days > 0:
         since_date = (datetime.utcnow() - timedelta(days=days)).date()
-        filtered_keys = [k for k in period_data.keys() if k >= since_date]
+        end_date = datetime.utcnow().date()
     else:
-        filtered_keys = list(period_data.keys())
+        # Всё время — берём минимальную и максимальную даты из данных
+        if period_data:
+            since_date = min(period_data.keys())
+            end_date = datetime.utcnow().date()
+        else:
+            since_date = datetime.utcnow().date()
+            end_date = datetime.utcnow().date()
+
+    # Генерируем все периоды если fill_gaps=True
+    if fill_gaps:
+        all_keys = _generate_all_period_keys(since_date, end_date, interval)
+    else:
+        # Фильтруем ключи: показываем только те периоды, которые попадают в выбранный диапазон
+        all_keys = [k for k in period_data.keys() if k >= since_date]
     
-    sorted_keys = sorted(filtered_keys)
+    sorted_keys = sorted(all_keys)
 
     labels = []
     values = []
@@ -380,6 +433,7 @@ def api_comparison(
         .join(ParameterValue, ParameterValue.conversation_id == Conversation.id)
         .filter(
             ParameterValue.parameter_id == pd.id,
+            ParameterValue.confidence >= 75,  # Только надёжные данные
             User.id.in_(member_ids),
         )
     )
@@ -429,6 +483,7 @@ def api_boolean_stats(
         .join(Conversation, Conversation.id == ParameterValue.conversation_id)
         .filter(
             ParameterDefinition.value_type == "boolean",
+            ParameterValue.confidence >= 75,  # Только надёжные данные
             Conversation.user_id.in_(member_ids),
         )
     )
