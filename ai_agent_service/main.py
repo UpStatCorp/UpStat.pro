@@ -18,6 +18,7 @@ from services.zoom_client import ZoomClient
 from services.websocket_client import ws_client
 from pipeline.audio_pipeline import AudioPipeline
 from routers.tts_proxy import router as tts_router
+from services.pii_redactor import redact_pii
 
 # Настройка логирования
 logging.basicConfig(level=logging.INFO)
@@ -447,6 +448,7 @@ async def end_meeting_internal(meeting_id: str) -> Dict[str, Any]:
         
         # Генерируем финальный отчет
         transcript = await audio_pipeline.get_transcript(meeting_id)
+        transcript = redact_pii(transcript)
         summary = await llm_service.generate_summary(transcript)
         
         # Удаляем из активных встреч
@@ -641,6 +643,8 @@ async def process_voice_message(meeting_id: str, audio_data: str, user_id: int, 
             with open(temp_audio_path, "rb") as f:
                 original_audio_data = f.read()
             transcription = await stt_service.transcribe_audio(original_audio_data, "ru")
+            if transcription:
+                transcription = redact_pii(transcription)
 
             logger.info(f"Voice message transcribed: {transcription}")
             

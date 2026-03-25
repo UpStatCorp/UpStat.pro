@@ -28,6 +28,7 @@ from services.error_handler import (
 )
 from services.progress_tracker import get_progress_tracker, ProgressStage
 from services.notification_service import get_notification_service, NotificationType, NotificationPriority
+from services.pii_redactor import redact_pii, redact_pii_in_dialogue
 from dotenv import load_dotenv
 
 logger = logging.getLogger("main")
@@ -321,6 +322,10 @@ async def run_pipeline_from_text(user_id: int, conversation_id: int, text_attach
         # Преобразуем текст в JSON-диалог (без таймкодов, так как их нет)
         dialogue = _text_to_single_speaker_turns(text)
 
+        # Маскируем персональные данные
+        text = redact_pii(text)
+        dialogue = redact_pii_in_dialogue(dialogue)
+
         # Сохраняем материалы
         tr_txt = temp_dir / f"transcript_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.txt"
         dialogue_path = temp_dir / f"dialogue_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
@@ -502,6 +507,10 @@ async def run_pipeline_from_raw_text(user_id: int, conversation_id: int, raw_tex
         db.add(msg_read); db.commit()
 
         dialogue = _text_to_single_speaker_turns(text)
+
+        # Маскируем персональные данные
+        text = redact_pii(text)
+        dialogue = redact_pii_in_dialogue(dialogue)
 
         # Сохраняем материалы
         temp_dir = Path(UPLOAD_DIR) / str(user_id) / str(conversation_id)
@@ -763,6 +772,10 @@ async def run_pipeline(user_id: int, conversation_id: int, audio_attachment_id: 
             dialogue = _words_to_turns(words)
         else:
             dialogue = _text_to_single_speaker_turns(text)
+
+        # Маскируем персональные данные
+        text = redact_pii(text)
+        dialogue = redact_pii_in_dialogue(dialogue)
 
         # Сохраняем материалы транскрибации
         tr_txt = temp_dir / f"transcript_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.txt"

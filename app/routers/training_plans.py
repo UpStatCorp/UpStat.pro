@@ -6,6 +6,7 @@ from deps import require_user
 from models import AnalysisTrainingPlan, Training, Message, Attachment, TrainingSession
 from services.training_plan_service import TrainingPlanService
 from services.team_access import get_accessible_user_ids_for_manager
+from services.pii_redactor import redact_pii
 import logging
 from datetime import datetime
 from pathlib import Path
@@ -203,7 +204,7 @@ async def complete_training_session(
     session.completed_at = datetime.utcnow()
     session.duration_seconds = duration
     session.score = score
-    session.transcript = transcript
+    session.transcript = redact_pii(transcript) if transcript else transcript
     session.feedback = feedback
     
     training = session.training

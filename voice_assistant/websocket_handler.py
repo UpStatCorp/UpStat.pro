@@ -28,6 +28,11 @@ from .config import (
 )
 from .azure_voice_live import AzureVoiceLiveConnection, get_azure_token
 
+try:
+    from services.pii_redactor import redact_pii
+except ImportError:
+    from app.services.pii_redactor import redact_pii
+
 logger = logging.getLogger(__name__)
 
 
@@ -412,6 +417,7 @@ async def receive_from_azure(
                     # Транскрипция речи пользователя завершена
                     user_transcript = event.get("transcript", "")
                     if user_transcript:
+                        user_transcript = redact_pii(user_transcript)
                         logger.info(f"📝 Распознано: '{user_transcript}'")
                         
                         # Отправляем клиенту
@@ -469,6 +475,7 @@ async def receive_from_azure(
                     final_text = response_transcripts.get(response_id, current_response_text)
                     
                     if final_text:
+                        final_text = redact_pii(final_text)
                         logger.info(f"💬 ИИ ответил: '{final_text}'")
                         logger.info(f"Ожидаем аудио для response_id: {response_id}")
                         

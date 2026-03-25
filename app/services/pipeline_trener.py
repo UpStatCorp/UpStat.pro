@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 from models import Message, Attachment
 from database import SessionLocal
 from services.prompt_service import PromptService
+from services.pii_redactor import redact_pii, redact_pii_in_dialogue
 from dotenv import load_dotenv
 
 logger = logging.getLogger("main")
@@ -274,6 +275,10 @@ async def run_pipeline_from_text_trener(user_id: int, conversation_id: int, text
         # Преобразуем текст в JSON-диалог (без таймкодов, так как их нет)
         dialogue = _text_to_single_speaker_turns(text)
 
+        # Маскируем персональные данные
+        text = redact_pii(text)
+        dialogue = redact_pii_in_dialogue(dialogue)
+
         # Сохраняем материалы
         tr_txt = temp_dir / f"transcript_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.txt"
         dialogue_path = temp_dir / f"dialogue_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
@@ -449,6 +454,10 @@ async def run_pipeline_from_raw_text_trener(user_id: int, conversation_id: int, 
         db.add(msg_read); db.commit()
 
         dialogue = _text_to_single_speaker_turns(text)
+
+        # Маскируем персональные данные
+        text = redact_pii(text)
+        dialogue = redact_pii_in_dialogue(dialogue)
 
         # Сохраняем материалы
         temp_dir = Path(UPLOAD_DIR) / str(user_id) / str(conversation_id)
@@ -655,6 +664,10 @@ async def run_pipeline_trener(user_id: int, conversation_id: int, audio_attachme
             dialogue = _words_to_turns(words)
         else:
             dialogue = _text_to_single_speaker_turns(text)
+
+        # Маскируем персональные данные
+        text = redact_pii(text)
+        dialogue = redact_pii_in_dialogue(dialogue)
 
         # Сохраняем материалы транскрибации
         tr_txt = temp_dir / f"transcript_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.txt"

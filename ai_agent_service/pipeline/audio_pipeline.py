@@ -7,6 +7,7 @@ from services.llm_service import LLMService
 from services.tts_service import TTSService
 from services.zoom_client import ZoomClient
 from services.websocket_client import ws_client
+from services.pii_redactor import redact_pii
 
 logger = logging.getLogger(__name__)
 
@@ -198,9 +199,10 @@ class AudioPipeline:
                     transcription_time = asyncio.get_event_loop().time() - start_time
                     
                     if text and len(text.strip()) > 0:
+                        text = redact_pii(text.strip())
                         # Добавляем в очередь транскриптов
                         await pipeline["transcript_queue"].put({
-                            "text": text.strip(),
+                            "text": text,
                             "timestamp": audio_chunk["timestamp"],
                             "transcription_time": transcription_time
                         })
