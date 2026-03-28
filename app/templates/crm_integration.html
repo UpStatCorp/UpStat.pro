@@ -63,15 +63,17 @@
     <h2 class="section-title">Подключённые системы</h2>
     <div class="integrations-grid">
       {% for integration in integrations %}
-      <div class="integration-card">
+      <div class="integration-card{% if not integration.is_active %} integration-card--inactive{% endif %}">
         <div class="integration-header">
           <div class="integration-name">
             <span class="crm-icon">{% if integration.crm_type == "amocrm" %}🟢{% else %}🔵{% endif %}</span>
             <span>{{ integration.crm_name }}</span>
           </div>
-          <span class="status-dot {% if integration.is_active %}active{% endif %}">
-            {{ 'Активна' if integration.is_active else 'Не активна' }}
-          </span>
+          {% if integration.is_active %}
+          <span class="status-dot active">Активна</span>
+          {% else %}
+          <span class="status-dot disconnected">Отключена</span>
+          {% endif %}
         </div>
 
         <div class="integration-meta">
@@ -84,7 +86,7 @@
 
         <div class="integration-actions">
           {% if integration.is_active %}
-          <button class="btn-action btn-primary-action" onclick="syncCRM({{ integration.id }})" id="syncBtn-{{ integration.id }}">
+          <button class="btn-action btn-primary-action" onclick="syncAllCRM({{ integration.id }})" id="syncAllBtn-{{ integration.id }}" title="Синхронизация записей + сделки, лиды, контакты, компании">
             <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/></svg>
             Синхронизировать
           </button>
@@ -92,8 +94,20 @@
             <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/><path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5z" clip-rule="evenodd"/></svg>
             Записи
           </a>
+          <button class="btn-action btn-warning-action" onclick="disconnectCRM({{ integration.id }})" title="Отключить (данные сохранятся)">
+            <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path fill-rule="evenodd" d="M13.477 14.89A6 6 0 015.11 6.524l8.367 8.368zm1.414-1.414L6.524 5.11a6 6 0 018.367 8.367zM18 10a8 8 0 11-16 0 8 8 0 0116 0z" clip-rule="evenodd"/></svg>
+          </button>
+          {% else %}
+          <a href="/crm/recordings?integration_id={{ integration.id }}" class="btn-action btn-outline">
+            <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/><path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5z" clip-rule="evenodd"/></svg>
+            Записи
+          </a>
+          <button class="btn-action btn-primary-action" onclick="reconnectCRM('{{ integration.crm_type }}', '{{ integration.crm_domain }}')" title="Переподключить">
+            <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd"/></svg>
+            Переподключить
+          </button>
           {% endif %}
-          <button class="btn-action btn-danger-action" onclick="deleteCRM({{ integration.id }})" title="Удалить">
+          <button class="btn-action btn-danger-action" onclick="deleteCRM({{ integration.id }})" title="Удалить навсегда">
             <svg viewBox="0 0 20 20" fill="currentColor" width="16" height="16"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
           </button>
         </div>
@@ -224,12 +238,48 @@
     <div class="sync-modal-icon" id="syncIcon">
       <div class="sync-spinner"></div>
     </div>
-    <h3 class="sync-modal-title" id="syncTitle">Синхронизация</h3>
-    <p class="sync-modal-desc" id="syncDesc">Подключаемся к CRM...</p>
+    <h3 class="sync-modal-title" id="syncTitle">Полная синхронизация CRM</h3>
+    <p class="sync-modal-desc" id="syncDesc">Загружаем данные из CRM. Это займёт 3–5 минут.</p>
+
+    <div class="sync-steps" id="syncSteps">
+      <div class="sync-step" data-stage="recordings">
+        <div class="step-dot"></div>
+        <span class="step-lbl">Записи</span>
+      </div>
+      <div class="sync-step" data-stage="deals">
+        <div class="step-dot"></div>
+        <span class="step-lbl">Сделки</span>
+      </div>
+      <div class="sync-step" data-stage="leads">
+        <div class="step-dot"></div>
+        <span class="step-lbl">Лиды</span>
+      </div>
+      <div class="sync-step" data-stage="contacts">
+        <div class="step-dot"></div>
+        <span class="step-lbl">Контакты</span>
+      </div>
+      <div class="sync-step" data-stage="companies">
+        <div class="step-dot"></div>
+        <span class="step-lbl">Компании</span>
+      </div>
+      <div class="sync-step" data-stage="products">
+        <div class="step-dot"></div>
+        <span class="step-lbl">Товары</span>
+      </div>
+      <div class="sync-step" data-stage="activities">
+        <div class="step-dot"></div>
+        <span class="step-lbl">Активности</span>
+      </div>
+      <div class="sync-step" data-stage="linking">
+        <div class="step-dot"></div>
+        <span class="step-lbl">Привязка</span>
+      </div>
+    </div>
+
     <div class="sync-progress-track">
       <div class="sync-progress-fill" id="syncProgress" style="width: 0%"></div>
     </div>
-    <span class="sync-modal-detail" id="syncDetail"></span>
+    <span class="sync-modal-detail" id="syncDetail">Подготовка...</span>
     <button class="btn-action btn-primary-action sync-done-btn" id="syncDoneBtn" style="display:none;">
       Готово
     </button>
@@ -270,6 +320,11 @@ body.dark .integration-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.3); }
 .status-dot { font-size: 12px; font-weight: 500; padding: 4px 10px; border-radius: 20px; background: var(--surface-hover); color: var(--muted); }
 .status-dot.active { background: rgba(16,185,129,.1); color: #059669; }
 body.dark .status-dot.active { color: #34d399; }
+.status-dot.disconnected { background: rgba(245,158,11,.1); color: #d97706; }
+body.dark .status-dot.disconnected { color: #fbbf24; }
+.integration-card--inactive { opacity: .7; border-style: dashed; }
+.btn-warning-action { background: rgba(245,158,11,.1); color: #d97706; border: none; cursor: pointer; }
+.btn-warning-action:hover { background: rgba(245,158,11,.2); }
 .integration-meta { margin-bottom: 16px; }
 .meta-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; color: var(--muted); }
 .meta-row strong { color: var(--text); }
@@ -345,16 +400,51 @@ body.dark .alert-warn { color: #fcd34d; }
 /* Sync modal */
 .sync-modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.5); backdrop-filter: blur(4px); z-index: 10000; align-items: center; justify-content: center; }
 .sync-modal-backdrop.active { display: flex; }
-.sync-modal { background: var(--surface); border-radius: 20px; padding: 40px 36px; max-width: 420px; width: 90%; text-align: center; box-shadow: 0 24px 80px rgba(0,0,0,.3); animation: syncModalIn .3s ease; }
+.sync-modal { background: var(--surface); border-radius: 20px; padding: 36px 32px 32px; max-width: 520px; width: 92%; text-align: center; box-shadow: 0 24px 80px rgba(0,0,0,.3); animation: syncModalIn .3s ease; }
 @keyframes syncModalIn { from { opacity: 0; transform: scale(.92) translateY(12px); } to { opacity: 1; transform: scale(1) translateY(0); } }
-.sync-modal-icon { width: 80px; height: 80px; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; background: rgba(37,99,235,.08); border-radius: 50%; }
-.sync-spinner { width: 40px; height: 40px; border: 3px solid rgba(37,99,235,.2); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
-.sync-modal-title { margin: 0 0 8px; font-size: 20px; font-weight: 700; color: var(--text); }
-.sync-modal-desc { margin: 0 0 20px; font-size: 14px; color: var(--muted); line-height: 1.5; }
-.sync-progress-track { width: 100%; height: 8px; background: var(--bg); border-radius: 4px; overflow: hidden; margin-bottom: 10px; }
-.sync-progress-fill { height: 100%; background: linear-gradient(90deg, var(--primary), #8b5cf6); border-radius: 4px; transition: width .5s ease, background .3s; }
-.sync-modal-detail { display: block; font-size: 12px; color: var(--muted); margin-bottom: 16px; }
+.sync-modal-icon { width: 72px; height: 72px; margin: 0 auto 16px; display: flex; align-items: center; justify-content: center; background: rgba(37,99,235,.08); border-radius: 50%; }
+.sync-spinner { width: 36px; height: 36px; border: 3px solid rgba(37,99,235,.2); border-top-color: var(--primary); border-radius: 50%; animation: spin 0.8s linear infinite; }
+.sync-modal-title { margin: 0 0 6px; font-size: 19px; font-weight: 700; color: var(--text); }
+.sync-modal-desc { margin: 0 0 22px; font-size: 13px; color: var(--muted); line-height: 1.5; }
+.sync-progress-track { width: 100%; height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; margin-bottom: 8px; }
+.sync-progress-fill { height: 100%; background: linear-gradient(90deg, var(--primary), #8b5cf6); border-radius: 3px; transition: width .6s ease, background .3s; }
+.sync-modal-detail { display: block; font-size: 12px; color: var(--muted); margin-bottom: 14px; min-height: 16px; }
 .sync-done-btn { margin-top: 4px; }
+
+/* Sync steps indicator */
+.sync-steps { display: flex; align-items: flex-start; justify-content: center; gap: 0; margin: 0 0 24px; padding: 0 4px; position: relative; }
+.sync-step { display: flex; flex-direction: column; align-items: center; flex: 1; position: relative; min-width: 0; }
+.sync-step:not(:last-child)::after {
+  content: ''; position: absolute; top: 10px; left: calc(50% + 12px); right: calc(-50% + 12px);
+  height: 2px; background: var(--border); z-index: 1; transition: background .3s;
+}
+.sync-step.completed:not(:last-child)::after { background: #10b981; }
+.step-dot {
+  width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--border);
+  background: var(--surface); display: flex; align-items: center; justify-content: center;
+  position: relative; z-index: 2; transition: all .3s; flex-shrink: 0;
+}
+.sync-step.active .step-dot { border-color: var(--primary); background: var(--primary); box-shadow: 0 0 0 4px rgba(37,99,235,.15); }
+.sync-step.active .step-dot::after {
+  content: ''; width: 8px; height: 8px; background: #fff; border-radius: 50%;
+  animation: syncPulse 1.2s ease infinite;
+}
+@keyframes syncPulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: .5; transform: scale(.7); } }
+.sync-step.completed .step-dot {
+  border-color: #10b981; background: #10b981;
+}
+.sync-step.completed .step-dot::after {
+  content: ''; width: 10px; height: 10px; animation: none;
+  background: url("data:image/svg+xml,%3Csvg viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M2 6l3 3 5-5' stroke='white' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat;
+}
+.sync-step.error .step-dot { border-color: #ef4444; background: #ef4444; }
+.sync-step.error .step-dot::after {
+  content: ''; width: 10px; height: 10px; animation: none;
+  background: url("data:image/svg+xml,%3Csvg viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M3 3l6 6M9 3l-6 6' stroke='white' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E") center/contain no-repeat;
+}
+.step-lbl { font-size: 10px; color: var(--muted); margin-top: 6px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.sync-step.active .step-lbl { color: var(--text); font-weight: 600; }
+.sync-step.completed .step-lbl { color: #10b981; }
 
 /* Responsive */
 @media (max-width: 768px) {
@@ -364,6 +454,11 @@ body.dark .alert-warn { color: #fcd34d; }
   .add-crm-grid { grid-template-columns: 1fr 1fr; }
   .steps-grid { grid-template-columns: 1fr; }
   .integration-actions { flex-direction: column; }
+  .sync-modal { padding: 28px 20px 24px; max-width: 95%; }
+  .sync-steps { gap: 0; padding: 0; }
+  .step-lbl { font-size: 9px; }
+  .step-dot { width: 18px; height: 18px; }
+  .sync-step:not(:last-child)::after { top: 8px; }
 }
 </style>
 
@@ -379,6 +474,19 @@ function switchTab(btn, tab) {
   document.getElementById(tab === 'webhook' ? 'webhookForm' : 'oauthForm').classList.add('active');
 }
 
+const SYNC_STAGES = ['recordings','deals','leads','contacts','companies','products','activities','linking'];
+
+async function syncAllCRM(id) {
+  const btn = document.getElementById('syncAllBtn-' + id);
+  btn.disabled = true;
+  showSyncModal();
+  try {
+    const r = await fetch('/crm/sync-all/' + id, { method: 'POST' });
+    if (r.ok) { pollSyncStatus(id); }
+    else { closeSyncModal(); alert('Ошибка запуска синхронизации'); btn.disabled = false; }
+  } catch (e) { closeSyncModal(); alert(e.message); btn.disabled = false; }
+}
+
 async function syncCRM(id) {
   const btn = document.getElementById('syncBtn-' + id);
   btn.disabled = true;
@@ -391,52 +499,117 @@ async function syncCRM(id) {
 }
 
 function showSyncModal() {
-  const modal = document.getElementById('syncModal');
-  modal.classList.add('active');
-  updateSyncUI('starting', 0, 0);
+  document.getElementById('syncModal').classList.add('active');
+  resetSyncSteps();
+  updateSyncUI({phase: 'starting', stage: null, stage_step: 0, stage_total: 8, found: 0, saved: 0});
 }
 
 function closeSyncModal() {
   document.getElementById('syncModal').classList.remove('active');
 }
 
-function updateSyncUI(phase, found, saved) {
+function resetSyncSteps() {
+  document.querySelectorAll('#syncSteps .sync-step').forEach(el => {
+    el.classList.remove('active','completed','error');
+  });
+}
+
+function updateSyncSteps(currentStage, phase) {
+  const steps = document.querySelectorAll('#syncSteps .sync-step');
+  let passedCurrent = false;
+  steps.forEach(el => {
+    const stage = el.dataset.stage;
+    el.classList.remove('active','completed','error');
+    if (phase === 'done') {
+      el.classList.add('completed');
+    } else if (phase === 'error' && stage === currentStage) {
+      el.classList.add('error');
+    } else if (stage === currentStage) {
+      el.classList.add('active');
+      passedCurrent = true;
+    } else if (!passedCurrent && currentStage) {
+      const ci = SYNC_STAGES.indexOf(currentStage);
+      const si = SYNC_STAGES.indexOf(stage);
+      if (si >= 0 && ci >= 0 && si < ci) {
+        el.classList.add('completed');
+      }
+    }
+  });
+}
+
+function crmLabel(type) {
+  if (type === 'amocrm') return 'AmoCRM';
+  if (type === 'bitrix24') return 'Bitrix24';
+  return 'CRM';
+}
+
+function updateSyncUI(d) {
   const icon = document.getElementById('syncIcon');
   const title = document.getElementById('syncTitle');
   const desc = document.getElementById('syncDesc');
   const prog = document.getElementById('syncProgress');
   const detail = document.getElementById('syncDetail');
   const doneBtn = document.getElementById('syncDoneBtn');
+  const crm = crmLabel(d.crm_type);
 
   doneBtn.style.display = 'none';
+  prog.style.background = '';
 
-  if (phase === 'starting' || phase === 'fetching') {
+  updateSyncSteps(d.stage, d.phase);
+
+  if (d.phase === 'starting' || d.phase === 'fetching' || d.phase === 'recordings') {
     icon.innerHTML = '<div class="sync-spinner"></div>';
-    title.textContent = 'Загрузка данных из CRM';
-    desc.textContent = 'Получаем записи звонков из AmoCRM...';
-    prog.style.width = '30%';
-    detail.textContent = 'Запрашиваем API...';
-  } else if (phase === 'saving') {
+    title.textContent = 'Синхронизация ' + crm;
+    desc.textContent = 'Загружаем записи звонков...';
+    const pct = d.stage_total > 0 ? Math.round((1 / d.stage_total) * 50) : 10;
+    prog.style.width = pct + '%';
+    if (d.found > 0) {
+      detail.textContent = 'Найдено ' + d.found + ' записей' + (d.saved > 0 ? ', новых: ' + d.saved : '');
+    } else {
+      detail.textContent = 'Запрашиваем API ' + crm + '...';
+    }
+  } else if (d.phase === 'saving') {
     icon.innerHTML = '<div class="sync-spinner"></div>';
     title.textContent = 'Сохранение записей';
-    desc.textContent = `Найдено ${found} записей, сохраняем...`;
-    prog.style.width = '70%';
-    detail.textContent = `Новых: ${saved} из ${found}`;
-  } else if (phase === 'done') {
-    icon.innerHTML = '<svg viewBox="0 0 20 20" fill="#10b981" width="48" height="48"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>';
+    desc.textContent = 'Найдено ' + d.found + ' записей, сохраняем...';
+    prog.style.width = '15%';
+    detail.textContent = 'Новых: ' + (d.saved || 0) + ' из ' + d.found;
+  } else if (d.phase === 'entities') {
+    icon.innerHTML = '<div class="sync-spinner"></div>';
+    title.textContent = 'Синхронизация данных ' + crm;
+    const stepPct = d.stage_total > 0 ? Math.round((d.stage_step / d.stage_total) * 100) : 50;
+    prog.style.width = stepPct + '%';
+    desc.textContent = d.stage_label ? d.stage_label + '...' : 'Загружаем CRM-данные...';
+    const er = d.entity_results || {};
+    const parts = [];
+    if (er.deals) parts.push('сделок: ' + er.deals);
+    if (er.leads) parts.push('лидов: ' + er.leads);
+    if (er.contacts) parts.push('контактов: ' + er.contacts);
+    if (er.companies) parts.push('компаний: ' + er.companies);
+    if (er.linked) parts.push('привязано: ' + er.linked);
+    detail.textContent = parts.length > 0 ? parts.join(', ') : 'Этап ' + (d.stage_step || 1) + ' из ' + (d.stage_total || 8);
+  } else if (d.phase === 'done') {
+    icon.innerHTML = '<svg viewBox="0 0 20 20" fill="#10b981" width="44" height="44"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>';
     title.textContent = 'Синхронизация завершена';
-    desc.textContent = saved > 0 ? `Добавлено ${saved} новых записей` : 'Новых записей не найдено';
     prog.style.width = '100%';
     prog.style.background = 'linear-gradient(90deg, #10b981, #059669)';
-    detail.textContent = `Всего в базе: загрузка...`;
+    const er = d.entity_results || {};
+    const parts = [];
+    if (d.saved > 0) parts.push(d.saved + ' новых записей');
+    if (er.deals) parts.push(er.deals + ' сделок');
+    if (er.contacts) parts.push(er.contacts + ' контактов');
+    if (er.linked) parts.push(er.linked + ' привязок');
+    desc.textContent = parts.length > 0 ? parts.join(', ') : 'Все данные актуальны';
+    detail.textContent = d.recordings_count ? 'Всего записей: ' + d.recordings_count : '';
     doneBtn.style.display = 'inline-flex';
-  } else if (phase === 'error') {
-    icon.innerHTML = '<svg viewBox="0 0 20 20" fill="#ef4444" width="48" height="48"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>';
+    doneBtn.textContent = 'Готово';
+  } else if (d.phase === 'error') {
+    icon.innerHTML = '<svg viewBox="0 0 20 20" fill="#ef4444" width="44" height="44"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>';
     title.textContent = 'Ошибка синхронизации';
-    desc.textContent = 'Попробуйте ещё раз';
+    desc.textContent = d.stage_label ? 'Ошибка на этапе: ' + d.stage_label : 'Попробуйте ещё раз';
     prog.style.width = '100%';
     prog.style.background = '#ef4444';
-    detail.textContent = '';
+    detail.textContent = d.error || '';
     doneBtn.style.display = 'inline-flex';
     doneBtn.textContent = 'Закрыть';
   }
@@ -448,15 +621,13 @@ function pollSyncStatus(id) {
       const r = await fetch('/crm/sync-status/' + id);
       if (!r.ok) { clearInterval(iv); return; }
       const d = await r.json();
-      updateSyncUI(d.phase, d.found, d.saved);
+      updateSyncUI(d);
       if (d.done) {
         clearInterval(iv);
-        const detail = document.getElementById('syncDetail');
-        if (d.recordings_count) detail.textContent = `Всего записей: ${d.recordings_count}`;
         document.getElementById('syncDoneBtn').onclick = () => { closeSyncModal(); location.reload(); };
       }
     } catch { clearInterval(iv); }
-  }, 2000);
+  }, 1500);
 }
 
 async function syncChats(id) {
@@ -511,10 +682,31 @@ async function connectBitrix24OAuth() {
   } catch (e) { alert(e.message); }
 }
 
+async function disconnectCRM(id) {
+  if (!confirm('Отключить интеграцию? Токены будут удалены, но все записи и данные сохранятся. Вы сможете переподключить позже.')) return;
+  try {
+    const r = await fetch('/crm/integrations/' + id + '/disconnect', { method: 'POST' });
+    if (r.ok) location.reload(); else { const d = await r.json(); alert(d.detail || 'Ошибка'); }
+  } catch (e) { alert(e.message); }
+}
+
 async function deleteCRM(id) {
-  if (!confirm('Удалить интеграцию? Все связанные записи будут удалены.')) return;
+  if (!confirm('ВНИМАНИЕ: Удалить интеграцию НАВСЕГДА? Все записи, сделки, лиды и прочие данные будут безвозвратно удалены.')) return;
+  if (!confirm('Вы уверены? Это действие нельзя отменить.')) return;
   try { const r = await fetch('/crm/integrations/' + id, { method: 'DELETE' }); if (r.ok) location.reload(); else alert('Ошибка'); }
   catch (e) { alert(e.message); }
+}
+
+function reconnectCRM(crmType, domain) {
+  if (crmType === 'amocrm') {
+    const d = domain.replace('.amocrm.ru', '');
+    document.getElementById('amocrmDomain').value = d;
+    openModal('amocrmModal');
+  } else if (crmType === 'bitrix24') {
+    const d = domain.replace('.bitrix24.ru', '').replace('.bitrix24.com', '');
+    document.getElementById('bitrix24Domain').value = d;
+    openModal('bitrix24Modal');
+  }
 }
 
 // Manager mapping

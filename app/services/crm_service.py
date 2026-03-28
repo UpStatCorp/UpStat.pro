@@ -2,6 +2,7 @@ import os
 import re
 import json
 import logging
+import asyncio
 import httpx
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
@@ -9,13 +10,41 @@ from urllib.parse import urlencode, urlparse, parse_qs
 from sqlalchemy.orm import Session
 from cryptography.fernet import Fernet
 
-from models import CRMIntegration, CRMRecording, User
+from models import (
+    CRMIntegration, CRMRecording, User,
+    CRMDeal, CRMLead, CRMContact, CRMCompany, CRMDealProduct, CRMActivity,
+)
 from database import SessionLocal
 
 logger = logging.getLogger(__name__)
 
-# Ключ шифрования для токенов (в проде должен быть в переменных окружения)
-ENCRYPTION_KEY = os.getenv("CRM_ENCRYPTION_KEY", Fernet.generate_key().decode())
+def _get_persistent_encryption_key() -> str:
+    """Return encryption key from env, or generate once and persist to file."""
+    env_key = os.getenv("CRM_ENCRYPTION_KEY")
+    if env_key:
+        return env_key
+
+    key_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".crm_encryption_key")
+    key_file = os.path.normpath(key_file)
+
+    if os.path.exists(key_file):
+        with open(key_file, "r") as f:
+            stored = f.read().strip()
+        if stored:
+            logger.warning("CRM_ENCRYPTION_KEY not set — using key from %s. Set the env var in production.", key_file)
+            return stored
+
+    new_key = Fernet.generate_key().decode()
+    try:
+        with open(key_file, "w") as f:
+            f.write(new_key)
+        logger.warning("CRM_ENCRYPTION_KEY not set — generated and saved to %s. Set the env var in production.", key_file)
+    except OSError as exc:
+        logger.error("Failed to persist encryption key to %s: %s", key_file, exc)
+    return new_key
+
+
+ENCRYPTION_KEY = _get_persistent_encryption_key()
 cipher_suite = Fernet(ENCRYPTION_KEY.encode())
 
 
@@ -49,7 +78,9 @@ class CRMService:
         self.access_token = access_token
         self.refresh_token = refresh_token
     
-    async def get_recordings(self, db: Session, limit: int = 100) -> List[Dict[str, Any]]:
+    async def get_recordings(self, db: Session, limit: int = 100,
+                             initial_sync_completed: bool = False,
+                             last_sync_at: Optional[datetime] = None) -> List[Dict[str, Any]]:
         """Получить список записей из CRM"""
         raise NotImplementedError("Subclasses must implement this method")
     
@@ -164,11 +195,22 @@ class AmoCRMService(CRMService):
     
     MIN_CALL_DURATION = 35
 
-    async def get_recordings(self, db: Session, limit: int = 100) -> List[Dict[str, Any]]:
+    async def get_recordings(self, db: Session, limit: int = 100,
+                             initial_sync_completed: bool = False,
+                             last_sync_at: Optional[datetime] = None) -> List[Dict[str, Any]]:
         """Получить список записей звонков из AmoCRM (из /calls, примечаний к сделкам и контактам)"""
         seen_ids: set = set()
         recordings: List[Dict[str, Any]] = []
-        date_from = (datetime.utcnow() - timedelta(days=30)).timestamp()
+
+        if not initial_sync_completed:
+            date_from = (datetime.utcnow() - timedelta(days=365 * 3)).timestamp()
+            logger.info("[AmoCRM] Initial full sync — fetching up to 3 years of history")
+        elif last_sync_at:
+            date_from = (last_sync_at - timedelta(hours=2)).timestamp()
+            logger.info(f"[AmoCRM] Incremental sync from {last_sync_at.isoformat()}")
+        else:
+            date_from = (datetime.utcnow() - timedelta(days=30)).timestamp()
+
         skipped_short = 0
 
         # 1) Звонки из ресурса /calls (телефония/виджет) — пагинация
@@ -467,35 +509,67 @@ class Bitrix24WebhookService(CRMService):
         else:
             self.webhook_url = None
     
+    _request_delay: float = 0.35
+    _max_retries: int = 3
+
     async def _make_api_request(self, method: str, params: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
-        """Выполнить запрос к REST API Bitrix24 через вебхук"""
+        """Выполнить запрос к REST API Bitrix24 через вебхук с throttling и retry."""
         if not self.webhook_url:
             return None
-        
+
         url = f"{self.webhook_url}/{method}.json"
-        
-        async with httpx.AsyncClient(timeout=60.0) as client:
+        has_complex_params = params and any(isinstance(v, (dict, list)) for v in params.values())
+
+        for attempt in range(self._max_retries):
+            if attempt > 0 or self._request_delay:
+                await asyncio.sleep(self._request_delay * (2 ** attempt if attempt > 0 else 1))
+
             try:
-                has_complex_params = params and any(isinstance(v, (dict, list)) for v in params.values())
-                if has_complex_params:
-                    response = await client.post(url, json=params)
-                else:
-                    response = await client.get(url, params=params or {})
-                response.raise_for_status()
-                data = response.json()
-                
-                if "error" in data:
-                    logger.error(f"Bitrix24 Webhook API error: {data}")
-                    return None
-                
-                return data
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    if has_complex_params:
+                        response = await client.post(url, json=params)
+                    else:
+                        response = await client.get(url, params=params or {})
+
+                    if response.status_code == 503:
+                        wait = 2 ** (attempt + 1)
+                        logger.warning(f"[Bitrix24] 503 on {method}, retry {attempt+1}/{self._max_retries} in {wait}s")
+                        await asyncio.sleep(wait)
+                        continue
+
+                    response.raise_for_status()
+                    data = response.json()
+
+                    if "error" in data:
+                        err_code = data.get("error", "")
+                        if err_code in ("QUERY_LIMIT_EXCEEDED", "OPERATION_TIME_LIMIT"):
+                            wait = 2 ** (attempt + 1)
+                            logger.warning(f"[Bitrix24] Rate limit on {method}, retry in {wait}s")
+                            await asyncio.sleep(wait)
+                            continue
+                        logger.error(f"Bitrix24 Webhook API error: {data}")
+                        return None
+
+                    return data
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 503 and attempt < self._max_retries - 1:
+                    await asyncio.sleep(2 ** (attempt + 1))
+                    continue
+                logger.error(f"Bitrix24 Webhook API request failed: {e}")
+                return None
             except Exception as e:
                 logger.error(f"Bitrix24 Webhook API request failed: {e}")
                 return None
-    
-    async def get_recordings(self, db: Session, limit: int = 100) -> List[Dict[str, Any]]:
+        return None
+
+    async def get_recordings(self, db: Session, limit: int = 100,
+                             initial_sync_completed: bool = False,
+                             last_sync_at: Optional[datetime] = None) -> List[Dict[str, Any]]:
         """Получить список записей звонков из Bitrix24 (Webhook)"""
-        return await self._bitrix24_get_recordings()
+        return await self._bitrix24_get_recordings(
+            initial_sync_completed=initial_sync_completed,
+            last_sync_at=last_sync_at,
+        )
 
     def _get_auth_token(self) -> str:
         """Извлечь auth-токен для подстановки в URL файлов Bitrix24"""
@@ -514,11 +588,22 @@ class Bitrix24WebhookService(CRMService):
 
     MIN_CALL_DURATION = 35
 
-    async def _bitrix24_get_recordings(self) -> List[Dict[str, Any]]:
+    async def _bitrix24_get_recordings(self,
+                                       initial_sync_completed: bool = False,
+                                       last_sync_at: Optional[datetime] = None) -> List[Dict[str, Any]]:
         """Универсальный метод получения звонков из Bitrix24 (activity + voximplant)"""
         recordings: List[Dict[str, Any]] = []
         seen_ids: set = set()
-        date_from = (datetime.utcnow() - timedelta(days=30)).isoformat()
+
+        if not initial_sync_completed:
+            date_from = (datetime.utcnow() - timedelta(days=365 * 3)).isoformat()
+            logger.info("[Bitrix24] Initial full sync — fetching up to 3 years of history")
+        elif last_sync_at:
+            date_from = (last_sync_at - timedelta(hours=2)).isoformat()
+            logger.info(f"[Bitrix24] Incremental sync from {last_sync_at.isoformat()}")
+        else:
+            date_from = (datetime.utcnow() - timedelta(days=30)).isoformat()
+
         auth_token = self._get_auth_token()
 
         # --- Шаг 0: попробуем загрузить voximplant-статистику для длительности ---
@@ -533,16 +618,26 @@ class Bitrix24WebhookService(CRMService):
             return "+" + digits if digits else ""
 
         try:
-            voxi_data = await self._make_api_request(
-                "voximplant.statistic.get",
-                params={
-                    "FILTER": {">CALL_START_DATE": date_from},
-                    "LIMIT": 500,
-                }
-            )
-            if voxi_data and "result" in voxi_data:
+            voxi_offset = 0
+            voxi_page_limit = 500
+            total_voxi = 0
+            while True:
+                voxi_data = await self._make_api_request(
+                    "voximplant.statistic.get",
+                    params={
+                        "FILTER": {">CALL_START_DATE": date_from},
+                        "LIMIT": voxi_page_limit,
+                        "OFFSET": voxi_offset,
+                    }
+                )
+                if not voxi_data or "result" not in voxi_data:
+                    if voxi_offset == 0:
+                        logger.info("[Bitrix24] voximplant.statistic.get unavailable or empty")
+                    break
                 voxi_calls = voxi_data["result"]
-                logger.info(f"[Bitrix24] voximplant cache: {len(voxi_calls)} entries loaded")
+                if not voxi_calls:
+                    break
+                total_voxi += len(voxi_calls)
                 for vc in voxi_calls:
                     vid = str(vc.get("CALL_ID", ""))
                     dur = int(vc.get("CALL_DURATION", 0))
@@ -562,8 +657,11 @@ class Bitrix24WebhookService(CRMService):
                         voxi_by_phone.setdefault(phone, []).append({
                             "url": rec, "ts": ts, "dur": dur,
                         })
-            else:
-                logger.info("[Bitrix24] voximplant.statistic.get unavailable or empty")
+                if len(voxi_calls) < voxi_page_limit:
+                    break
+                voxi_offset += voxi_page_limit
+            if total_voxi:
+                logger.info(f"[Bitrix24] voximplant cache: {total_voxi} entries loaded")
         except Exception as e:
             logger.warning(f"[Bitrix24] voximplant cache error: {e}")
 
@@ -698,6 +796,7 @@ class Bitrix24WebhookService(CRMService):
                     "crm_metadata": {
                         "subject": call.get("SUBJECT", ""),
                         "owner_type": owner_type,
+                        "owner_id": str(owner_id) if owner_id else "",
                         "provider_id": call.get("PROVIDER_ID", ""),
                     },
                 })
@@ -1258,52 +1357,82 @@ class Bitrix24Service(CRMService):
             logger.error(f"Failed to refresh token for Bitrix24: {e}")
             return False
     
+    _request_delay: float = 0.35
+    _max_retries: int = 3
+
     async def _make_api_request(self, method: str, params: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
-        """Выполнить запрос к REST API Bitrix24 с автообновлением токена"""
+        """Выполнить запрос к REST API Bitrix24 (OAuth) с throttling и retry."""
         if not self.access_token or not self.base_url:
             return None
-        
+
         url = f"{self.base_url}/{method}.json"
-        
         request_params = dict(params) if params else {}
         request_params["auth"] = self.access_token
-        
         has_complex_params = any(isinstance(v, (dict, list)) for k, v in request_params.items() if k != "auth")
-        
-        async with httpx.AsyncClient(timeout=60.0) as client:
+
+        for attempt in range(self._max_retries):
+            if attempt > 0 or self._request_delay:
+                await asyncio.sleep(self._request_delay * (2 ** attempt if attempt > 0 else 1))
+
             try:
-                if has_complex_params:
-                    response = await client.post(url, json=request_params)
-                else:
-                    response = await client.get(url, params=request_params)
-                response.raise_for_status()
-                data = response.json()
-                
-                if "error" in data:
-                    if data["error"] in ["expired_token", "invalid_token"]:
-                        db = SessionLocal()
-                        try:
-                            if await self.refresh_access_token(db):
-                                request_params["auth"] = self.access_token
-                                if has_complex_params:
-                                    response = await client.post(url, json=request_params)
-                                else:
-                                    response = await client.get(url, params=request_params)
-                                response.raise_for_status()
-                                return response.json()
-                        finally:
-                            db.close()
-                    logger.error(f"Bitrix24 API error: {data}")
-                    return None
-                
-                return data
+                async with httpx.AsyncClient(timeout=60.0) as client:
+                    if has_complex_params:
+                        response = await client.post(url, json=request_params)
+                    else:
+                        response = await client.get(url, params=request_params)
+
+                    if response.status_code == 503:
+                        wait = 2 ** (attempt + 1)
+                        logger.warning(f"[Bitrix24 OAuth] 503 on {method}, retry {attempt+1}/{self._max_retries} in {wait}s")
+                        await asyncio.sleep(wait)
+                        continue
+
+                    response.raise_for_status()
+                    data = response.json()
+
+                    if "error" in data:
+                        err_code = data.get("error", "")
+                        if err_code in ["expired_token", "invalid_token"]:
+                            db = SessionLocal()
+                            try:
+                                if await self.refresh_access_token(db):
+                                    request_params["auth"] = self.access_token
+                                    if has_complex_params:
+                                        response = await client.post(url, json=request_params)
+                                    else:
+                                        response = await client.get(url, params=request_params)
+                                    response.raise_for_status()
+                                    return response.json()
+                            finally:
+                                db.close()
+                        if err_code in ("QUERY_LIMIT_EXCEEDED", "OPERATION_TIME_LIMIT"):
+                            wait = 2 ** (attempt + 1)
+                            logger.warning(f"[Bitrix24 OAuth] Rate limit on {method}, retry in {wait}s")
+                            await asyncio.sleep(wait)
+                            continue
+                        logger.error(f"Bitrix24 API error: {data}")
+                        return None
+
+                    return data
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 503 and attempt < self._max_retries - 1:
+                    await asyncio.sleep(2 ** (attempt + 1))
+                    continue
+                logger.error(f"Bitrix24 API request failed: {e}")
+                return None
             except Exception as e:
                 logger.error(f"Bitrix24 API request failed: {e}")
                 return None
-    
-    async def get_recordings(self, db: Session, limit: int = 100) -> List[Dict[str, Any]]:
+        return None
+
+    async def get_recordings(self, db: Session, limit: int = 100,
+                             initial_sync_completed: bool = False,
+                             last_sync_at: Optional[datetime] = None) -> List[Dict[str, Any]]:
         """Получить список записей звонков из Bitrix24 (OAuth)"""
-        return await self._bitrix24_get_recordings()
+        return await self._bitrix24_get_recordings(
+            initial_sync_completed=initial_sync_completed,
+            last_sync_at=last_sync_at,
+        )
 
     _bitrix24_get_recordings = Bitrix24WebhookService._bitrix24_get_recordings
     _extract_recording_url = Bitrix24WebhookService._extract_recording_url
@@ -1634,6 +1763,597 @@ class Bitrix24Service(CRMService):
         return False
 
     _fix_file_url_auth = Bitrix24WebhookService._fix_file_url_auth
+
+
+# ─── Универсальные методы синхронизации CRM-сущностей ─────────
+
+async def sync_crm_deals(service: CRMService, db: Session, integration_id: int) -> int:
+    """Синхронизировать сделки. Возвращает количество обработанных."""
+    count = 0
+    start = 0
+    while True:
+        params = {
+            "select": [
+                "ID", "TITLE", "STAGE_ID", "CATEGORY_ID", "OPPORTUNITY",
+                "CURRENCY_ID", "CLOSED", "PROBABILITY", "SOURCE_ID",
+                "ASSIGNED_BY_ID", "CONTACT_ID", "COMPANY_ID",
+                "CLOSEDATE", "DATE_CREATE", "DATE_MODIFY",
+                "COMMENTS",
+            ],
+            "order": {"ID": "ASC"},
+            "start": start,
+        }
+        data = await service._make_api_request("crm.deal.list", params)
+        if not data or "result" not in data:
+            break
+        items = data["result"]
+        if not items:
+            break
+        for item in items:
+            bx_id = int(item["ID"])
+            deal = db.query(CRMDeal).filter(
+                CRMDeal.bitrix_id == bx_id,
+                CRMDeal.integration_id == integration_id,
+            ).first()
+            if not deal:
+                deal = CRMDeal(bitrix_id=bx_id, integration_id=integration_id)
+                db.add(deal)
+            deal.title = item.get("TITLE")
+            deal.stage_id = item.get("STAGE_ID")
+            deal.category_id = _safe_int(item.get("CATEGORY_ID"))
+            deal.opportunity = _safe_float(item.get("OPPORTUNITY"))
+            deal.currency_id = item.get("CURRENCY_ID")
+            deal.closed = item.get("CLOSED") == "Y"
+            deal.is_won = deal.stage_id.startswith("WON") if deal.stage_id else None
+            deal.probability = _safe_int(item.get("PROBABILITY"))
+            deal.source_id = item.get("SOURCE_ID")
+            deal.assigned_by_id = _safe_int(item.get("ASSIGNED_BY_ID"))
+            deal.contact_id = _safe_int(item.get("CONTACT_ID"))
+            deal.company_id = _safe_int(item.get("COMPANY_ID"))
+            deal.close_date = _parse_dt(item.get("CLOSEDATE"))
+            deal.created_at = _parse_dt(item.get("DATE_CREATE"))
+            deal.updated_at = _parse_dt(item.get("DATE_MODIFY"))
+            deal.comments = item.get("COMMENTS")
+            deal.crm_metadata_json = json.dumps(item, ensure_ascii=False, default=str)
+            deal.synced_at = datetime.utcnow()
+            count += 1
+        db.commit()
+        next_start = data.get("next")
+        if not next_start:
+            break
+        start = next_start
+
+    await _resolve_user_names(service, db, CRMDeal)
+    # Resolve stage names
+    await _resolve_deal_stage_names(service, db)
+    return count
+
+
+async def sync_crm_leads(service: CRMService, db: Session, integration_id: int) -> int:
+    """Синхронизировать лиды."""
+    count = 0
+    start = 0
+    while True:
+        params = {
+            "select": [
+                "ID", "TITLE", "STATUS_ID", "SOURCE_ID", "OPPORTUNITY",
+                "CURRENCY_ID", "ASSIGNED_BY_ID",
+                "NAME", "LAST_NAME", "PHONE", "EMAIL",
+                "DATE_CREATE", "DATE_MODIFY",
+            ],
+            "order": {"ID": "ASC"},
+            "start": start,
+        }
+        data = await service._make_api_request("crm.lead.list", params)
+        if not data or "result" not in data:
+            break
+        items = data["result"]
+        if not items:
+            break
+        for item in items:
+            bx_id = int(item["ID"])
+            lead = db.query(CRMLead).filter(
+                CRMLead.bitrix_id == bx_id,
+                CRMLead.integration_id == integration_id,
+            ).first()
+            if not lead:
+                lead = CRMLead(bitrix_id=bx_id, integration_id=integration_id)
+                db.add(lead)
+            lead.title = item.get("TITLE")
+            lead.status_id = item.get("STATUS_ID")
+            lead.source_id = item.get("SOURCE_ID")
+            lead.opportunity = _safe_float(item.get("OPPORTUNITY"))
+            lead.currency_id = item.get("CURRENCY_ID")
+            lead.assigned_by_id = _safe_int(item.get("ASSIGNED_BY_ID"))
+            lead.converted = item.get("STATUS_ID") == "CONVERTED"
+            lead.name = " ".join(filter(None, [item.get("NAME"), item.get("LAST_NAME")])) or None
+            phones = item.get("PHONE")
+            if isinstance(phones, list) and phones:
+                lead.phone = phones[0].get("VALUE")
+            elif isinstance(phones, str):
+                lead.phone = phones
+            emails = item.get("EMAIL")
+            if isinstance(emails, list) and emails:
+                lead.email = emails[0].get("VALUE")
+            elif isinstance(emails, str):
+                lead.email = emails
+            lead.created_at = _parse_dt(item.get("DATE_CREATE"))
+            lead.updated_at = _parse_dt(item.get("DATE_MODIFY"))
+            lead.crm_metadata_json = json.dumps(item, ensure_ascii=False, default=str)
+            lead.synced_at = datetime.utcnow()
+            count += 1
+        db.commit()
+        next_start = data.get("next")
+        if not next_start:
+            break
+        start = next_start
+    await _resolve_user_names(service, db, CRMLead)
+    return count
+
+
+async def sync_crm_contacts(service: CRMService, db: Session, integration_id: int) -> int:
+    """Синхронизировать контакты."""
+    count = 0
+    start = 0
+    while True:
+        params = {
+            "select": [
+                "ID", "NAME", "LAST_NAME", "SECOND_NAME", "POST",
+                "PHONE", "EMAIL", "COMPANY_ID", "ASSIGNED_BY_ID",
+                "DATE_CREATE", "DATE_MODIFY",
+            ],
+            "order": {"ID": "ASC"},
+            "start": start,
+        }
+        data = await service._make_api_request("crm.contact.list", params)
+        if not data or "result" not in data:
+            break
+        items = data["result"]
+        if not items:
+            break
+        for item in items:
+            bx_id = int(item["ID"])
+            contact = db.query(CRMContact).filter(
+                CRMContact.bitrix_id == bx_id,
+                CRMContact.integration_id == integration_id,
+            ).first()
+            if not contact:
+                contact = CRMContact(bitrix_id=bx_id, integration_id=integration_id)
+                db.add(contact)
+            contact.name = item.get("NAME")
+            contact.last_name = item.get("LAST_NAME")
+            contact.second_name = item.get("SECOND_NAME")
+            contact.full_name = " ".join(filter(None, [
+                item.get("LAST_NAME"), item.get("NAME"), item.get("SECOND_NAME")
+            ])) or None
+            contact.post = item.get("POST")
+            phones = item.get("PHONE")
+            if isinstance(phones, list) and phones:
+                contact.phone = phones[0].get("VALUE")
+            elif isinstance(phones, str):
+                contact.phone = phones
+            emails = item.get("EMAIL")
+            if isinstance(emails, list) and emails:
+                contact.email = emails[0].get("VALUE")
+            elif isinstance(emails, str):
+                contact.email = emails
+            contact.company_id = _safe_int(item.get("COMPANY_ID"))
+            contact.assigned_by_id = _safe_int(item.get("ASSIGNED_BY_ID"))
+            contact.created_at = _parse_dt(item.get("DATE_CREATE"))
+            contact.updated_at = _parse_dt(item.get("DATE_MODIFY"))
+            contact.crm_metadata_json = json.dumps(item, ensure_ascii=False, default=str)
+            contact.synced_at = datetime.utcnow()
+            count += 1
+        db.commit()
+        next_start = data.get("next")
+        if not next_start:
+            break
+        start = next_start
+    await _resolve_user_names(service, db, CRMContact)
+    return count
+
+
+async def sync_crm_companies(service: CRMService, db: Session, integration_id: int) -> int:
+    """Синхронизировать компании."""
+    count = 0
+    start = 0
+    while True:
+        params = {
+            "select": [
+                "ID", "TITLE", "INDUSTRY", "PHONE", "EMAIL", "WEB",
+                "REVENUE", "CURRENCY_ID", "ASSIGNED_BY_ID",
+                "DATE_CREATE", "DATE_MODIFY",
+            ],
+            "order": {"ID": "ASC"},
+            "start": start,
+        }
+        data = await service._make_api_request("crm.company.list", params)
+        if not data or "result" not in data:
+            break
+        items = data["result"]
+        if not items:
+            break
+        for item in items:
+            bx_id = int(item["ID"])
+            company = db.query(CRMCompany).filter(
+                CRMCompany.bitrix_id == bx_id,
+                CRMCompany.integration_id == integration_id,
+            ).first()
+            if not company:
+                company = CRMCompany(bitrix_id=bx_id, integration_id=integration_id)
+                db.add(company)
+            company.title = item.get("TITLE")
+            company.industry = item.get("INDUSTRY")
+            phones = item.get("PHONE")
+            if isinstance(phones, list) and phones:
+                company.phone = phones[0].get("VALUE")
+            elif isinstance(phones, str):
+                company.phone = phones
+            emails = item.get("EMAIL")
+            if isinstance(emails, list) and emails:
+                company.email = emails[0].get("VALUE")
+            elif isinstance(emails, str):
+                company.email = emails
+            webs = item.get("WEB")
+            if isinstance(webs, list) and webs:
+                company.web = webs[0].get("VALUE")
+            elif isinstance(webs, str):
+                company.web = webs
+            company.revenue = _safe_float(item.get("REVENUE"))
+            company.currency_id = item.get("CURRENCY_ID")
+            company.assigned_by_id = _safe_int(item.get("ASSIGNED_BY_ID"))
+            company.created_at = _parse_dt(item.get("DATE_CREATE"))
+            company.updated_at = _parse_dt(item.get("DATE_MODIFY"))
+            company.crm_metadata_json = json.dumps(item, ensure_ascii=False, default=str)
+            company.synced_at = datetime.utcnow()
+            count += 1
+        db.commit()
+        next_start = data.get("next")
+        if not next_start:
+            break
+        start = next_start
+    await _resolve_user_names(service, db, CRMCompany)
+    return count
+
+
+async def sync_crm_deal_products(service: CRMService, db: Session, integration_id: int = None) -> int:
+    """Синхронизировать товары для сделок (batch по 50 штук)."""
+    q = db.query(CRMDeal)
+    if integration_id:
+        q = q.filter(CRMDeal.integration_id == integration_id)
+    deals = q.all()
+    count = 0
+    batch_size = 50
+
+    for i in range(0, len(deals), batch_size):
+        batch = deals[i:i + batch_size]
+        cmd = {f"cmd[deal_{d.bitrix_id}]": f"crm.deal.productrows.get?id={d.bitrix_id}" for d in batch}
+        data = await service._make_api_request("batch", cmd)
+        if not data or "result" not in data:
+            for deal in batch:
+                single = await service._make_api_request("crm.deal.productrows.get", {"id": deal.bitrix_id})
+                if not single or "result" not in single:
+                    continue
+                db.query(CRMDealProduct).filter(CRMDealProduct.deal_id == deal.id).delete()
+                for row in single["result"]:
+                    db.add(_make_deal_product(deal.id, row))
+                    count += 1
+        else:
+            result_data = data["result"].get("result", {})
+            for deal in batch:
+                key = f"deal_{deal.bitrix_id}"
+                rows = result_data.get(key, [])
+                if not rows:
+                    continue
+                db.query(CRMDealProduct).filter(CRMDealProduct.deal_id == deal.id).delete()
+                for row in rows:
+                    db.add(_make_deal_product(deal.id, row))
+                    count += 1
+        db.commit()
+
+    return count
+
+
+def _make_deal_product(deal_id: int, row: dict) -> CRMDealProduct:
+    return CRMDealProduct(
+        deal_id=deal_id,
+        product_id=_safe_int(row.get("PRODUCT_ID")),
+        product_name=row.get("PRODUCT_NAME"),
+        quantity=_safe_float(row.get("QUANTITY")),
+        price=_safe_float(row.get("PRICE")),
+        discount_sum=_safe_float(row.get("DISCOUNT_SUM")),
+        tax_rate=_safe_float(row.get("TAX_RATE")),
+        sum_total=_safe_float(row.get("PRICE_BRUTTO")) or _safe_float(row.get("PRICE_ACCOUNT")),
+    )
+
+
+async def sync_crm_activities(service: CRMService, db: Session, integration_id: int) -> int:
+    """Синхронизировать активности CRM."""
+    count = 0
+    start = 0
+    while True:
+        params = {
+            "select": [
+                "ID", "TYPE_ID", "SUBJECT", "DESCRIPTION",
+                "OWNER_TYPE_ID", "OWNER_ID", "RESPONSIBLE_ID",
+                "DIRECTION", "COMPLETED",
+                "START_TIME", "END_TIME", "CREATED",
+            ],
+            "order": {"ID": "ASC"},
+            "start": start,
+        }
+        data = await service._make_api_request("crm.activity.list", params)
+        if not data or "result" not in data:
+            break
+        items = data["result"]
+        if not items:
+            break
+        for item in items:
+            bx_id = int(item["ID"])
+            act = db.query(CRMActivity).filter(
+                CRMActivity.bitrix_id == bx_id,
+                CRMActivity.integration_id == integration_id,
+            ).first()
+            if not act:
+                act = CRMActivity(bitrix_id=bx_id, integration_id=integration_id)
+                db.add(act)
+            type_id = _safe_int(item.get("TYPE_ID"))
+            act.type_id = type_id
+            type_map = {1: "Встреча", 2: "Звонок", 3: "Задача", 4: "Письмо"}
+            act.type_name = type_map.get(type_id, str(type_id))
+            act.subject = item.get("SUBJECT")
+            act.description = item.get("DESCRIPTION")
+            act.owner_type_id = _safe_int(item.get("OWNER_TYPE_ID"))
+            act.owner_id = _safe_int(item.get("OWNER_ID"))
+            act.responsible_id = _safe_int(item.get("RESPONSIBLE_ID"))
+            act.direction = _safe_int(item.get("DIRECTION"))
+            act.completed = item.get("COMPLETED") == "Y"
+            start_time = _parse_dt(item.get("START_TIME"))
+            end_time = _parse_dt(item.get("END_TIME"))
+            act.start_time = start_time
+            act.end_time = end_time
+            if start_time and end_time:
+                act.duration_seconds = int((end_time - start_time).total_seconds())
+            act.created_at = _parse_dt(item.get("CREATED"))
+            act.crm_metadata_json = json.dumps(item, ensure_ascii=False, default=str)
+            act.synced_at = datetime.utcnow()
+            count += 1
+        db.commit()
+        next_start = data.get("next")
+        if not next_start:
+            break
+        start = next_start
+    return count
+
+
+async def full_crm_sync(
+    service: CRMService,
+    db: Session,
+    integration_id: int,
+    on_stage: Optional[Any] = None,
+) -> Dict[str, int]:
+    """Полная синхронизация всех CRM-сущностей.
+
+    ``on_stage`` — optional callback(stage_name, step_index, total_steps)
+    called before each stage so the caller can update external progress.
+    """
+    stages = [
+        ("deals", sync_crm_deals),
+        ("leads", sync_crm_leads),
+        ("contacts", sync_crm_contacts),
+        ("companies", sync_crm_companies),
+        ("products", sync_crm_deal_products),
+        ("activities", sync_crm_activities),
+        ("linking", link_recordings_to_entities_async),
+    ]
+    total = len(stages)
+    results: Dict[str, int] = {}
+
+    for idx, (name, func) in enumerate(stages):
+        if on_stage:
+            on_stage(name, idx + 1, total)
+        try:
+            if name == "linking":
+                results[name] = await func(service, db, integration_id)
+            else:
+                results[name] = await func(service, db, integration_id)
+        except Exception as e:
+            logger.error(f"[CRM Sync] {name} error: {e}")
+            results[name] = 0
+
+    logger.info(f"[CRM Sync] Full sync done: {results}")
+    return results
+
+
+async def link_recordings_to_entities_async(service: CRMService, db: Session, integration_id: int) -> int:
+    """
+    Привязывает CRM-записи (crm_recordings) к синхронизированным CRM-сущностям
+    (crm_deals, crm_leads, crm_contacts) на основе:
+    1) crm_metadata_json -> owner_type + owner_id
+    2) crm_record_id (== bitrix activity ID) -> запрос к Bitrix API crm.activity.get
+    3) Телефон клиента -> контакт
+    """
+    recordings = db.query(CRMRecording).filter(
+        CRMRecording.integration_id == integration_id,
+        CRMRecording.deal_id.is_(None),
+        CRMRecording.lead_id.is_(None),
+        CRMRecording.contact_crm_id.is_(None),
+    ).all()
+
+    linked = 0
+    for rec in recordings:
+        changed = False
+        meta = {}
+        if rec.crm_metadata_json:
+            try:
+                meta = json.loads(rec.crm_metadata_json) if isinstance(rec.crm_metadata_json, str) else rec.crm_metadata_json
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        owner_type = str(meta.get("owner_type", ""))
+        owner_id_str = str(meta.get("owner_id", ""))
+
+        if not owner_id_str and rec.crm_record_id:
+            activity = db.query(CRMActivity).filter(
+                CRMActivity.bitrix_id == _safe_int(rec.crm_record_id),
+                CRMActivity.integration_id == integration_id,
+            ).first()
+            if activity:
+                owner_type = str(activity.owner_type_id or "")
+                owner_id_str = str(activity.owner_id or "")
+
+        if not owner_id_str and rec.crm_record_id and service:
+            try:
+                activity_data = await service._make_api_request(
+                    "crm.activity.get",
+                    params={"ID": rec.crm_record_id}
+                )
+                if activity_data and "result" in activity_data:
+                    result = activity_data["result"]
+                    owner_type = str(result.get("OWNER_TYPE_ID", ""))
+                    owner_id_str = str(result.get("OWNER_ID", ""))
+                    meta["owner_type"] = owner_type
+                    meta["owner_id"] = owner_id_str
+                    rec.crm_metadata_json = json.dumps(meta, ensure_ascii=False)
+            except Exception as e:
+                logger.debug(f"Failed to get activity {rec.crm_record_id}: {e}")
+
+        owner_bx_id = _safe_int(owner_id_str)
+
+        if owner_type == "2" and owner_bx_id:
+            deal = db.query(CRMDeal).filter(
+                CRMDeal.bitrix_id == owner_bx_id,
+                CRMDeal.integration_id == integration_id,
+            ).first()
+            if deal:
+                rec.deal_id = deal.id
+                changed = True
+                if deal.contact_id:
+                    contact = db.query(CRMContact).filter(
+                        CRMContact.bitrix_id == deal.contact_id,
+                        CRMContact.integration_id == integration_id,
+                    ).first()
+                    if contact:
+                        rec.contact_crm_id = contact.id
+        elif owner_type == "1" and owner_bx_id:
+            lead = db.query(CRMLead).filter(
+                CRMLead.bitrix_id == owner_bx_id,
+                CRMLead.integration_id == integration_id,
+            ).first()
+            if lead:
+                rec.lead_id = lead.id
+                changed = True
+        elif owner_type == "3" and owner_bx_id:
+            contact = db.query(CRMContact).filter(
+                CRMContact.bitrix_id == owner_bx_id,
+                CRMContact.integration_id == integration_id,
+            ).first()
+            if contact:
+                rec.contact_crm_id = contact.id
+                changed = True
+
+        if not changed and rec.client_phone:
+            phone_digits = ''.join(c for c in rec.client_phone if c.isdigit())
+            if len(phone_digits) >= 7:
+                suffix = phone_digits[-10:]
+                contacts = db.query(CRMContact).filter(
+                    CRMContact.integration_id == integration_id,
+                    CRMContact.phone.isnot(None),
+                ).all()
+                for c in contacts:
+                    c_digits = ''.join(ch for ch in (c.phone or "") if ch.isdigit())
+                    if c_digits.endswith(suffix) or suffix.endswith(c_digits[-10:] if len(c_digits) >= 10 else c_digits):
+                        rec.contact_crm_id = c.id
+                        changed = True
+                        break
+
+        if changed:
+            linked += 1
+
+    if linked > 0:
+        db.commit()
+    logger.info(f"[CRM Sync] Linked {linked} recordings to CRM entities")
+    return linked
+
+
+# ─── Helpers ──────────────────────────────────────────────────
+
+def _safe_int(val) -> Optional[int]:
+    if val is None or val == "" or val == "null":
+        return None
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return None
+
+
+def _safe_float(val) -> Optional[float]:
+    if val is None or val == "" or val == "null":
+        return None
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None
+
+
+def _parse_dt(val) -> Optional[datetime]:
+    if not val:
+        return None
+    for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        try:
+            dt = datetime.strptime(str(val).replace("+00:00", "").replace("+03:00", ""), fmt)
+            return dt
+        except ValueError:
+            continue
+    return None
+
+
+async def _resolve_user_names(service: CRMService, db: Session, model_class):
+    """Заполняет assigned_by_name для записей без имени, делая user.get."""
+    rows = db.query(model_class).filter(
+        model_class.assigned_by_id.isnot(None),
+        (model_class.assigned_by_name.is_(None)) | (model_class.assigned_by_name == "")
+    ).all()
+    cache: Dict[int, str] = {}
+    for row in rows:
+        uid = row.assigned_by_id
+        if uid in cache:
+            row.assigned_by_name = cache[uid]
+            continue
+        data = await service._make_api_request("user.get", {"ID": uid})
+        if data and "result" in data and data["result"]:
+            u = data["result"][0]
+            name = " ".join(filter(None, [u.get("LAST_NAME"), u.get("NAME")])) or f"User {uid}"
+            cache[uid] = name
+            row.assigned_by_name = name
+    db.commit()
+
+
+async def _resolve_deal_stage_names(service: CRMService, db: Session):
+    """Заполняет stage_name и category_name для сделок."""
+    cats_data = await service._make_api_request("crm.dealcategory.list")
+    cat_map = {}
+    if cats_data and "result" in cats_data:
+        for c in cats_data["result"]:
+            cat_map[int(c["ID"])] = c.get("NAME", "")
+    cat_map[0] = "Общая"
+
+    stage_map: Dict[str, str] = {}
+    for cat_id in cat_map:
+        stages_data = await service._make_api_request(
+            "crm.dealcategory.stage.list", {"id": cat_id}
+        )
+        if stages_data and "result" in stages_data:
+            for s in stages_data["result"]:
+                stage_map[s["STATUS_ID"]] = s.get("NAME", s["STATUS_ID"])
+
+    deals = db.query(CRMDeal).filter(
+        (CRMDeal.stage_name.is_(None)) | (CRMDeal.stage_name == "")
+    ).all()
+    for d in deals:
+        d.stage_name = stage_map.get(d.stage_id, d.stage_id)
+        d.category_name = cat_map.get(d.category_id or 0, "")
+    db.commit()
 
 
 class CRMServiceFactory:

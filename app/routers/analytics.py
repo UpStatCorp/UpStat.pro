@@ -17,6 +17,7 @@ from deps import require_user
 from models import (
     AnalyticsMessage, TeamMember, Team, User,
     ParameterDefinition, ParameterValue, Conversation,
+    CRMDeal, CRMLead, CRMIntegration,
 )
 
 logger = logging.getLogger(__name__)
@@ -620,4 +621,203 @@ async def api_query(
         "block_id": block_id,
         "user_msg_id": user_msg.id,
         "bot_msg_id": bot_msg.id,
+    })
+
+
+# ═══════════════════════════════════════════════════════════
+# CRM-аналитика (третья вкладка)
+# ═══════════════════════════════════════════════════════════
+
+def _get_user_integration_ids(db: Session, user_id: int) -> List[int]:
+    """Возвращает список ID интеграций пользователя."""
+    rows = db.query(CRMIntegration.id).filter(
+        CRMIntegration.user_id == user_id, CRMIntegration.is_active == True
+    ).all()
+    return [r.id for r in rows]
+
+
+def _crm_period_filter(query, model_cls, period: str):
+    """Фильтрует query по периоду (поле close_date или created_at)."""
+    days = _parse_period(period)
+    if days > 0:
+        since = datetime.utcnow() - timedelta(days=days)
+        date_col = getattr(model_cls, "close_date", None) or model_cls.created_at
+        query = query.filter(date_col >= since)
+    return query
+
+
+@router.get("/analytics/api/crm/revenue")
+def api_crm_revenue(request: Request, db: Session = Depends(get_db), period: str = Query("1m")):
+    """Выручка по периодам (сумма opportunity закрытых выигранных сделок)."""
+    user = require_user(request, db)
+    integ_ids = _get_user_integration_ids(db, user.id)
+    if not integ_ids:
+        return JSONResponse({"total": 0, "count": 0, "labels": [], "values": []})
+
+    base = db.query(CRMDeal).filter(
+        CRMDeal.integration_id.in_(integ_ids),
+        CRMDeal.closed == True,
+        CRMDeal.is_won == True,
+    )
+    base = _crm_period_filter(base, CRMDeal, period)
+    deals = base.all()
+
+    total = sum(d.opportunity or 0 for d in deals)
+    count = len(deals)
+
+    by_month = {}
+    for d in deals:
+        key = d.close_date.strftime("%Y-%m") if d.close_date else "N/A"
+        by_month[key] = by_month.get(key, 0) + (d.opportunity or 0)
+    sorted_keys = sorted(by_month.keys())
+
+    return JSONResponse({
+        "total": round(total, 2),
+        "count": count,
+        "labels": sorted_keys,
+        "values": [round(by_month[k], 2) for k in sorted_keys],
+    })
+
+
+@router.get("/analytics/api/crm/avg-check")
+def api_crm_avg_check(request: Request, db: Session = Depends(get_db), period: str = Query("1m")):
+    """Средний чек (avg opportunity по закрытым выигранным сделкам)."""
+    user = require_user(request, db)
+    integ_ids = _get_user_integration_ids(db, user.id)
+    if not integ_ids:
+        return JSONResponse({"avg_check": 0, "count": 0})
+
+    row = db.query(
+        func.avg(CRMDeal.opportunity).label("avg"),
+        func.count(CRMDeal.id).label("cnt"),
+    ).filter(
+        CRMDeal.integration_id.in_(integ_ids),
+        CRMDeal.closed == True,
+        CRMDeal.is_won == True,
+    )
+    days = _parse_period(period)
+    if days > 0:
+        row = row.filter(CRMDeal.close_date >= datetime.utcnow() - timedelta(days=days))
+    result = row.first()
+
+    return JSONResponse({
+        "avg_check": round(float(result.avg or 0), 2),
+        "count": result.cnt or 0,
+    })
+
+
+@router.get("/analytics/api/crm/win-rate")
+def api_crm_win_rate(request: Request, db: Session = Depends(get_db), period: str = Query("1m")):
+    """Win rate: % выигранных от всех закрытых сделок."""
+    user = require_user(request, db)
+    integ_ids = _get_user_integration_ids(db, user.id)
+    if not integ_ids:
+        return JSONResponse({"win_rate": 0, "won": 0, "lost": 0, "total_closed": 0})
+
+    base = db.query(CRMDeal).filter(
+        CRMDeal.integration_id.in_(integ_ids),
+        CRMDeal.closed == True,
+    )
+    days = _parse_period(period)
+    if days > 0:
+        base = base.filter(CRMDeal.close_date >= datetime.utcnow() - timedelta(days=days))
+
+    total_closed = base.count()
+    won = base.filter(CRMDeal.is_won == True).count()
+    lost = total_closed - won
+
+    return JSONResponse({
+        "win_rate": round(won / total_closed * 100, 1) if total_closed > 0 else 0,
+        "won": won,
+        "lost": lost,
+        "total_closed": total_closed,
+    })
+
+
+@router.get("/analytics/api/crm/conversion")
+def api_crm_conversion(request: Request, db: Session = Depends(get_db), period: str = Query("1m")):
+    """Конверсия воронки: лиды -> сделки -> закрытые -> выиграны."""
+    user = require_user(request, db)
+    integ_ids = _get_user_integration_ids(db, user.id)
+    if not integ_ids:
+        return JSONResponse({"leads": 0, "deals": 0, "closed": 0, "won": 0})
+
+    days = _parse_period(period)
+    since = datetime.utcnow() - timedelta(days=days) if days > 0 else None
+
+    leads_q = db.query(CRMLead).filter(CRMLead.integration_id.in_(integ_ids))
+    deals_q = db.query(CRMDeal).filter(CRMDeal.integration_id.in_(integ_ids))
+    if since:
+        leads_q = leads_q.filter(CRMLead.created_at >= since)
+        deals_q = deals_q.filter(CRMDeal.created_at >= since)
+
+    total_leads = leads_q.count()
+    total_deals = deals_q.count()
+    total_closed = deals_q.filter(CRMDeal.closed == True).count()
+    total_won = deals_q.filter(CRMDeal.closed == True, CRMDeal.is_won == True).count()
+
+    return JSONResponse({
+        "leads": total_leads,
+        "deals": total_deals,
+        "closed": total_closed,
+        "won": total_won,
+    })
+
+
+@router.get("/analytics/api/crm/cycle")
+def api_crm_cycle(request: Request, db: Session = Depends(get_db), period: str = Query("1m")):
+    """Средний цикл сделки (дни от создания до закрытия)."""
+    user = require_user(request, db)
+    integ_ids = _get_user_integration_ids(db, user.id)
+    if not integ_ids:
+        return JSONResponse({"avg_days": 0, "count": 0})
+
+    base = db.query(CRMDeal).filter(
+        CRMDeal.integration_id.in_(integ_ids),
+        CRMDeal.closed == True,
+        CRMDeal.created_at.isnot(None),
+        CRMDeal.close_date.isnot(None),
+    )
+    days = _parse_period(period)
+    if days > 0:
+        base = base.filter(CRMDeal.close_date >= datetime.utcnow() - timedelta(days=days))
+    deals = base.all()
+
+    if not deals:
+        return JSONResponse({"avg_days": 0, "count": 0})
+
+    total_days = sum((d.close_date - d.created_at).days for d in deals if d.close_date and d.created_at)
+    return JSONResponse({
+        "avg_days": round(total_days / len(deals), 1) if deals else 0,
+        "count": len(deals),
+    })
+
+
+@router.get("/analytics/api/crm/revenue-by-manager")
+def api_crm_revenue_by_manager(request: Request, db: Session = Depends(get_db), period: str = Query("1m")):
+    """Выручка по менеджерам (bar chart)."""
+    user = require_user(request, db)
+    integ_ids = _get_user_integration_ids(db, user.id)
+    if not integ_ids:
+        return JSONResponse({"labels": [], "values": []})
+
+    base = db.query(
+        CRMDeal.assigned_by_name,
+        func.sum(CRMDeal.opportunity).label("total"),
+        func.count(CRMDeal.id).label("cnt"),
+    ).filter(
+        CRMDeal.integration_id.in_(integ_ids),
+        CRMDeal.closed == True,
+        CRMDeal.is_won == True,
+        CRMDeal.assigned_by_name.isnot(None),
+    )
+    days = _parse_period(period)
+    if days > 0:
+        base = base.filter(CRMDeal.close_date >= datetime.utcnow() - timedelta(days=days))
+    rows = base.group_by(CRMDeal.assigned_by_name).order_by(func.sum(CRMDeal.opportunity).desc()).all()
+
+    return JSONResponse({
+        "labels": [r.assigned_by_name or "—" for r in rows],
+        "values": [round(float(r.total or 0), 2) for r in rows],
+        "counts": [r.cnt for r in rows],
     })

@@ -13,8 +13,15 @@ from sqlalchemy import desc, func, and_
 
 from database import get_db, SessionLocal
 from deps import require_user
-from models import User, CRMIntegration, CRMRecording, Conversation, Message, Attachment, AnalysisTrainingPlan, CRMManagerMapping, TeamMember
-from services.crm_service import CRMServiceFactory, AmoCRMService, Bitrix24Service, Bitrix24WebhookService
+from models import (
+    User, CRMIntegration, CRMRecording, Conversation, Message, Attachment,
+    AnalysisTrainingPlan, CRMManagerMapping, TeamMember,
+    CRMDeal, CRMLead, CRMContact, CRMCompany, CRMDealProduct, CRMActivity,
+)
+from services.crm_service import (
+    CRMServiceFactory, AmoCRMService, Bitrix24Service, Bitrix24WebhookService,
+    full_crm_sync, sync_crm_deals, sync_crm_leads,
+)
 from services.pipeline import run_pipeline, run_pipeline_from_raw_text
 from services.notification_service import NotificationService, NotificationType
 from services.training_plan_service import TrainingPlanService
@@ -79,13 +86,28 @@ async def connect_crm(crm_type: str, request: Request, db: Session = Depends(get
         if not domain:
             raise HTTPException(400, "Домен AmoCRM обязателен")
 
-        integration = CRMIntegration(
-            user_id=user.id, crm_type="amocrm",
-            crm_name=f"AmoCRM ({domain})", crm_domain=domain, is_active=False,
-            client_id=AmoCRMService(CRMIntegration())._encrypt_token(AMOCRM_CLIENT_ID),
-            client_secret=AmoCRMService(CRMIntegration())._encrypt_token(AMOCRM_CLIENT_SECRET),
-        )
-        db.add(integration)
+        existing = db.query(CRMIntegration).filter(
+            CRMIntegration.user_id == user.id,
+            CRMIntegration.crm_type == "amocrm",
+            CRMIntegration.crm_domain == domain,
+        ).first()
+        if existing and existing.is_active:
+            raise HTTPException(400, "AmoCRM с этим доменом уже подключена")
+
+        if existing:
+            integration = existing
+            integration.client_id = AmoCRMService(CRMIntegration())._encrypt_token(AMOCRM_CLIENT_ID)
+            integration.client_secret = AmoCRMService(CRMIntegration())._encrypt_token(AMOCRM_CLIENT_SECRET)
+            integration.is_active = False
+            integration.updated_at = datetime.utcnow()
+        else:
+            integration = CRMIntegration(
+                user_id=user.id, crm_type="amocrm",
+                crm_name=f"AmoCRM ({domain})", crm_domain=domain, is_active=False,
+                client_id=AmoCRMService(CRMIntegration())._encrypt_token(AMOCRM_CLIENT_ID),
+                client_secret=AmoCRMService(CRMIntegration())._encrypt_token(AMOCRM_CLIENT_SECRET),
+            )
+            db.add(integration)
         db.commit()
 
         state = f"{integration.id}:{uuid.uuid4().hex}"
@@ -99,14 +121,30 @@ async def connect_crm(crm_type: str, request: Request, db: Session = Depends(get
         if not domain:
             raise HTTPException(400, "Домен Bitrix24 обязателен")
         domain = domain.replace(".bitrix24.ru", "").replace(".bitrix24.com", "")
+        full_domain = f"{domain}.bitrix24.ru"
 
-        integration = CRMIntegration(
-            user_id=user.id, crm_type="bitrix24",
-            crm_name=f"Bitrix24 ({domain})", crm_domain=f"{domain}.bitrix24.ru", is_active=False,
-            client_id=Bitrix24Service(CRMIntegration())._encrypt_token(BITRIX24_CLIENT_ID),
-            client_secret=Bitrix24Service(CRMIntegration())._encrypt_token(BITRIX24_CLIENT_SECRET),
-        )
-        db.add(integration)
+        existing = db.query(CRMIntegration).filter(
+            CRMIntegration.user_id == user.id,
+            CRMIntegration.crm_type == "bitrix24",
+            CRMIntegration.crm_domain == full_domain,
+        ).first()
+        if existing and existing.is_active:
+            raise HTTPException(400, "Bitrix24 с этим доменом уже подключен")
+
+        if existing:
+            integration = existing
+            integration.client_id = Bitrix24Service(CRMIntegration())._encrypt_token(BITRIX24_CLIENT_ID)
+            integration.client_secret = Bitrix24Service(CRMIntegration())._encrypt_token(BITRIX24_CLIENT_SECRET)
+            integration.is_active = False
+            integration.updated_at = datetime.utcnow()
+        else:
+            integration = CRMIntegration(
+                user_id=user.id, crm_type="bitrix24",
+                crm_name=f"Bitrix24 ({domain})", crm_domain=full_domain, is_active=False,
+                client_id=Bitrix24Service(CRMIntegration())._encrypt_token(BITRIX24_CLIENT_ID),
+                client_secret=Bitrix24Service(CRMIntegration())._encrypt_token(BITRIX24_CLIENT_SECRET),
+            )
+            db.add(integration)
         db.commit()
 
         state = f"{integration.id}:{uuid.uuid4().hex}"
@@ -146,13 +184,31 @@ async def connect_bitrix24_webhook(request: Request, db: Session = Depends(get_d
     except httpx.HTTPError:
         raise HTTPException(400, "Не удалось подключиться к вебхуку. Проверьте URL.")
 
-    integration = CRMIntegration(
-        user_id=user.id, crm_type="bitrix24",
-        crm_name=f"Bitrix24 ({domain}) [Вебхук]", crm_domain=domain, is_active=True,
-        access_token=Bitrix24WebhookService(CRMIntegration())._encrypt_token(webhook_url),
-        refresh_token=None,
-    )
-    db.add(integration)
+    existing = db.query(CRMIntegration).filter(
+        CRMIntegration.user_id == user.id,
+        CRMIntegration.crm_type == "bitrix24",
+        CRMIntegration.crm_domain == domain,
+    ).first()
+    if existing and existing.is_active:
+        raise HTTPException(400, "Bitrix24 с этим доменом уже подключен")
+
+    encrypted_url = Bitrix24WebhookService(CRMIntegration())._encrypt_token(webhook_url)
+
+    if existing:
+        integration = existing
+        integration.is_active = True
+        integration.access_token = encrypted_url
+        integration.refresh_token = None
+        integration.crm_name = f"Bitrix24 ({domain}) [Вебхук]"
+        integration.updated_at = datetime.utcnow()
+    else:
+        integration = CRMIntegration(
+            user_id=user.id, crm_type="bitrix24",
+            crm_name=f"Bitrix24 ({domain}) [Вебхук]", crm_domain=domain, is_active=True,
+            access_token=encrypted_url,
+            refresh_token=None,
+        )
+        db.add(integration)
     db.commit()
     return JSONResponse({"status": "success", "message": "Bitrix24 подключен через вебхук"})
 
@@ -221,7 +277,12 @@ async def sync_recordings(integration_id: int, background_tasks: BackgroundTasks
         logger.warning(f"[Sync] Integration {integration_id} not found or inactive")
         raise HTTPException(404, "Интеграция не найдена или не активна")
     logger.info(f"[Sync] Starting sync for integration {integration_id} ({integration.crm_type})")
-    _sync_status[integration_id] = {"phase": "starting", "found": 0, "saved": 0, "done": False, "error": None}
+    _sync_status[integration_id] = {
+        "phase": "starting", "stage": "recordings", "stage_step": 1, "stage_total": 1,
+        "stage_label": "Записи звонков",
+        "found": 0, "saved": 0, "done": False, "error": None,
+        "crm_type": integration.crm_type, "entity_results": {},
+    }
     background_tasks.add_task(sync_crm_recordings_task, integration_id)
     return JSONResponse({"status": "started"})
 
@@ -233,11 +294,17 @@ async def sync_status(integration_id: int, request: Request, db: Session = Depen
     integration = db.query(CRMIntegration).filter(CRMIntegration.id == integration_id, CRMIntegration.user_id == user.id).first()
     if not integration:
         raise HTTPException(404)
-    status = _sync_status.get(integration_id, {"phase": "idle", "done": True})
+    status = _sync_status.get(integration_id, {
+        "phase": "idle", "done": True, "stage": None,
+        "stage_step": 0, "stage_total": 0, "stage_label": "",
+        "crm_type": integration.crm_type, "entity_results": {},
+    })
+    db.refresh(integration)
     return JSONResponse({
         **status,
         "recordings_count": integration.recordings_count,
         "last_sync_at": integration.last_sync_at.strftime("%d.%m %H:%M") if integration.last_sync_at else None,
+        "crm_type": status.get("crm_type") or integration.crm_type,
     })
 
 
@@ -256,8 +323,13 @@ async def sync_crm_recordings_task(integration_id: int):
         logger.info(f"[Sync] Creating service for {integration.crm_type}, domain={integration.crm_domain}")
         service = CRMServiceFactory.create(integration)
         status["phase"] = "fetching"
-        logger.info(f"[Sync] Calling get_recordings...")
-        recordings_data = await service.get_recordings(db)
+        is_initial = not integration.initial_sync_completed
+        logger.info(f"[Sync] Calling get_recordings (initial={is_initial})...")
+        recordings_data = await service.get_recordings(
+            db,
+            initial_sync_completed=integration.initial_sync_completed,
+            last_sync_at=integration.last_sync_at,
+        )
         logger.info(f"[Sync] get_recordings returned {len(recordings_data)} items")
         status.update(phase="saving", found=len(recordings_data))
 
@@ -312,6 +384,9 @@ async def sync_crm_recordings_task(integration_id: int):
 
         integration.last_sync_at = datetime.utcnow()
         integration.recordings_count = db.query(CRMRecording).filter(CRMRecording.integration_id == integration.id).count()
+        if not integration.initial_sync_completed:
+            integration.initial_sync_completed = True
+            logger.info(f"[Sync] Initial sync completed for integration {integration_id}")
         db.commit()
         status.update(phase="done", saved=new_count, done=True)
         logger.info(f"[Sync] Integration {integration_id}: {new_count} new, {updated_count} updated")
@@ -444,7 +519,7 @@ async def recordings_page(
 ):
     """Страница со списком записей из CRM"""
     user = require_user(request, db)
-    user_integ_ids = [i.id for i in db.query(CRMIntegration).filter(CRMIntegration.user_id == user.id, CRMIntegration.is_active == True).all()]
+    user_integ_ids = [i.id for i in db.query(CRMIntegration).filter(CRMIntegration.user_id == user.id).all()]
     owns_filter = CRMRecording.integration_id.in_(user_integ_ids) if user_integ_ids else CRMRecording.id < 0
     query = db.query(CRMRecording).filter(owns_filter)
 
@@ -473,7 +548,7 @@ async def recordings_page(
 
     recordings = query.order_by(desc(CRMRecording.call_date)).offset((page - 1) * per_page).limit(per_page).all()
 
-    integrations = db.query(CRMIntegration).filter(CRMIntegration.user_id == user.id, CRMIntegration.is_active == True).all()
+    integrations = db.query(CRMIntegration).filter(CRMIntegration.user_id == user.id).all()
 
     managers_q = db.query(CRMRecording.manager_name).filter(owns_filter, CRMRecording.manager_name.isnot(None), CRMRecording.manager_name != "").distinct().all()
     manager_names = sorted([m[0] for m in managers_q])
@@ -637,7 +712,7 @@ async def batch_analyze_task(batch_id: str, user_id: int):
 
 @router.post("/crm/webhook/{integration_id}/{webhook_secret}")
 async def crm_webhook_receiver(integration_id: int, webhook_secret: str, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    """Принимает webhook от CRM при завершении звонка (ONVOXIMPLANTCALLEND)"""
+    """Принимает webhook от CRM (ONVOXIMPLANTCALLEND, ONCRMDEAL*, ONCRMLEAD*, ONCRMACTIVITY*)"""
     integration = db.query(CRMIntegration).filter(CRMIntegration.id == integration_id, CRMIntegration.is_active == True).first()
     if not integration:
         raise HTTPException(404, "Integration not found")
@@ -654,17 +729,127 @@ async def crm_webhook_receiver(integration_id: int, webhook_secret: str, request
             body = dict(form)
     except Exception:
         pass
-    logger.info(f"[Webhook] Received ONVOXIMPLANTCALLEND for integration {integration_id}: {json.dumps(body, default=str)[:500]}")
-    background_tasks.add_task(_delayed_sync, integration_id)
+
+    event = body.get("event", "").upper()
+    logger.info(f"[Webhook] Received event='{event}' for integration {integration_id}: {json.dumps(body, default=str)[:500]}")
+
+    if event in ("ONCRMDEALUPDATE", "ONCRMDEALADD", "ONCRMDEALDELETE"):
+        background_tasks.add_task(_delayed_entity_sync, integration_id, "deals")
+    elif event in ("ONCRMLEADUPDATE", "ONCRMLEADADD", "ONCRMLEADDELETE"):
+        background_tasks.add_task(_delayed_entity_sync, integration_id, "leads")
+    elif event in ("ONCRMACTIVITYADD", "ONCRMACTIVITYUPDATE"):
+        background_tasks.add_task(_delayed_sync, integration_id)
+    else:
+        background_tasks.add_task(_delayed_sync, integration_id)
+
     return JSONResponse({"status": "ok"})
 
 
 async def _delayed_sync(integration_id: int, delay: int = 15):
-    """Запустить синхронизацию с задержкой — даём Bitrix24 время обработать запись"""
+    """Запустить синхронизацию записей с задержкой."""
     import asyncio
     logger.info(f"[Webhook] Waiting {delay}s for recording to be processed...")
     await asyncio.sleep(delay)
     await sync_crm_recordings_task(integration_id)
+
+
+async def _delayed_entity_sync(integration_id: int, entity: str, delay: int = 5):
+    """Синхронизировать конкретную сущность CRM после webhook-события."""
+    import asyncio
+    await asyncio.sleep(delay)
+    db = SessionLocal()
+    try:
+        integration = db.query(CRMIntegration).get(integration_id)
+        if not integration:
+            return
+        service = CRMServiceFactory.create(integration)
+        if entity == "deals":
+            await sync_crm_deals(service, db, integration_id)
+        elif entity == "leads":
+            await sync_crm_leads(service, db, integration_id)
+        logger.info(f"[Webhook] Entity sync done: {entity} for integration {integration_id}")
+    except Exception as e:
+        logger.error(f"[Webhook] Entity sync error ({entity}): {e}")
+    finally:
+        db.close()
+
+
+_STAGE_LABELS = {
+    "recordings": "Записи звонков",
+    "deals": "Сделки",
+    "leads": "Лиды",
+    "contacts": "Контакты",
+    "companies": "Компании",
+    "products": "Товары",
+    "activities": "Активности",
+    "linking": "Привязка",
+}
+
+
+@router.post("/crm/sync-all/{integration_id}")
+async def sync_all_crm_data(integration_id: int, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    """Полная синхронизация всех CRM-сущностей (сделки, лиды, контакты, компании, товары, активности)."""
+    user = require_user(request, db)
+    integration = db.query(CRMIntegration).filter(CRMIntegration.id == integration_id, CRMIntegration.user_id == user.id).first()
+    if not integration:
+        raise HTTPException(404, "Интеграция не найдена")
+    _sync_status[integration_id] = {
+        "phase": "starting",
+        "stage": None,
+        "stage_step": 0,
+        "stage_total": 8,
+        "stage_label": "",
+        "found": 0,
+        "saved": 0,
+        "done": False,
+        "error": None,
+        "crm_type": integration.crm_type,
+        "entity_results": {},
+    }
+    background_tasks.add_task(_run_full_sync, integration_id)
+    return JSONResponse({"status": "started", "message": "Полная синхронизация запущена"})
+
+
+async def _run_full_sync(integration_id: int):
+    logger.info(f"[CRM] Starting full sync for integration {integration_id}")
+    status = _sync_status.setdefault(integration_id, {})
+    status.update(phase="recordings", stage="recordings", stage_step=1, stage_label="Записи звонков", done=False)
+
+    try:
+        await sync_crm_recordings_task(integration_id)
+        logger.info(f"[CRM] Recordings sync done, starting entity sync...")
+    except Exception as e:
+        logger.error(f"[CRM] Recordings sync error: {e}")
+
+    status.update(phase="entities", done=False)
+    db = SessionLocal()
+    try:
+        integration = db.query(CRMIntegration).get(integration_id)
+        if not integration:
+            return
+
+        def _on_stage(stage_name: str, step: int, total: int):
+            status.update(
+                stage=stage_name,
+                stage_step=step + 1,
+                stage_total=total + 1,
+                stage_label=_STAGE_LABELS.get(stage_name, stage_name),
+            )
+
+        service = CRMServiceFactory.create(integration)
+        results = await full_crm_sync(service, db, integration_id, on_stage=_on_stage)
+        status["entity_results"] = results
+        logger.info(f"[CRM] Full sync complete for integration {integration_id}: {results}")
+        total_recs = db.query(CRMRecording).filter(CRMRecording.integration_id == integration_id).count()
+        status.update(
+            phase="done", done=True, recordings_count=total_recs,
+            stage="done", stage_step=status.get("stage_total", 8), stage_label="Готово",
+        )
+    except Exception as e:
+        logger.error(f"[CRM] Full sync error: {e}")
+        status.update(phase="error", error=str(e)[:300], done=True)
+    finally:
+        db.close()
 
 
 @router.post("/crm/integrations/{integration_id}/enable-webhook")
@@ -982,11 +1167,29 @@ def _extract_score_from_report(report_text: str) -> Optional[int]:
     return None
 
 
-# ── Удаление интеграции ────────────────────────────────
+# ── Отключение / Удаление интеграции ───────────────────
+
+@router.post("/crm/integrations/{integration_id}/disconnect")
+async def disconnect_integration(integration_id: int, request: Request, db: Session = Depends(get_db)):
+    """Мягкое отключение: деактивирует токены, но сохраняет все данные."""
+    user = require_user(request, db)
+    integration = db.query(CRMIntegration).filter(
+        CRMIntegration.id == integration_id, CRMIntegration.user_id == user.id,
+    ).first()
+    if not integration:
+        raise HTTPException(404, "Интеграция не найдена")
+    integration.is_active = False
+    integration.access_token = None
+    integration.refresh_token = None
+    integration.token_expires_at = None
+    integration.updated_at = datetime.utcnow()
+    db.commit()
+    return JSONResponse({"status": "disconnected", "message": "Интеграция отключена. Данные сохранены."})
+
 
 @router.delete("/crm/integrations/{integration_id}")
 async def delete_integration(integration_id: int, request: Request, db: Session = Depends(get_db)):
-    """Удалить интеграцию"""
+    """Полное удаление интеграции и всех связанных данных."""
     user = require_user(request, db)
     integration = db.query(CRMIntegration).filter(CRMIntegration.id == integration_id, CRMIntegration.user_id == user.id).first()
     if not integration:
@@ -1169,3 +1372,107 @@ async def get_manager_mapping(integration_id: int, request: Request, db: Session
             for m in mappings
         ]
     })
+
+
+# ── Детали записи (модальное окно) ────────────────────────
+
+@router.get("/crm/recording/{recording_id}/details")
+async def get_recording_details(recording_id: int, request: Request, db: Session = Depends(get_db)):
+    """Возвращает полные детали записи + связанные CRM-сущности для модального окна."""
+    user = require_user(request, db)
+    rec = db.query(CRMRecording).filter(CRMRecording.id == recording_id).first()
+    if not rec:
+        raise HTTPException(404, "Запись не найдена")
+    integration = db.query(CRMIntegration).get(rec.integration_id)
+    if not integration or integration.user_id != user.id:
+        raise HTTPException(403, "Нет доступа")
+
+    result = {
+        "recording": {
+            "id": rec.id,
+            "record_type": rec.record_type,
+            "call_date": rec.call_date.isoformat() if rec.call_date else None,
+            "duration_seconds": rec.duration_seconds,
+            "direction": rec.direction,
+            "manager_name": rec.manager_name,
+            "client_name": rec.client_name,
+            "client_phone": rec.client_phone,
+            "client_company": rec.client_company,
+            "sync_status": rec.sync_status,
+            "analysis_score": rec.analysis_score,
+            "conversation_id": rec.conversation_id,
+            "recording_url": rec.recording_url,
+            "local_file_path": rec.local_file_path,
+        },
+        "deal": None,
+        "lead": None,
+        "contact": None,
+        "company": None,
+        "products": [],
+    }
+
+    if rec.deal_id:
+        deal = db.query(CRMDeal).get(rec.deal_id)
+        if deal:
+            result["deal"] = {
+                "title": deal.title,
+                "stage_name": deal.stage_name or deal.stage_id,
+                "category_name": deal.category_name,
+                "opportunity": deal.opportunity,
+                "currency_id": deal.currency_id,
+                "closed": deal.closed,
+                "is_won": deal.is_won,
+                "probability": deal.probability,
+                "close_date": deal.close_date.isoformat() if deal.close_date else None,
+                "assigned_by_name": deal.assigned_by_name,
+                "source_name": deal.source_name or deal.source_id,
+                "loss_reason": deal.loss_reason,
+            }
+            products = db.query(CRMDealProduct).filter(CRMDealProduct.deal_id == deal.id).all()
+            result["products"] = [
+                {
+                    "product_name": p.product_name,
+                    "quantity": p.quantity,
+                    "price": p.price,
+                    "discount_sum": p.discount_sum,
+                    "sum_total": p.sum_total,
+                }
+                for p in products
+            ]
+
+    if rec.lead_id:
+        lead = db.query(CRMLead).get(rec.lead_id)
+        if lead:
+            result["lead"] = {
+                "title": lead.title,
+                "status_name": lead.status_name or lead.status_id,
+                "source_name": lead.source_name or lead.source_id,
+                "opportunity": lead.opportunity,
+                "converted": lead.converted,
+                "assigned_by_name": lead.assigned_by_name,
+                "name": lead.name,
+                "phone": lead.phone,
+                "email": lead.email,
+            }
+
+    if rec.contact_crm_id:
+        contact = db.query(CRMContact).get(rec.contact_crm_id)
+        if contact:
+            result["contact"] = {
+                "full_name": contact.full_name,
+                "post": contact.post,
+                "phone": contact.phone,
+                "email": contact.email,
+            }
+            if contact.company_id:
+                company = db.query(CRMCompany).filter(CRMCompany.bitrix_id == contact.company_id).first()
+                if company:
+                    result["company"] = {
+                        "title": company.title,
+                        "industry": company.industry,
+                        "phone": company.phone,
+                        "email": company.email,
+                        "web": company.web,
+                    }
+
+    return JSONResponse(result)

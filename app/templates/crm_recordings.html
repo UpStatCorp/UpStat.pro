@@ -139,7 +139,7 @@
       </thead>
       <tbody>
         {% for recording in recordings %}
-        <tr class="rec-row" data-id="{{ recording.id }}" data-status="{{ recording.sync_status }}">
+        <tr class="rec-row" data-id="{{ recording.id }}" data-status="{{ recording.sync_status }}" onclick="openRecordingDetails({{ recording.id }}, event)">
           <td>
             {% if recording.sync_status in ['available', 'failed'] %}
             <input type="checkbox" class="rec-check recording-checkbox" value="{{ recording.id }}" onchange="updateSelection()">
@@ -262,6 +262,19 @@
     <a href="/crm" class="btn-action btn-primary-action">Перейти к интеграциям</a>
   </div>
   {% endif %}
+</div>
+
+<!-- Recording Details Modal -->
+<div class="modal-backdrop" id="recordingDetailsModal">
+  <div class="modal-box detail-modal">
+    <div class="modal-head">
+      <h3 id="detailTitle">Детали записи</h3>
+      <button class="modal-close" onclick="closeDetailModal()">&times;</button>
+    </div>
+    <div class="modal-body detail-body" id="detailBody">
+      <div class="detail-loading"><span class="spinner-sm"></span> Загрузка...</div>
+    </div>
+  </div>
 </div>
 
 <!-- Batch confirm modal -->
@@ -437,6 +450,26 @@ body.dark .tag-green { color: #34d399; }
 .modal-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px; border-top: 1px solid var(--border); }
 .tip-box { background: rgba(59,130,246,.06); border: 1px solid rgba(59,130,246,.15); color: var(--primary); padding: 10px 14px; border-radius: 10px; font-size: 13px; }
 
+/* Recording Detail Modal */
+.detail-modal { max-width: 640px; width: 94%; max-height: 85vh; display: flex; flex-direction: column; }
+.detail-body { overflow-y: auto; padding: 0 !important; }
+.detail-loading { display: flex; align-items: center; gap: 10px; padding: 40px; justify-content: center; color: var(--muted); }
+.detail-section { padding: 16px 24px; border-bottom: 1px solid var(--border); }
+.detail-section:last-child { border-bottom: none; }
+.detail-section-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; color: var(--primary); margin-bottom: 10px; }
+.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
+.detail-item { display: flex; flex-direction: column; gap: 2px; }
+.detail-label { font-size: 11px; color: var(--muted); }
+.detail-value { font-size: 14px; font-weight: 500; color: var(--text); }
+.detail-value.big { font-size: 20px; font-weight: 700; }
+.detail-products { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+.detail-products th { font-size: 11px; text-transform: uppercase; color: var(--muted); text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.detail-products td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.detail-products tr:last-child td { border-bottom: none; }
+.detail-empty { color: var(--muted); font-style: italic; font-size: 13px; }
+.no-data { color: var(--muted); font-style: italic; font-weight: 400; }
+.rec-row { cursor: pointer; }
+
 /* Text helpers */
 .text-muted { color: var(--muted); }
 
@@ -531,5 +564,129 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 document.addEventListener('click', e => { if (e.target.classList.contains('modal-backdrop')) e.target.classList.remove('active'); });
+
+async function openRecordingDetails(id, event) {
+  if (event && (event.target.closest('input') || event.target.closest('button') || event.target.closest('a'))) return;
+  const modal = document.getElementById('recordingDetailsModal');
+  const body = document.getElementById('detailBody');
+  body.innerHTML = '<div class="detail-loading"><span class="spinner-sm"></span> Загрузка...</div>';
+  modal.classList.add('active');
+  try {
+    const resp = await fetch('/crm/recording/' + id + '/details');
+    if (!resp.ok) throw new Error('Ошибка загрузки');
+    const d = await resp.json();
+    body.innerHTML = renderDetails(d);
+  } catch(e) {
+    body.innerHTML = '<div style="padding:32px;text-align:center;color:var(--muted)">Не удалось загрузить данные</div>';
+  }
+}
+
+function closeDetailModal() { document.getElementById('recordingDetailsModal').classList.remove('active'); }
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString('ru-RU') + ' ' + d.toLocaleTimeString('ru-RU', {hour:'2-digit',minute:'2-digit'});
+}
+
+function fmtDuration(sec) {
+  if (!sec) return '—';
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return m + ':' + String(s).padStart(2, '0');
+}
+
+function fmtMoney(val, cur) {
+  if (val == null) return '—';
+  const n = Number(val).toLocaleString('ru-RU', {minimumFractionDigits: 0, maximumFractionDigits: 2});
+  return n + (cur ? ' ' + cur : '');
+}
+
+function renderDetails(d) {
+  let html = '';
+  const r = d.recording;
+  const noData = '<span class="no-data">Нет данных</span>';
+
+  // Recording section
+  const dirMap = {inbound:'Входящий', outbound:'Исходящий'};
+  html += `<div class="detail-section">
+    <div class="detail-section-title">${r.record_type === 'chat' ? 'Чат' : 'Звонок'}</div>
+    <div class="detail-grid">
+      <div class="detail-item"><span class="detail-label">Дата</span><span class="detail-value">${fmtDate(r.call_date) || noData}</span></div>
+      <div class="detail-item"><span class="detail-label">Длительность</span><span class="detail-value">${fmtDuration(r.duration_seconds) || noData}</span></div>
+      <div class="detail-item"><span class="detail-label">Менеджер</span><span class="detail-value">${r.manager_name || noData}</span></div>
+      <div class="detail-item"><span class="detail-label">Направление</span><span class="detail-value">${dirMap[r.direction] || noData}</span></div>
+      <div class="detail-item"><span class="detail-label">Клиент</span><span class="detail-value">${r.client_name || noData}</span></div>
+      <div class="detail-item"><span class="detail-label">Телефон</span><span class="detail-value">${r.client_phone || noData}</span></div>
+      <div class="detail-item"><span class="detail-label">Компания</span><span class="detail-value">${r.client_company || noData}</span></div>
+      <div class="detail-item"><span class="detail-label">Оценка</span><span class="detail-value">${r.analysis_score != null ? r.analysis_score : noData}</span></div>
+    </div>
+  </div>`;
+
+  // Deal section - always show
+  const dl = d.deal;
+  html += `<div class="detail-section">
+    <div class="detail-section-title">Сделка</div>
+    <div class="detail-grid">
+      <div class="detail-item"><span class="detail-label">Название</span><span class="detail-value">${dl?.title || noData}</span></div>
+      <div class="detail-item"><span class="detail-label">Сумма сделки</span><span class="detail-value big">${dl?.opportunity ? fmtMoney(dl.opportunity, dl.currency_id) : noData}</span></div>
+      <div class="detail-item"><span class="detail-label">Этап</span><span class="detail-value">${dl?.stage_name || noData}</span></div>
+      <div class="detail-item"><span class="detail-label">Статус</span><span class="detail-value">${dl ? (dl.closed ? (dl.is_won ? 'Выиграна' : 'Проиграна') : 'Открыта') : noData}</span></div>
+      <div class="detail-item"><span class="detail-label">Вероятность</span><span class="detail-value">${dl?.probability != null ? dl.probability + '%' : noData}</span></div>
+      <div class="detail-item"><span class="detail-label">Дата закрытия</span><span class="detail-value">${dl?.close_date ? fmtDate(dl.close_date) : noData}</span></div>
+      <div class="detail-item"><span class="detail-label">Ответственный</span><span class="detail-value">${dl?.assigned_by_name || noData}</span></div>
+      <div class="detail-item"><span class="detail-label">Источник</span><span class="detail-value">${dl?.source_name || noData}</span></div>
+    </div>
+    ${dl?.loss_reason ? '<div style="margin-top:8px"><span class="detail-label">Причина проигрыша:</span> <span class="detail-value">' + dl.loss_reason + '</span></div>' : ''}
+  </div>`;
+
+  // Products
+  if (d.products && d.products.length) {
+    html += '<div class="detail-section"><div class="detail-section-title">Товары</div><table class="detail-products"><thead><tr><th>Название</th><th>Кол-во</th><th>Цена</th><th>Итого</th></tr></thead><tbody>';
+    d.products.forEach(p => {
+      html += `<tr><td>${p.product_name || noData}</td><td>${p.quantity || noData}</td><td>${fmtMoney(p.price) || noData}</td><td>${fmtMoney(p.sum_total) || noData}</td></tr>`;
+    });
+    html += '</tbody></table></div>';
+  }
+
+  // Lead section - always show
+  const l = d.lead;
+  html += `<div class="detail-section">
+    <div class="detail-section-title">Лид</div>
+    <div class="detail-grid">
+      <div class="detail-item"><span class="detail-label">Название</span><span class="detail-value">${l?.title || noData}</span></div>
+      <div class="detail-item"><span class="detail-label">Статус</span><span class="detail-value">${l?.status_name || noData}</span></div>
+      <div class="detail-item"><span class="detail-label">Бюджет</span><span class="detail-value">${l?.opportunity ? fmtMoney(l.opportunity) : noData}</span></div>
+      <div class="detail-item"><span class="detail-label">Источник</span><span class="detail-value">${l?.source_name || noData}</span></div>
+      <div class="detail-item"><span class="detail-label">Конвертирован</span><span class="detail-value">${l ? (l.converted ? 'Да' : 'Нет') : noData}</span></div>
+      <div class="detail-item"><span class="detail-label">Ответственный</span><span class="detail-value">${l?.assigned_by_name || noData}</span></div>
+    </div>
+  </div>`;
+
+  // Contact section - always show
+  const c = d.contact;
+  html += `<div class="detail-section">
+    <div class="detail-section-title">Контакт</div>
+    <div class="detail-grid">
+      <div class="detail-item"><span class="detail-label">ФИО</span><span class="detail-value">${c?.full_name || noData}</span></div>
+      <div class="detail-item"><span class="detail-label">Должность</span><span class="detail-value">${c?.post || noData}</span></div>
+      <div class="detail-item"><span class="detail-label">Телефон</span><span class="detail-value">${c?.phone || noData}</span></div>
+      <div class="detail-item"><span class="detail-label">Email</span><span class="detail-value">${c?.email || noData}</span></div>
+    </div>
+  </div>`;
+
+  // Company section - always show
+  const co = d.company;
+  html += `<div class="detail-section">
+    <div class="detail-section-title">Компания</div>
+    <div class="detail-grid">
+      <div class="detail-item"><span class="detail-label">Название</span><span class="detail-value">${co?.title || noData}</span></div>
+      <div class="detail-item"><span class="detail-label">Отрасль</span><span class="detail-value">${co?.industry || noData}</span></div>
+      <div class="detail-item"><span class="detail-label">Телефон</span><span class="detail-value">${co?.phone || noData}</span></div>
+      <div class="detail-item"><span class="detail-label">Сайт</span><span class="detail-value">${co?.web || noData}</span></div>
+    </div>
+  </div>`;
+
+  return html;
+}
 </script>
 {% endblock %}

@@ -321,6 +321,10 @@ class CRMIntegration(Base):
     recordings_count: Mapped[int] = mapped_column(Integer, default=0)
     analyzed_count: Mapped[int] = mapped_column(Integer, default=0)
     
+    # Sync state
+    initial_sync_completed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
+    sync_cursor_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     
@@ -376,6 +380,11 @@ class CRMRecording(Base):
     
     # Дополнительные данные из CRM (JSON)
     crm_metadata_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Связи с CRM-сущностями
+    deal_id: Mapped[Optional[int]] = mapped_column(ForeignKey("crm_deals.id"), nullable=True, index=True)
+    lead_id: Mapped[Optional[int]] = mapped_column(ForeignKey("crm_leads.id"), nullable=True, index=True)
+    contact_crm_id: Mapped[Optional[int]] = mapped_column(ForeignKey("crm_contacts.id"), nullable=True, index=True)
     
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     downloaded_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -386,6 +395,9 @@ class CRMRecording(Base):
     user = relationship("User", back_populates="crm_recordings")
     conversation = relationship("Conversation", back_populates="crm_recording", uselist=False)
     training_plan = relationship("AnalysisTrainingPlan", foreign_keys=[training_plan_id])
+    deal = relationship("CRMDeal", foreign_keys=[deal_id])
+    lead = relationship("CRMLead", foreign_keys=[lead_id])
+    contact_crm = relationship("CRMContact", foreign_keys=[contact_crm_id])
 
 
 # Добавляем обратные связи в User
@@ -627,3 +639,202 @@ class AnalyticsMessage(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, server_default=sa_func.now())
 
     user = relationship("User")
+
+
+# ─── CRM-сущности из Битрикс24 ──────────────────────────────
+
+class CRMDeal(Base):
+    """Сделки из CRM"""
+    __tablename__ = "crm_deals"
+    __table_args__ = (UniqueConstraint("integration_id", "bitrix_id", name="uq_deal_integ_bx"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    integration_id: Mapped[int] = mapped_column(ForeignKey("crm_integrations.id", ondelete="CASCADE"), index=True, nullable=False)
+    bitrix_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+
+    title: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    stage_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    stage_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    category_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    category_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    opportunity: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    currency_id: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    closed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_won: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    probability: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    source_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    source_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    assigned_by_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    assigned_by_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    contact_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    company_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    close_date: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    loss_reason: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    comments: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    crm_metadata_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    synced_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    integration = relationship("CRMIntegration")
+    products = relationship("CRMDealProduct", back_populates="deal", cascade="all, delete-orphan")
+
+
+class CRMLead(Base):
+    """Лиды из CRM"""
+    __tablename__ = "crm_leads"
+    __table_args__ = (UniqueConstraint("integration_id", "bitrix_id", name="uq_lead_integ_bx"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    integration_id: Mapped[int] = mapped_column(ForeignKey("crm_integrations.id", ondelete="CASCADE"), index=True, nullable=False)
+    bitrix_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+
+    title: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    status_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    status_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    source_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    source_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    opportunity: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    currency_id: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+
+    assigned_by_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    assigned_by_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    converted: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    converted_deal_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    converted_contact_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    converted_company_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    crm_metadata_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    synced_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    integration = relationship("CRMIntegration")
+
+
+class CRMContact(Base):
+    """Контакты из CRM"""
+    __tablename__ = "crm_contacts"
+    __table_args__ = (UniqueConstraint("integration_id", "bitrix_id", name="uq_contact_integ_bx"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    integration_id: Mapped[int] = mapped_column(ForeignKey("crm_integrations.id", ondelete="CASCADE"), index=True, nullable=False)
+    bitrix_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+
+    name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    last_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    second_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    full_name: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    post: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    phone: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    company_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    assigned_by_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    assigned_by_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    crm_metadata_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    synced_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    integration = relationship("CRMIntegration")
+
+
+class CRMCompany(Base):
+    """Компании из CRM"""
+    __tablename__ = "crm_companies"
+    __table_args__ = (UniqueConstraint("integration_id", "bitrix_id", name="uq_company_integ_bx"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    integration_id: Mapped[int] = mapped_column(ForeignKey("crm_integrations.id", ondelete="CASCADE"), index=True, nullable=False)
+    bitrix_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+
+    title: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    industry: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    phone: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    web: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+    revenue: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    currency_id: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+
+    assigned_by_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    assigned_by_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    crm_metadata_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    synced_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    integration = relationship("CRMIntegration")
+
+
+class CRMDealProduct(Base):
+    """Товары в сделке"""
+    __tablename__ = "crm_deal_products"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    deal_id: Mapped[int] = mapped_column(ForeignKey("crm_deals.id", ondelete="CASCADE"), index=True, nullable=False)
+    product_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    product_name: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    quantity: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    price: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    discount_sum: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    tax_rate: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    sum_total: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    deal = relationship("CRMDeal", back_populates="products")
+
+
+class CRMActivity(Base):
+    """Активности CRM (звонки, письма, встречи, задачи)"""
+    __tablename__ = "crm_activities"
+    __table_args__ = (UniqueConstraint("integration_id", "bitrix_id", name="uq_activity_integ_bx"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    integration_id: Mapped[int] = mapped_column(ForeignKey("crm_integrations.id", ondelete="CASCADE"), index=True, nullable=False)
+    bitrix_id: Mapped[int] = mapped_column(Integer, index=True, nullable=False)
+
+    type_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    type_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    subject: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    owner_type_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    owner_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    responsible_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    responsible_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    direction: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    completed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+
+    start_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    end_time: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    duration_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    created_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    crm_metadata_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    synced_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    integration = relationship("CRMIntegration")

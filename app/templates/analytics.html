@@ -30,9 +30,10 @@
     </div>
   </div>
 
-  <!-- ─── Табы: Дашборд / Чат ─── -->
+  <!-- ─── Табы: Дашборд / CRM / Чат ─── -->
   <div class="analytics-tabs">
     <button class="a-tab active" data-tab="dashboard">Дашборд</button>
+    <button class="a-tab" data-tab="crm-stats">CRM-аналитика</button>
     <button class="a-tab" data-tab="chat">ИИ-ассистент</button>
   </div>
 
@@ -124,6 +125,99 @@
         <div class="bool-grid" id="bool-grid">
           <div class="chart-empty" id="bool-empty">Загрузка...</div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════ -->
+  <!-- TAB: CRM-аналитика                           -->
+  <!-- ═══════════════════════════════════════════ -->
+  <div id="tab-crm-stats" class="tab-content">
+
+    <!-- Summary cards -->
+    <div class="summary-cards" id="crm-cards">
+      <div class="s-card">
+        <div class="s-card-icon" style="background:rgba(16,185,129,.1); color:#10b981;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>
+        </div>
+        <div class="s-card-body">
+          <div class="s-card-label">Выручка</div>
+          <div class="s-card-value" id="crm-revenue">—</div>
+          <div class="s-card-sub" id="crm-revenue-cnt"></div>
+        </div>
+      </div>
+      <div class="s-card">
+        <div class="s-card-icon" style="background:rgba(59,130,246,.1); color:#3b82f6;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 3l-4 4-4-4"/></svg>
+        </div>
+        <div class="s-card-body">
+          <div class="s-card-label">Средний чек</div>
+          <div class="s-card-value" id="crm-avg-check">—</div>
+          <div class="s-card-sub" id="crm-avg-cnt"></div>
+        </div>
+      </div>
+      <div class="s-card">
+        <div class="s-card-icon" style="background:rgba(245,158,11,.1); color:#f59e0b;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><path d="M22 4L12 14.01l-3-3"/></svg>
+        </div>
+        <div class="s-card-body">
+          <div class="s-card-label">Win rate</div>
+          <div class="s-card-value" id="crm-win-rate">—</div>
+          <div class="s-card-sub" id="crm-win-sub"></div>
+        </div>
+      </div>
+      <div class="s-card">
+        <div class="s-card-icon" style="background:rgba(139,92,246,.1); color:#8b5cf6;">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        </div>
+        <div class="s-card-body">
+          <div class="s-card-label">Цикл сделки</div>
+          <div class="s-card-value" id="crm-cycle">—</div>
+          <div class="s-card-sub" id="crm-cycle-cnt"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Conversion Funnel -->
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <h3 class="chart-card-title">Конверсия воронки</h3>
+      </div>
+      <div class="funnel-wrap" id="crm-funnel">
+        <div class="funnel-step">
+          <div class="funnel-bar" id="funnel-leads" style="width:100%"><span class="funnel-label">Лиды</span><span class="funnel-val" id="funnel-leads-val">0</span></div>
+        </div>
+        <div class="funnel-step">
+          <div class="funnel-bar funnel-bar-2" id="funnel-deals" style="width:75%"><span class="funnel-label">Сделки</span><span class="funnel-val" id="funnel-deals-val">0</span></div>
+        </div>
+        <div class="funnel-step">
+          <div class="funnel-bar funnel-bar-3" id="funnel-closed" style="width:50%"><span class="funnel-label">Закрыты</span><span class="funnel-val" id="funnel-closed-val">0</span></div>
+        </div>
+        <div class="funnel-step">
+          <div class="funnel-bar funnel-bar-4" id="funnel-won" style="width:30%"><span class="funnel-label">Выиграны</span><span class="funnel-val" id="funnel-won-val">0</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Revenue chart + Revenue by manager -->
+    <div class="charts-row">
+      <div class="chart-card" style="flex:1.2">
+        <div class="chart-card-header">
+          <h3 class="chart-card-title">Выручка по периодам</h3>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="crmRevenueChart"></canvas>
+        </div>
+        <p class="empty-chart hidden" id="crm-rev-empty">Нет данных за период</p>
+      </div>
+      <div class="chart-card" style="flex:1">
+        <div class="chart-card-header">
+          <h3 class="chart-card-title">Выручка по менеджерам</h3>
+        </div>
+        <div class="chart-wrap">
+          <canvas id="crmManagerChart"></canvas>
+        </div>
+        <p class="empty-chart hidden" id="crm-mgr-empty">Нет данных за период</p>
       </div>
     </div>
   </div>
@@ -401,10 +495,23 @@
   }
   @keyframes nav-spin { to { transform: rotate(360deg); } }
 
+  /* Funnel */
+  .funnel-wrap { padding: 8px 0; }
+  .funnel-step { margin-bottom: 8px; }
+  .funnel-bar { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; border-radius: 10px; background: linear-gradient(135deg, #3b82f6, #2563eb); color: #fff; font-weight: 600; font-size: 14px; transition: width .6s ease; min-width: 120px; }
+  .funnel-bar-2 { background: linear-gradient(135deg, #6366f1, #4f46e5); }
+  .funnel-bar-3 { background: linear-gradient(135deg, #f59e0b, #d97706); }
+  .funnel-bar-4 { background: linear-gradient(135deg, #10b981, #059669); }
+  .funnel-label { font-size: 13px; }
+  .funnel-val { font-size: 18px; font-weight: 700; }
+  .charts-row { display: flex; gap: 16px; }
+  .charts-row .chart-card { min-height: 300px; }
+
   @media (max-width: 1100px) {
     .summary-cards { grid-template-columns: repeat(2, 1fr); }
     .charts-grid { grid-template-columns: 1fr; }
     .chart-wide { grid-column: auto; }
+    .charts-row { flex-direction: column; }
   }
   @media (max-width: 600px) {
     .analytics-page { padding: 16px; }
@@ -677,8 +784,24 @@
             }
           },
           scales: {
-            x: { ticks: { color: textColor, font: { size: 11 } }, grid: { color: gridColor }, beginAtZero: true },
-            y: { ticks: { color: textColor, font: { size: 11 } }, grid: { color: gridColor }, beginAtZero: true },
+            x: {
+              ticks: { color: textColor, font: { size: 11 } },
+              grid: { color: gridColor }, beginAtZero: true,
+              title: {
+                display: true,
+                text: d.labels.length > 5 ? (d.unit || '') : 'Менеджеры',
+                color: textColor, font: { size: 12 }
+              }
+            },
+            y: {
+              ticks: { color: textColor, font: { size: 11 } },
+              grid: { color: gridColor }, beginAtZero: true,
+              title: {
+                display: true,
+                text: d.labels.length <= 5 ? (d.unit || '') : 'Менеджеры',
+                color: textColor, font: { size: 12 }
+              }
+            },
           }
         }
       });
@@ -912,6 +1035,137 @@
 
   // ── Init: load main menu buttons ──
   loadButtons('main_menu');
+})();
+
+// ═══ CRM-аналитика ═══
+(function() {
+  const periodSelect = document.getElementById('period-select');
+  let crmRevenueChartInst = null;
+  let crmManagerChartInst = null;
+  let crmLoaded = false;
+
+  function fmtMoney(v) {
+    if (v == null) return '—';
+    return Number(v).toLocaleString('ru-RU', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+  }
+
+  async function loadCRMCards() {
+    const period = periodSelect.value;
+    try {
+      const [rev, avg, win, cyc] = await Promise.all([
+        fetch('/analytics/api/crm/revenue?period=' + period).then(r => r.json()),
+        fetch('/analytics/api/crm/avg-check?period=' + period).then(r => r.json()),
+        fetch('/analytics/api/crm/win-rate?period=' + period).then(r => r.json()),
+        fetch('/analytics/api/crm/cycle?period=' + period).then(r => r.json()),
+      ]);
+      document.getElementById('crm-revenue').textContent = fmtMoney(rev.total);
+      document.getElementById('crm-revenue-cnt').textContent = rev.count + ' сделок';
+      document.getElementById('crm-avg-check').textContent = fmtMoney(avg.avg_check);
+      document.getElementById('crm-avg-cnt').textContent = avg.count + ' сделок';
+      document.getElementById('crm-win-rate').textContent = win.win_rate + '%';
+      document.getElementById('crm-win-sub').textContent = win.won + ' из ' + win.total_closed;
+      document.getElementById('crm-cycle').textContent = cyc.avg_days + ' дн.';
+      document.getElementById('crm-cycle-cnt').textContent = cyc.count + ' сделок';
+    } catch(e) { console.error('CRM cards error', e); }
+  }
+
+  async function loadCRMFunnel() {
+    const period = periodSelect.value;
+    try {
+      const d = await fetch('/analytics/api/crm/conversion?period=' + period).then(r => r.json());
+      const max = Math.max(d.leads, d.deals, d.closed, d.won, 1);
+      document.getElementById('funnel-leads').style.width = '100%';
+      document.getElementById('funnel-leads-val').textContent = d.leads;
+      document.getElementById('funnel-deals').style.width = Math.max(Math.round(d.deals / max * 100), 15) + '%';
+      document.getElementById('funnel-deals-val').textContent = d.deals;
+      document.getElementById('funnel-closed').style.width = Math.max(Math.round(d.closed / max * 100), 12) + '%';
+      document.getElementById('funnel-closed-val').textContent = d.closed;
+      document.getElementById('funnel-won').style.width = Math.max(Math.round(d.won / max * 100), 10) + '%';
+      document.getElementById('funnel-won-val').textContent = d.won;
+    } catch(e) { console.error('CRM funnel error', e); }
+  }
+
+  async function loadCRMRevenueChart() {
+    const period = periodSelect.value;
+    try {
+      const d = await fetch('/analytics/api/crm/revenue?period=' + period).then(r => r.json());
+      const canvas = document.getElementById('crmRevenueChart');
+      const emptyEl = document.getElementById('crm-rev-empty');
+      if (!d.labels.length) { emptyEl.classList.remove('hidden'); canvas.style.display = 'none'; if (crmRevenueChartInst) { crmRevenueChartInst.destroy(); crmRevenueChartInst = null; } return; }
+      emptyEl.classList.add('hidden'); canvas.style.display = 'block';
+      if (crmRevenueChartInst) crmRevenueChartInst.destroy();
+      const isDk = document.body.classList.contains('dark');
+      const txtC = isDk ? '#94a3b8' : '#64748b';
+      const gridC = isDk ? 'rgba(51,65,85,.3)' : 'rgba(0,0,0,.06)';
+      crmRevenueChartInst = new Chart(canvas, {
+        type: 'bar',
+        data: {
+          labels: d.labels,
+          datasets: [{ label: 'Выручка', data: d.values, backgroundColor: 'rgba(16,185,129,.7)', borderRadius: 8, borderSkipped: false }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => fmtMoney(ctx.parsed.y) } } },
+          scales: {
+            x: { ticks: { color: txtC }, grid: { color: gridC } },
+            y: { ticks: { color: txtC, callback: v => fmtMoney(v) }, grid: { color: gridC }, beginAtZero: true }
+          }
+        }
+      });
+    } catch(e) { console.error('CRM revenue chart error', e); }
+  }
+
+  async function loadCRMManagerChart() {
+    const period = periodSelect.value;
+    try {
+      const d = await fetch('/analytics/api/crm/revenue-by-manager?period=' + period).then(r => r.json());
+      const canvas = document.getElementById('crmManagerChart');
+      const emptyEl = document.getElementById('crm-mgr-empty');
+      if (!d.labels.length) { emptyEl.classList.remove('hidden'); canvas.style.display = 'none'; if (crmManagerChartInst) { crmManagerChartInst.destroy(); crmManagerChartInst = null; } return; }
+      emptyEl.classList.add('hidden'); canvas.style.display = 'block';
+      if (crmManagerChartInst) crmManagerChartInst.destroy();
+      const isDk = document.body.classList.contains('dark');
+      const txtC = isDk ? '#94a3b8' : '#64748b';
+      const gridC = isDk ? 'rgba(51,65,85,.3)' : 'rgba(0,0,0,.06)';
+      const colors = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899'];
+      crmManagerChartInst = new Chart(canvas, {
+        type: 'bar',
+        data: {
+          labels: d.labels,
+          datasets: [{ label: 'Выручка', data: d.values, backgroundColor: d.labels.map((_, i) => colors[i % colors.length]), borderRadius: 8, borderSkipped: false, barThickness: 40 }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false, indexAxis: d.labels.length > 5 ? 'y' : 'x',
+          plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => fmtMoney(ctx.parsed[d.labels.length > 5 ? 'x' : 'y']) + (d.counts ? ' (' + d.counts[ctx.dataIndex] + ' сд.)' : '') } } },
+          scales: {
+            x: { ticks: { color: txtC }, grid: { color: gridC }, beginAtZero: true },
+            y: { ticks: { color: txtC }, grid: { color: gridC }, beginAtZero: true }
+          }
+        }
+      });
+    } catch(e) { console.error('CRM manager chart error', e); }
+  }
+
+  function loadAllCRM() {
+    loadCRMCards();
+    loadCRMFunnel();
+    loadCRMRevenueChart();
+    loadCRMManagerChart();
+    crmLoaded = true;
+  }
+
+  // Load CRM data when tab is activated
+  document.querySelectorAll('.a-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      if (tab.dataset.tab === 'crm-stats') loadAllCRM();
+    });
+  });
+
+  // Reload CRM data when period changes (if CRM tab is active)
+  periodSelect.addEventListener('change', () => {
+    const active = document.querySelector('.a-tab.active');
+    if (active && active.dataset.tab === 'crm-stats') loadAllCRM();
+  });
 })();
 </script>
 {% endblock %}
