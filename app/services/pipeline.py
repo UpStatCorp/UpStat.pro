@@ -189,7 +189,7 @@ def _attach_file(db: Session, message_id: int, original_name: str, mime: str, ab
     return att
 
 
-async def _analyze_checklist(data: Dict[str, Any], title: str, dialogue_json_str: str, analyses: List[str]):
+async def _analyze_checklist(data: Dict[str, Any], title: str, dialogue_json_str: str, analyses: List[str], checklist_scores: Optional[List[Dict]] = None):
     """
     Анализирует чеклист или скрипт команды по диалогу.
     
@@ -198,9 +198,32 @@ async def _analyze_checklist(data: Dict[str, Any], title: str, dialogue_json_str
         title: Название чеклиста/скрипта
         dialogue_json_str: JSON строка диалога
         analyses: Список для добавления результатов анализа
+        checklist_scores: Опциональный список для сбора структурированных +/- оценок
     """
     logger.info(f"🔍 Начинаю анализ чеклиста/скрипта: {title}")
-    # Используем статичный промпт для анализа чек-листов
+
+    checklist_id = data.get("id", title.lower().replace(" ", "_"))
+    scoring_codes = []
+    for bi, block in enumerate(data.get("blocks", [])):
+        for ci, _criterion in enumerate(block.get("criteria", [])):
+            scoring_codes.append(f"{checklist_id}.b{bi}.c{ci}")
+
+    scoring_instruction = ""
+    if checklist_scores is not None and scoring_codes:
+        codes_list = ", ".join(f'"{c}"' for c in scoring_codes)
+        scoring_instruction = (
+            "\n\nШАГ 2 (обязателен): В самом конце ответа верни JSON-блок для машинной обработки.\n"
+            "Формат (строго валидный JSON):\n"
+            '```json\n'
+            '{"scores": [\n'
+            '  {"code": "<item_code>", "passed": true/false, "confidence": 0.0-1.0}\n'
+            ']}\n'
+            '```\n'
+            f'Коды пунктов по порядку: [{codes_list}]\n'
+            'Правила: "Да"=true (passed), "Нет"=false, "Частично"=false.\n'
+            'confidence — твоя уверенность в оценке от 0.0 до 1.0.\n'
+        )
+
     prompt = (
         "Ты — аудитор качества продаж. У тебя есть СТРОГО JSON-диалог двух спикеров с таймкодами.\n"
         "Формат JSON: { speakers:[{id,label}], role_map:{manager,client}, turns:[{speaker,start,end,text}] }.\n"
@@ -227,6 +250,7 @@ async def _analyze_checklist(data: Dict[str, Any], title: str, dialogue_json_str
         "=== {НАЗВАНИЕ ЧЕК-ЛИСТА} ===\n"
         "- [Пункт 1]: Да/Нет/Частично — комментарий. Цитаты (если есть): «…» [t=00:12–00:18]\n"
         "- [Пункт 2]: ...\n"
+        + scoring_instruction
     )
 
     try:
@@ -239,10 +263,49 @@ async def _analyze_checklist(data: Dict[str, Any], title: str, dialogue_json_str
             )
         )
         logger.info(f"✅ Получен ответ от GPT для: {title}")
-        analyses.append(f"=== {title.upper()} ===\n{resp.choices[0].message.content.strip()}\n")
+        full_response = resp.choices[0].message.content.strip()
+
+        text_part = full_response
+        if checklist_scores is not None:
+            text_part = _extract_and_collect_scores(full_response, checklist_scores)
+
+        analyses.append(f"=== {title.upper()} ===\n{text_part}\n")
     except Exception as e:
         logger.error(f"❌ Ошибка анализа чеклиста {title}: {e}", exc_info=True)
         analyses.append(f"=== {title.upper()} ===\nОшибка LLM: {e}\n")
+
+
+def _extract_and_collect_scores(response_text: str, checklist_scores: List[Dict]) -> str:
+    """
+    Извлекает JSON-блок scores из ответа GPT, добавляет в checklist_scores.
+    Возвращает текстовую часть ответа (без JSON-блока).
+    """
+    json_match = re.search(r'```json\s*(\{[\s\S]*?"scores"[\s\S]*?\})\s*```', response_text)
+    if not json_match:
+        json_match = re.search(r'(\{[^{}]*"scores"\s*:\s*\[[\s\S]*?\]\s*\})', response_text)
+
+    if json_match:
+        try:
+            scores_data = json.loads(json_match.group(1))
+            for score_item in scores_data.get("scores", []):
+                if "code" in score_item and "passed" in score_item:
+                    checklist_scores.append({
+                        "code": score_item["code"],
+                        "passed": bool(score_item["passed"]),
+                        "confidence": float(score_item.get("confidence", 0.8)),
+                    })
+            logger.info(f"Извлечено {len(scores_data.get('scores', []))} оценок из ответа GPT")
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.warning(f"Не удалось распарсить JSON scores: {e}")
+
+        text_part = response_text[:json_match.start()].rstrip()
+        after = response_text[json_match.end():].strip()
+        if after:
+            text_part = text_part + "\n" + after
+        return text_part
+
+    logger.warning("JSON-блок scores не найден в ответе GPT")
+    return response_text
 
 
 def _read_text_file(file_path: Path) -> str:
@@ -353,6 +416,7 @@ async def run_pipeline_from_text(user_id: int, conversation_id: int, text_attach
         check_dir = Path("checklists")
         check_files = list(check_dir.glob("*.json"))
         analyses: List[str] = []
+        checklist_scores: List[Dict] = []
         dialogue_json_str = dialogue_path.read_text(encoding="utf-8")
 
         # Получаем скрипт команды для пользователя, если он есть
@@ -372,7 +436,7 @@ async def run_pipeline_from_text(user_id: int, conversation_id: int, text_attach
             script_title = cf.stem.upper()
             
             # Анализируем чеклист
-            await _analyze_checklist(data, script_title, dialogue_json_str, analyses)
+            await _analyze_checklist(data, script_title, dialogue_json_str, analyses, checklist_scores)
         
         # Обрабатываем скрипт команды, если он есть
         if team_script:
@@ -431,6 +495,22 @@ async def run_pipeline_from_text(user_id: int, conversation_id: int, text_attach
         key_rep = os.path.relpath(report_path, start=UPLOAD_DIR)
         _attach_file(db, msg_done.id, report_path.name, "text/plain", key_rep, report_path.stat().st_size)
         db.commit()
+
+        # Win Probability: сохраняем оценки и рассчитываем вероятность
+        try:
+            from services.win_probability_service import (
+                save_checklist_scores, calculate_win_probability, generate_probability_report
+            )
+            if checklist_scores:
+                save_checklist_scores(conversation_id, checklist_scores, db)
+                win_prob = calculate_win_probability(conversation_id, db)
+                if win_prob:
+                    prob_report_path = generate_probability_report(win_prob, temp_dir, db)
+                    key_prob = os.path.relpath(prob_report_path, start=UPLOAD_DIR)
+                    _attach_file(db, msg_done.id, prob_report_path.name, "text/plain", key_prob, prob_report_path.stat().st_size)
+                    db.commit()
+        except Exception as e:
+            logger.error(f"Ошибка расчёта Win Probability: {e}", exc_info=True)
         
         # Извлекаем ошибки и коррекции из анализа
         try:
@@ -541,6 +621,7 @@ async def run_pipeline_from_raw_text(user_id: int, conversation_id: int, raw_tex
         check_dir = Path("checklists")
         check_files = list(check_dir.glob("*.json"))
         analyses: List[str] = []
+        checklist_scores: List[Dict] = []
         dialogue_json_str = dialogue_path.read_text(encoding="utf-8")
 
         # Получаем скрипт команды для пользователя, если он есть
@@ -558,7 +639,7 @@ async def run_pipeline_from_raw_text(user_id: int, conversation_id: int, raw_tex
         for cf in check_files:
             data = json.loads(cf.read_text(encoding="utf-8"))
             script_title = cf.stem.upper()
-            await _analyze_checklist(data, script_title, dialogue_json_str, analyses)
+            await _analyze_checklist(data, script_title, dialogue_json_str, analyses, checklist_scores)
         
         # Обрабатываем скрипт команды, если он есть
         if team_script:
@@ -615,6 +696,22 @@ async def run_pipeline_from_raw_text(user_id: int, conversation_id: int, raw_tex
         key_rep = os.path.relpath(report_path, start=UPLOAD_DIR)
         _attach_file(db, msg_done.id, report_path.name, "text/plain", key_rep, report_path.stat().st_size)
         db.commit()
+
+        # Win Probability: сохраняем оценки и рассчитываем вероятность
+        try:
+            from services.win_probability_service import (
+                save_checklist_scores, calculate_win_probability, generate_probability_report
+            )
+            if checklist_scores:
+                save_checklist_scores(conversation_id, checklist_scores, db)
+                win_prob = calculate_win_probability(conversation_id, db)
+                if win_prob:
+                    prob_report_path = generate_probability_report(win_prob, temp_dir, db)
+                    key_prob = os.path.relpath(prob_report_path, start=UPLOAD_DIR)
+                    _attach_file(db, msg_done.id, prob_report_path.name, "text/plain", key_prob, prob_report_path.stat().st_size)
+                    db.commit()
+        except Exception as e:
+            logger.error(f"Ошибка расчёта Win Probability: {e}", exc_info=True)
         
         # Извлекаем ошибки и коррекции из анализа
         try:
@@ -809,6 +906,7 @@ async def run_pipeline(user_id: int, conversation_id: int, audio_attachment_id: 
         check_dir = Path("checklists")
         check_files = list(check_dir.glob("*.json"))
         analyses: List[str] = []
+        checklist_scores: List[Dict] = []
         dialogue_json_str = dialogue_path.read_text(encoding="utf-8")
 
         # Получаем скрипт команды для пользователя, если он есть
@@ -828,7 +926,7 @@ async def run_pipeline(user_id: int, conversation_id: int, audio_attachment_id: 
             script_title = cf.stem.upper()
             
             # Анализируем чеклист
-            await _analyze_checklist(data, script_title, dialogue_json_str, analyses)
+            await _analyze_checklist(data, script_title, dialogue_json_str, analyses, checklist_scores)
         
         # Обрабатываем скрипт команды, если он есть
         if team_script:
@@ -887,6 +985,22 @@ async def run_pipeline(user_id: int, conversation_id: int, audio_attachment_id: 
         key_rep = os.path.relpath(report_path, start=UPLOAD_DIR)
         _attach_file(db, msg_done.id, report_path.name, "text/plain", key_rep, report_path.stat().st_size)
         db.commit()
+
+        # Win Probability: сохраняем оценки и рассчитываем вероятность
+        try:
+            from services.win_probability_service import (
+                save_checklist_scores, calculate_win_probability, generate_probability_report
+            )
+            if checklist_scores:
+                save_checklist_scores(conversation_id, checklist_scores, db)
+                win_prob = calculate_win_probability(conversation_id, db)
+                if win_prob:
+                    prob_report_path = generate_probability_report(win_prob, temp_dir, db)
+                    key_prob = os.path.relpath(prob_report_path, start=UPLOAD_DIR)
+                    _attach_file(db, msg_done.id, prob_report_path.name, "text/plain", key_prob, prob_report_path.stat().st_size)
+                    db.commit()
+        except Exception as e:
+            logger.error(f"Ошибка расчёта Win Probability: {e}", exc_info=True)
         
         # Извлекаем ошибки и коррекции из анализа
         try:

@@ -9,7 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.requests import Request
 import logging
 
-from database import Base, engine
+from database import Base, engine, SessionLocal
 from routers import auth, chat, chat_trener, dashboard, public, settings, zoom_meetings, webrtc_meetings, admin, admin_prompts, tts_proxy, training_plans, crm_integration, teams, team_analytics, sales, analytics
 import sqlite3
 
@@ -381,6 +381,17 @@ def create_app() -> FastAPI:
     
     # Обновляем схему подписок/лимитов
     update_premium_schema()
+
+    # Синхронизируем справочник пунктов чеклистов для Win Probability
+    try:
+        from services.checklist_registry_service import sync_checklist_definitions
+        db_session = SessionLocal()
+        try:
+            sync_checklist_definitions(db_session)
+        finally:
+            db_session.close()
+    except Exception as e:
+        logger.warning(f"Ошибка синхронизации справочника чеклистов: {e}")
 
     app = FastAPI(title="SaaS MVP (FastAPI)")
     app.add_middleware(

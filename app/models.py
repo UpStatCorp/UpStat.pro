@@ -609,6 +609,73 @@ class ParameterValue(Base):
     parameter = relationship("ParameterDefinition", back_populates="values")
 
 
+# ─── Win Probability Scoring (Слой 3) ────────────────────────
+
+class ChecklistItemDefinition(Base):
+    """Справочник пунктов чеклистов с весами для расчёта вероятности закрытия"""
+    __tablename__ = "checklist_item_definitions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    checklist_id: Mapped[str] = mapped_column(String(100), index=True, nullable=False)
+    checklist_title: Mapped[str] = mapped_column(String(255), nullable=False)
+    block_title: Mapped[str] = mapped_column(String(255), nullable=False)
+    block_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    item_order: Mapped[int] = mapped_column(Integer, nullable=False)
+    item_text: Mapped[str] = mapped_column(Text, nullable=False)
+    item_code: Mapped[str] = mapped_column(String(150), unique=True, nullable=False, index=True)
+    weight: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, server_default=sa_func.now())
+
+    scores = relationship("ChecklistItemScore", back_populates="item")
+
+
+class ChecklistItemScore(Base):
+    """Оценка +/- по каждому пункту чеклиста для конкретного звонка"""
+    __tablename__ = "checklist_item_scores"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    conversation_id: Mapped[int] = mapped_column(ForeignKey("conversations.id"), index=True, nullable=False)
+    item_id: Mapped[int] = mapped_column(ForeignKey("checklist_item_definitions.id"), index=True, nullable=False)
+    passed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, default=0.8, nullable=False)
+    ai_comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, server_default=sa_func.now())
+
+    __table_args__ = (
+        UniqueConstraint("conversation_id", "item_id", name="uq_conv_checklist_item"),
+    )
+
+    conversation = relationship("Conversation")
+    item = relationship("ChecklistItemDefinition", back_populates="scores")
+
+
+class WinProbabilityScore(Base):
+    """Итоговая вероятность выигрыша сделки для звонка"""
+    __tablename__ = "win_probability_scores"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    conversation_id: Mapped[int] = mapped_column(ForeignKey("conversations.id"), unique=True, index=True, nullable=False)
+    crm_recording_id: Mapped[Optional[int]] = mapped_column(ForeignKey("crm_recordings.id"), nullable=True)
+    deal_id: Mapped[Optional[int]] = mapped_column(ForeignKey("crm_deals.id"), nullable=True)
+    lead_id: Mapped[Optional[int]] = mapped_column(ForeignKey("crm_leads.id"), nullable=True)
+    deal_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    total_items: Mapped[int] = mapped_column(Integer, nullable=False)
+    passed_items: Mapped[int] = mapped_column(Integer, nullable=False)
+    failed_items: Mapped[int] = mapped_column(Integer, nullable=False)
+    weighted_score: Mapped[float] = mapped_column(Float, nullable=False)
+    win_probability: Mapped[float] = mapped_column(Float, nullable=False)
+    max_probability: Mapped[float] = mapped_column(Float, default=80.0, nullable=False)
+    score_breakdown_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    ai_summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, server_default=sa_func.now())
+
+    conversation = relationship("Conversation")
+    crm_recording = relationship("CRMRecording", foreign_keys=[crm_recording_id])
+    deal = relationship("CRMDeal", foreign_keys=[deal_id])
+    lead = relationship("CRMLead", foreign_keys=[lead_id])
+
+
 class CRMManagerMapping(Base):
     """Привязка менеджеров CRM к аккаунтам UpStat"""
     __tablename__ = "crm_manager_mappings"
