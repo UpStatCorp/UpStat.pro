@@ -122,14 +122,16 @@ class AzureVoiceLiveConnection:
             logger.debug(f"Попытка подключения к: {ws_url}")
             logger.debug(f"Используется аутентификация: {'Token' if self.token else 'API Key'}")
             
+            # При потоковой отправке аудио в Azure pong на служебный ping может запаздывать;
+            # слишком короткий ping_timeout даёт обрыв с reason «keepalive ping timeout» (код 1011).
             self.ws = await websockets.connect(
                 ws_url,
                 extra_headers=headers,
-                ping_interval=20,  # Ping каждые 20 секунд
-                ping_timeout=10,   # Таймаут ping 10 секунд
-                close_timeout=10,  # Таймаут закрытия
-                max_size=10**7,   # Максимальный размер сообщения 10MB
-                max_queue=32      # Максимальная очередь сообщений
+                ping_interval=30,
+                ping_timeout=120,
+                close_timeout=30,
+                max_size=10**7,
+                max_queue=64,
             )
             
             self.is_connected = True
