@@ -19,6 +19,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Копирование кода приложения
 COPY app/ ./app/
 COPY main.py .
+COPY alembic/ ./alembic/
+COPY alembic.ini .
 COPY voice_assistant/ ./voice_assistant/
 COPY checklists/ ./checklists/
 COPY checklists_trener/ ./checklists_trener/

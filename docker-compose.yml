@@ -92,6 +92,8 @@ services:
       - PUBLIC_APP_URL=${PUBLIC_APP_URL:-http://localhost:8000}
     volumes:
       - ./app:/app
+      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini
       - ./voice_assistant:/app/voice_assistant
       - ./uploads:/app/uploads
       # SQLite база для миграции (если нужно)
