@@ -1,44 +1,53 @@
 """Add soft disconnect fields and fix unique constraints for CRM entities
 
 Revision ID: 011
-Revises: 010
+Revises: 010_add_crm_entities
 Create Date: 2026-03-28
 """
 from alembic import op
 import sqlalchemy as sa
 
 revision = '011'
-down_revision = '010'
+down_revision = '010_add_crm_entities'
 branch_labels = None
 depends_on = None
 
 
 def _column_exists(conn, table_name, column_name):
-    try:
-        result = conn.execute(sa.text(
-            f"PRAGMA table_info('{table_name}')"
-        ))
+    """Нельзя на PostgreSQL выполнять PRAGMA/sqlite_master даже в try/except — транзакция уходит в aborted."""
+    dialect = conn.dialect.name
+    if dialect == "sqlite":
+        result = conn.execute(sa.text(f"PRAGMA table_info('{table_name}')"))
         columns = [row[1] for row in result.fetchall()]
         return column_name in columns
-    except Exception:
-        try:
-            result = conn.execute(sa.text(
-                "SELECT EXISTS (SELECT 1 FROM information_schema.columns "
-                "WHERE table_name = :t AND column_name = :c)"
-            ), {"t": table_name, "c": column_name})
-            return result.scalar()
-        except Exception:
-            return False
+    result = conn.execute(
+        sa.text(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = :t AND column_name = :c)"
+        ),
+        {"t": table_name, "c": column_name},
+    )
+    return bool(result.scalar())
 
 
 def _index_exists(conn, index_name):
-    try:
-        result = conn.execute(sa.text(
-            f"SELECT name FROM sqlite_master WHERE type='index' AND name='{index_name}'"
-        ))
+    dialect = conn.dialect.name
+    if dialect == "sqlite":
+        result = conn.execute(
+            sa.text(
+                "SELECT name FROM sqlite_master WHERE type='index' AND name=:n"
+            ),
+            {"n": index_name},
+        )
         return result.fetchone() is not None
-    except Exception:
-        return False
+    result = conn.execute(
+        sa.text(
+            "SELECT EXISTS (SELECT 1 FROM pg_indexes "
+            "WHERE schemaname = 'public' AND indexname = :n)"
+        ),
+        {"n": index_name},
+    )
+    return bool(result.scalar())
 
 
 def upgrade():
