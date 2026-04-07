@@ -1,7 +1,7 @@
 """Add batch_id, analysis_score, training_plan_id to CRM recordings and webhook_secret to integrations
 
 Revision ID: 008_add_crm_batch_and_scores
-Revises: 005_add_voice_training_fields
+Revises: 007_add_voice_training_fields
 Create Date: 2025-03-08
 """
 
@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = '008_add_crm_batch_and_scores'
-down_revision = '005_add_voice_training_fields'
+down_revision = '007_add_voice_training_fields'
 branch_labels = None
 depends_on = None
 
