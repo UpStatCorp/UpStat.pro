@@ -1,0 +1,469 @@
+{% extends "_layout_dashboard.html" %}
+{% block title %}Центр управления — {{ team.name }} — UpStat{% endblock %}
+
+{% block extra_head %}
+<style>
+  .ow {
+    --c-bg: #ffffff;
+    --c-surface: #f8f9fa;
+    --c-border: #e5e7eb;
+    --c-text: #1a1a1a;
+    --c-text-2: #5f6368;
+    --c-text-3: #9aa0a6;
+    --c-primary: #1a73e8;
+    --c-primary-bg: #e8f0fe;
+    --c-green: #1e8e3e;
+    --c-green-bg: #e6f4ea;
+    --c-red: #d93025;
+    --c-red-bg: #fce8e6;
+    --c-orange: #e37400;
+    --c-orange-bg: #fef7e0;
+    --c-radius: 12px;
+    --c-radius-sm: 8px;
+    --c-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    --c-font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  }
+  body.dark .ow {
+    --c-bg: #1e1e1e;
+    --c-surface: #2d2d2d;
+    --c-border: #3d3d3d;
+    --c-text: #e8eaed;
+    --c-text-2: #9aa0a6;
+    --c-text-3: #5f6368;
+    --c-primary: #8ab4f8;
+    --c-primary-bg: #1a3a5c;
+    --c-green: #81c995;
+    --c-green-bg: #1e3a29;
+    --c-red: #f28b82;
+    --c-red-bg: #3c2020;
+    --c-orange: #fdd663;
+    --c-orange-bg: #3c3520;
+    --c-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+
+  .ow { font-family: var(--c-font); color: var(--c-text); }
+  .ow *, .ow *::before, .ow *::after { box-sizing: border-box; }
+  .ow-container { max-width: 1320px; margin: 0 auto; padding: 24px 16px 48px; display: grid; gap: 24px; }
+
+  /* ── Header ── */
+  .ow-header { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; }
+  .ow-header-left h1 { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; margin: 0; color: var(--c-text); }
+  .ow-header-left p { margin: 6px 0 0; font-size: 14px; color: var(--c-text-2); line-height: 1.5; }
+  .ow-team-tabs { display: flex; gap: 4px; }
+  .ow-team-tab {
+    padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 500;
+    color: var(--c-text-2); background: transparent; border: none;
+    cursor: pointer; text-decoration: none; transition: background .15s;
+  }
+  .ow-team-tab:hover { background: var(--c-surface); }
+  .ow-team-tab.active { background: var(--c-primary-bg); color: var(--c-primary); font-weight: 600; }
+
+  /* ── Stat Row ── */
+  .ow-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+  .ow-stat {
+    padding: 20px; border-radius: var(--c-radius);
+    background: var(--c-bg); border: 1px solid var(--c-border);
+  }
+  .ow-stat-label { font-size: 12px; font-weight: 500; color: var(--c-text-3); text-transform: uppercase; letter-spacing: 0.04em; }
+  .ow-stat-value { margin-top: 8px; font-size: 32px; font-weight: 600; letter-spacing: -0.02em; color: var(--c-text); line-height: 1; }
+  .ow-stat-sub { margin-top: 6px; font-size: 13px; color: var(--c-text-2); }
+  .ow-stat-bar { margin-top: 12px; height: 4px; border-radius: 2px; background: var(--c-surface); overflow: hidden; }
+  .ow-stat-bar-fill { height: 100%; border-radius: 2px; background: var(--c-primary); transition: width .6s ease; }
+
+  /* ── Mode Tabs ── */
+  .ow-mode-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 12px;
+    padding: 12px 16px; border-radius: var(--c-radius);
+    background: var(--c-bg); border: 1px solid var(--c-border);
+  }
+  .ow-mode-tabs { display: flex; gap: 4px; }
+  .ow-mode-tab {
+    padding: 8px 16px; border-radius: 20px; font-size: 13px; font-weight: 500;
+    color: var(--c-text-2); background: transparent; border: 1px solid transparent;
+    cursor: pointer; transition: all .15s;
+  }
+  .ow-mode-tab:hover { background: var(--c-surface); }
+  .ow-mode-tab.active { background: var(--c-text); color: var(--c-bg); font-weight: 600; }
+  body.dark .ow-mode-tab.active { background: #e8eaed; color: #1e1e1e; }
+  .ow-mode-meta { font-size: 12px; color: var(--c-text-3); }
+
+  /* ── Two-Column Layout ── */
+  .ow-grid { display: grid; grid-template-columns: 1fr 380px; gap: 20px; }
+  .ow-main, .ow-side { display: grid; gap: 20px; align-content: start; }
+
+  /* ── Card ── */
+  .ow-card {
+    padding: 24px; border-radius: var(--c-radius);
+    background: var(--c-bg); border: 1px solid var(--c-border);
+  }
+  .ow-card-label { font-size: 11px; font-weight: 600; color: var(--c-text-3); text-transform: uppercase; letter-spacing: 0.06em; }
+  .ow-card-title { margin-top: 6px; font-size: 20px; font-weight: 600; color: var(--c-text); letter-spacing: -0.01em; }
+  .ow-card-desc { margin-top: 8px; font-size: 13px; color: var(--c-text-2); line-height: 1.6; }
+
+  /* ── Leak List ── */
+  .ow-leak-list { display: grid; gap: 8px; margin-top: 16px; }
+  .ow-leak {
+    display: grid; grid-template-columns: 32px 1fr auto; gap: 12px; align-items: center;
+    padding: 14px 16px; border-radius: var(--c-radius-sm);
+    background: var(--c-surface); transition: background .12s;
+  }
+  .ow-leak:hover { background: var(--c-border); }
+  .ow-leak-num {
+    width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center;
+    background: var(--c-text); color: var(--c-bg); font-size: 12px; font-weight: 700;
+  }
+  body.dark .ow-leak-num { background: #e8eaed; color: #1e1e1e; }
+  .ow-leak-name { font-size: 14px; font-weight: 600; color: var(--c-text); }
+  .ow-leak-desc { margin-top: 2px; font-size: 12px; color: var(--c-text-2); line-height: 1.5; }
+  .ow-leak-right { text-align: right; }
+  .ow-leak-amount { font-size: 16px; font-weight: 700; color: var(--c-text); }
+  .ow-leak-tag {
+    display: inline-block; margin-top: 4px;
+    padding: 3px 8px; border-radius: 4px;
+    font-size: 10px; font-weight: 600; letter-spacing: 0.02em;
+  }
+  .ow-tag-critical { background: var(--c-red-bg); color: var(--c-red); }
+  .ow-tag-warning { background: var(--c-orange-bg); color: var(--c-orange); }
+  .ow-tag-info { background: var(--c-primary-bg); color: var(--c-primary); }
+  .ow-tag-ok { background: var(--c-green-bg); color: var(--c-green); }
+
+  /* ── Metric Grid ── */
+  .ow-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 16px; }
+  .ow-metric {
+    padding: 16px; border-radius: var(--c-radius-sm);
+    background: var(--c-surface);
+  }
+  .ow-metric-label { font-size: 11px; font-weight: 600; color: var(--c-text-3); text-transform: uppercase; letter-spacing: 0.04em; }
+  .ow-metric-val { margin-top: 6px; font-size: 24px; font-weight: 600; color: var(--c-text); }
+  .ow-metric-sub { margin-top: 4px; font-size: 12px; color: var(--c-text-2); }
+  .ow-metric-bar { margin-top: 8px; height: 3px; border-radius: 2px; background: var(--c-border); overflow: hidden; }
+  .ow-metric-bar-fill { height: 100%; border-radius: 2px; transition: width .5s ease; }
+
+  /* ── Cause List ── */
+  .ow-cause-list { display: grid; gap: 8px; margin-top: 14px; }
+  .ow-cause {
+    display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
+    padding: 14px 16px; border-radius: var(--c-radius-sm);
+    background: var(--c-surface); border-left: 3px solid var(--c-primary);
+  }
+  .ow-cause-title { font-size: 13px; font-weight: 600; color: var(--c-text); }
+  .ow-cause-desc { margin-top: 2px; font-size: 12px; color: var(--c-text-2); line-height: 1.5; }
+  .ow-cause-tag {
+    flex-shrink: 0; padding: 4px 10px; border-radius: 4px;
+    font-size: 11px; font-weight: 600; white-space: nowrap;
+    background: var(--c-orange-bg); color: var(--c-orange);
+  }
+
+  /* ── AI Panel ── */
+  .ow-ai-section { font-size: 13px; color: var(--c-text-2); line-height: 1.6; }
+  .ow-ai-block { margin-top: 16px; }
+  .ow-ai-block-label { font-size: 11px; font-weight: 700; color: var(--c-text-3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+  .ow-ai-block-text { font-size: 13px; color: var(--c-text); line-height: 1.65; }
+
+  .ow-rec-list { display: grid; gap: 6px; margin-top: 6px; }
+  .ow-rec {
+    padding: 12px; border-radius: var(--c-radius-sm);
+    background: var(--c-surface);
+  }
+  .ow-rec-title { font-size: 13px; font-weight: 600; color: var(--c-text); }
+  .ow-rec-desc { font-size: 12px; color: var(--c-text-2); margin-top: 2px; }
+  .ow-rec-roi { font-size: 11px; font-weight: 600; color: var(--c-green); margin-top: 4px; }
+
+  /* ── Buttons ── */
+  .ow-btn-group { display: grid; gap: 8px; margin-top: 16px; }
+  .ow-btn {
+    display: block; width: 100%; padding: 12px 16px; border-radius: var(--c-radius-sm);
+    font-family: var(--c-font); font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: opacity .15s; border: none; text-align: center;
+  }
+  .ow-btn:hover { opacity: 0.85; }
+  .ow-btn-primary { background: var(--c-primary); color: #fff; }
+  .ow-btn-secondary { background: var(--c-surface); color: var(--c-text); border: 1px solid var(--c-border); }
+
+  /* ── Error Highlight ── */
+  .ow-highlight {
+    padding: 16px; border-radius: var(--c-radius-sm);
+    background: var(--c-red-bg); border-left: 3px solid var(--c-red);
+    font-size: 13px; color: var(--c-text); line-height: 1.6;
+  }
+  .ow-highlight strong { font-weight: 600; }
+  .ow-footnote { margin-top: 10px; font-size: 12px; color: var(--c-text-3); line-height: 1.5; }
+
+  /* ── Toast ── */
+  .ow-toast {
+    position: fixed; right: 16px; bottom: 16px;
+    max-width: 340px; padding: 14px 18px;
+    border-radius: var(--c-radius); background: var(--c-text); color: var(--c-bg);
+    font-size: 13px; line-height: 1.5;
+    transform: translateY(12px); opacity: 0;
+    pointer-events: none; transition: all .2s; z-index: 100;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  }
+  .ow-toast.show { transform: translateY(0); opacity: 1; pointer-events: auto; }
+  .ow-toast strong { display: block; margin-bottom: 4px; font-weight: 600; }
+
+  /* ── Responsive ── */
+  @media (max-width: 1100px) { .ow-grid { grid-template-columns: 1fr; } }
+  @media (max-width: 640px) {
+    .ow-container { padding: 12px 10px 32px; }
+    .ow-header-left h1 { font-size: 22px; }
+    .ow-stat-value { font-size: 24px; }
+    .ow-metrics { grid-template-columns: 1fr; }
+    .ow-mode-tab { width: 100%; text-align: center; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="ow">
+<div class="ow-container">
+
+  {# ── Header ── #}
+  <div class="ow-header">
+    <div class="ow-header-left">
+      <h1>Owner Command Center</h1>
+      <p>{{ team.name }} · Последние {{ days }} дн. · {{ money_leaks.total_calls }} звонков · {{ money_leaks.deals.count }} сделок</p>
+    </div>
+    {% if teams|length > 1 %}
+    <div class="ow-team-tabs">
+      {% for t in teams %}
+      <a href="/owner/{{ t.id }}" class="ow-team-tab {% if t.id == team.id %}active{% endif %}">{{ t.name }}</a>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  {# ── Stats Row ── #}
+  <div class="ow-stats">
+    <div class="ow-stat">
+      <div class="ow-stat-label">Спасаемая выручка</div>
+      {% set sal = money_leaks.total_salvageable %}
+      {% if sal >= 1000000 %}
+        <div class="ow-stat-value">{{ "%.1f"|format(sal / 1000000) }} млн</div>
+      {% elif sal >= 1000 %}
+        <div class="ow-stat-value">{{ "%.0f"|format(sal / 1000) }} тыс</div>
+      {% else %}
+        <div class="ow-stat-value">{{ "%.0f"|format(sal) }}</div>
+      {% endif %}
+      <div class="ow-stat-sub">Потенциал возврата за {{ days }} дн.</div>
+      {% if sal > 0 %}
+      {% set fill_pct = [90, (sal / (money_leaks.deals.total_pipeline + 1) * 100)|int]|min %}
+      <div class="ow-stat-bar"><div class="ow-stat-bar-fill" style="width:{{ fill_pct }}%"></div></div>
+      {% endif %}
+    </div>
+    <div class="ow-stat">
+      <div class="ow-stat-label">Конверсия</div>
+      <div class="ow-stat-value">{{ conversion.conversion_rate }}%</div>
+      <div class="ow-stat-sub">Выиграно / все сделки</div>
+    </div>
+    <div class="ow-stat">
+      <div class="ow-stat-label">В зоне риска</div>
+      <div class="ow-stat-value">{{ team_ranking.team_stats.risk_count }} <span style="font-size:16px;font-weight:400;color:var(--c-text-2)">из {{ team_ranking.team_stats.total_members }}</span></div>
+      <div class="ow-stat-sub">Менеджеры со score ниже 40</div>
+    </div>
+    <div class="ow-stat">
+      <div class="ow-stat-label">Открытые сделки</div>
+      {% set opn = money_leaks.deals.open %}
+      {% if opn >= 1000000 %}
+        <div class="ow-stat-value">{{ "%.1f"|format(opn / 1000000) }} млн</div>
+      {% elif opn >= 1000 %}
+        <div class="ow-stat-value">{{ "%.0f"|format(opn / 1000) }} тыс</div>
+      {% else %}
+        <div class="ow-stat-value">{{ "%.0f"|format(opn) }}</div>
+      {% endif %}
+      <div class="ow-stat-sub">{{ money_leaks.deals.open_count }} сделок в работе</div>
+    </div>
+    <div class="ow-stat">
+      <div class="ow-stat-label">Win Probability</div>
+      <div class="ow-stat-value">{{ risk.avg_win_probability }}%</div>
+      <div class="ow-stat-sub">Средняя вероятность</div>
+    </div>
+  </div>
+
+  {# ── Mode Tabs ── #}
+  <div class="ow-mode-bar">
+    <div class="ow-mode-tabs" id="modeButtons">
+      <button class="ow-mode-tab active" data-mode="money" onclick="switchMode('money')">Деньги</button>
+      <button class="ow-mode-tab" data-mode="conversion" onclick="switchMode('conversion')">Конверсия</button>
+      <button class="ow-mode-tab" data-mode="risk" onclick="switchMode('risk')">Риск плана</button>
+      <button class="ow-mode-tab" data-mode="speed" onclick="switchMode('speed')">Скорость</button>
+      <button class="ow-mode-tab" data-mode="team" onclick="switchMode('team')">Команда</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:4px;">
+      <a href="/owner/{{ team.id }}?days=1" class="ow-mode-tab {% if days == 1 %}active{% endif %}" style="font-size:12px;padding:6px 12px;">1 день</a>
+      <a href="/owner/{{ team.id }}?days=7" class="ow-mode-tab {% if days == 7 %}active{% endif %}" style="font-size:12px;padding:6px 12px;">7 дней</a>
+      <a href="/owner/{{ team.id }}?days=30" class="ow-mode-tab {% if days == 30 %}active{% endif %}" style="font-size:12px;padding:6px 12px;">30 дней</a>
+    </div>
+  </div>
+
+  {# ══════ Main Grid ══════ #}
+  <div class="ow-grid">
+    <div class="ow-main">
+
+      {# ── Leak Map ── #}
+      <div class="ow-card" id="mainPanel">
+        <div class="ow-card-label" id="mainLabel">Money Leak Map</div>
+        <div class="ow-card-title" id="mainTitle">Карта утечек: где теряется выручка</div>
+        <div class="ow-card-desc" id="mainCopy">Ранжированные утечки по паттернам звонков. Каждый блок — причина, масштаб и действие с максимальным ROI.</div>
+
+        <div class="ow-leak-list" id="rankList">
+          {% if money_leaks.leaks %}
+            {% for leak in money_leaks.leaks %}
+            <div class="ow-leak">
+              <div class="ow-leak-num">{{ loop.index }}</div>
+              <div>
+                <div class="ow-leak-name">{{ leak.name }}</div>
+                <div class="ow-leak-desc">{{ leak.description }} Показатель: {{ leak.value }}%</div>
+              </div>
+              <div class="ow-leak-right">
+                {% if leak.leak_amount >= 1000000 %}
+                  <div class="ow-leak-amount">{{ "%.1f"|format(leak.leak_amount / 1000000) }} млн</div>
+                {% elif leak.leak_amount >= 1000 %}
+                  <div class="ow-leak-amount">{{ "%.0f"|format(leak.leak_amount / 1000) }} тыс</div>
+                {% else %}
+                  <div class="ow-leak-amount">{{ leak.leak_amount }}</div>
+                {% endif %}
+                <div class="ow-leak-tag {% if leak.gap > 50 %}ow-tag-critical{% elif leak.gap > 30 %}ow-tag-warning{% elif leak.gap > 15 %}ow-tag-info{% else %}ow-tag-ok{% endif %}">{{ leak.tag }}</div>
+              </div>
+            </div>
+            {% endfor %}
+          {% else %}
+            <div style="text-align:center;padding:40px 20px;color:var(--c-text-3);">
+              <div style="font-size:32px;margin-bottom:8px;">📊</div>
+              Нет данных по утечкам. Загрузите звонки через CRM.
+            </div>
+          {% endif %}
+        </div>
+
+        <div class="ow-metrics" id="vizGrid">
+          {% for leak in money_leaks.leaks[:4] %}
+          <div class="ow-metric">
+            <div class="ow-metric-label">{{ leak.name }}</div>
+            <div class="ow-metric-val">{{ leak.value }}%</div>
+            <div class="ow-metric-sub">Gap {{ leak.gap }}% · {{ leak.count }} звонков</div>
+            <div class="ow-metric-bar">
+              <div class="ow-metric-bar-fill" style="width:{{ leak.value }}%;background:{% if leak.value >= 70 %}var(--c-green){% elif leak.value >= 40 %}var(--c-orange){% else %}var(--c-red){% endif %};"></div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      {# ── Causes ── #}
+      <div class="ow-card" id="causePanel">
+        <div class="ow-card-label">Причины → Действия</div>
+        <div class="ow-card-title">Во что бить первым</div>
+        <div class="ow-cause-list" id="causeGrid">
+          {% for leak in money_leaks.leaks[:3] %}
+          <div class="ow-cause">
+            <div>
+              <div class="ow-cause-title">{{ leak.name }}: {{ leak.value }}%</div>
+              <div class="ow-cause-desc">{{ leak.description }}</div>
+            </div>
+            <div class="ow-cause-tag">
+              {% if leak.leak_amount >= 1000 %}{{ "%.0f"|format(leak.leak_amount / 1000) }} тыс{% else %}{{ leak.leak_amount }}{% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+    </div>
+
+    {# ── Sidebar ── #}
+    <div class="ow-side">
+
+      {# ── AI Panel ── #}
+      <div class="ow-card">
+        <div class="ow-card-label">AI-Аналитик</div>
+        <div class="ow-card-title">Рекомендации</div>
+
+        <div class="ow-ai-section">
+          <div class="ow-ai-block">
+            <div class="ow-ai-block-label">Что вижу</div>
+            <div class="ow-ai-block-text">{{ ai_insights.see }}</div>
+          </div>
+
+          <div class="ow-ai-block">
+            <div class="ow-ai-block-label">Почему это важно</div>
+            <div class="ow-ai-block-text">{{ ai_insights.why }}</div>
+          </div>
+
+          <div class="ow-ai-block">
+            <div class="ow-ai-block-label">Что делать</div>
+            <div class="ow-rec-list">
+              {% for rec in ai_insights.recommendations %}
+              <div class="ow-rec">
+                <div class="ow-rec-title">{{ rec.title }}</div>
+                <div class="ow-rec-desc">{{ rec.desc }}</div>
+                <div class="ow-rec-roi">{{ rec.roi }}</div>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+
+          <div class="ow-ai-block">
+            <div class="ow-ai-block-label">Почему именно это</div>
+            <div class="ow-ai-block-text">{{ ai_insights.because }}</div>
+          </div>
+        </div>
+
+        <div class="ow-btn-group">
+          <button class="ow-btn ow-btn-primary" onclick="showToast('Запущено','Задачи на коррекцию сформированы.')">Запустить исправление</button>
+          <button class="ow-btn ow-btn-secondary" onclick="showToast('Прогноз','Расчёт ожидаемого эффекта...')">Показать прогноз</button>
+        </div>
+      </div>
+
+      {# ── Expensive Error ── #}
+      {% if money_leaks.leaks %}
+      <div class="ow-card">
+        <div class="ow-card-label">Самая дорогая ошибка</div>
+        <div class="ow-card-title">{{ money_leaks.leaks[0].name }}</div>
+        <div class="ow-highlight" style="margin-top:12px;">
+          {{ money_leaks.leaks[0].description }}
+          <br>Показатель: <strong>{{ money_leaks.leaks[0].value }}%</strong>.
+          Утечка:
+          <strong>{% if money_leaks.leaks[0].leak_amount >= 1000 %}{{ "%.0f"|format(money_leaks.leaks[0].leak_amount / 1000) }} тыс{% else %}{{ money_leaks.leaks[0].leak_amount }}{% endif %}</strong>
+        </div>
+        <div class="ow-footnote">Это самая дорогая системная ошибка за период. Исправление даст максимальный ROI.</div>
+      </div>
+      {% endif %}
+
+    </div>
+  </div>
+
+</div>
+</div>
+
+<div class="ow-toast" id="owToast"></div>
+
+<script>
+function switchMode(mode) {
+  document.querySelectorAll('.ow-mode-tab').forEach(function(btn) {
+    btn.classList.toggle('active', btn.dataset.mode === mode);
+  });
+  var titles = {
+    money:      { label: 'Money Leak Map', title: 'Карта утечек: где теряется выручка', copy: 'Ранжированные утечки по паттернам звонков. Каждый блок — причина, масштаб и действие с максимальным ROI.' },
+    conversion: { label: 'Winning Patterns', title: 'Что отличает успешные звонки', copy: 'Параметры, которые сильнее всего разделяют выигранные и проигранные разговоры.' },
+    risk:       { label: 'Plan Risk Radar', title: 'Сколько выручки в pipeline — мираж', copy: 'Насколько план продаж опирается на реальные признаки сделки.' },
+    speed:      { label: 'Momentum Control', title: 'Где сделки теряют скорость', copy: 'Узкие места, в которых замедляется движение к закрытию.' },
+    team:       { label: 'Team Map', title: 'Кто тянет, а кто создаёт утечку', copy: 'Рейтинг команды через деньги: паттерны лучших vs худших.' }
+  };
+  var t = titles[mode];
+  if (t) {
+    document.getElementById('mainLabel').textContent = t.label;
+    document.getElementById('mainTitle').textContent = t.title;
+    document.getElementById('mainCopy').textContent = t.copy;
+  }
+}
+
+function showToast(title, body) {
+  var toast = document.getElementById('owToast');
+  toast.innerHTML = '<strong>' + title + '</strong>' + body;
+  toast.classList.add('show');
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(function() { toast.classList.remove('show'); }, 3000);
+}
+</script>
+{% endblock %}

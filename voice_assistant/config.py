@@ -132,6 +132,20 @@ AZURE_VOICE_LIVE_ENDPOINT = os.getenv("AZURE_VOICE_LIVE_ENDPOINT", "")
 AZURE_VOICE_LIVE_API_KEY = os.getenv("AZURE_VOICE_LIVE_API_KEY", "")
 AZURE_VOICE_LIVE_MODEL = os.getenv("AZURE_VOICE_LIVE_MODEL", "gpt-4o-realtime-preview")
 AZURE_VOICE_LIVE_API_VERSION = os.getenv("AZURE_VOICE_LIVE_API_VERSION", "2025-05-01-preview")
+# По умолчанию — HD голос Ava (тот, что работал изначально).
+# Он поддерживает расширенные параметры temperature/rate для живой речи
+# и умеет говорить на разных языках, включая русский (с небольшим акцентом).
+#
+# Альтернативы можно задать через .env переменную AZURE_VOICE_LIVE_VOICE:
+#
+#   en-US-Ava:DragonHDLatestNeural   — HD, высочайшее качество, мультиязычный (ПО УМОЛЧАНИЮ)
+#   en-US-Andrew:DragonHDLatestNeural — HD, мужской, мультиязычный
+#
+#   Стандартные русские Neural-голоса (без HD, нет параметров temperature/rate):
+#   ru-RU-SvetlanaNeural     — тёплый женский
+#   ru-RU-DariyaNeural       — молодой женский, живой
+#   ru-RU-DmitryNeural       — уверенный мужской
+#   ru-RU-AlexanderNeural    — молодой мужской энергичный
 AZURE_VOICE_LIVE_VOICE = os.getenv("AZURE_VOICE_LIVE_VOICE", "en-US-Ava:DragonHDLatestNeural")
 AZURE_VOICE_LIVE_TRANSCRIPTION_MODEL = os.getenv("AZURE_VOICE_LIVE_TRANSCRIPTION_MODEL", "gpt-4o-transcribe")
 # Язык транскрипции: None для автоопределения, или конкретный язык (например "ru-RU", "en-US", "ja-JP")

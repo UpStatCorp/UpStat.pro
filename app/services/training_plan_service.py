@@ -75,7 +75,10 @@ class TrainingPlanService:
         if not recommendations:
             recommendations = await TrainingPlanService._extract_recommendations_with_gpt(analysis_text)
         
-        return recommendations[:5]  # Максимум 5 тренировок
+        # Сортируем по приоритету и берём только самую критичную ошибку
+        priority_order = {"high": 0, "medium": 1, "low": 2}
+        recommendations.sort(key=lambda r: priority_order.get(r.get("priority", "low"), 2))
+        return recommendations[:1]
     
     @staticmethod
     async def _extract_recommendations_with_gpt(analysis_text: str) -> List[Dict]:
@@ -85,24 +88,38 @@ class TrainingPlanService:
         
         client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
         
-        prompt = f"""Проанализируй следующий отчёт по звонку и извлеки конкретные рекомендации для тренировок.
-        
+        prompt = f"""Проанализируй следующий отчёт по звонку и определи ОДНУ САМУЮ КРИТИЧНУЮ ошибку менеджера,
+которая больше всего повлияла на результат звонка.
+
 Отчёт:
 {analysis_text[:3000]}
 
-Верни JSON с массивом recommendations в формате:
+Выбери именно ту ошибку, исправление которой даст максимальный эффект на продажи.
+Учитывай: потерянные возможности, упущенные моменты закрытия, грубые нарушения скрипта,
+отсутствие ключевых этапов продажи.
+
+Определи, к какому из 5 этапов продаж относится ошибка:
+- "contact" — Вступление в контакт и открытие
+- "needs" — Работа с потребностями
+- "presentation" — Презентация
+- "objections" — Работа с возражениями
+- "closing" — Завершение сделки
+
+Верни JSON в формате:
 {{
   "recommendations": [
     {{
       "title": "Краткое название проблемы (до 100 символов)",
       "issue": "Описание что было не так (до 200 символов)",
       "recommendation": "Конкретная рекомендация как улучшить (до 500 символов)",
-      "priority": "high|medium|low"
+      "priority": "high",
+      "stage": "одно из: contact, needs, presentation, objections, closing",
+      "reason_chosen": "Почему именно эта ошибка самая критичная (до 200 символов)"
     }}
   ]
 }}
 
-Максимум 5 самых важных рекомендаций. Только JSON, без комментариев."""
+ВАЖНО: Верни РОВНО 1 рекомендацию — самую критичную. Только JSON, без комментариев."""
 
         try:
             response = await client.chat.completions.create(
@@ -145,7 +162,7 @@ class TrainingPlanService:
         db.add(plan)
         db.flush()  # Получаем ID плана
         
-        # Создаём тренировки
+        # Создаём тренировку (одна — самая критичная ошибка)
         for i, rec in enumerate(recommendations):
             training = Training(
                 plan_id=plan.id,
@@ -154,7 +171,8 @@ class TrainingPlanService:
                 description=rec["issue"],
                 recommendation=rec["recommendation"],
                 scenario_type="custom",
-                status="available" if i == 0 else "locked",  # Первая доступна сразу
+                stage=rec.get("stage"),
+                status="available",
                 checklist_json=json.dumps(TrainingPlanService._generate_checklist(rec), ensure_ascii=False)
             )
             db.add(training)

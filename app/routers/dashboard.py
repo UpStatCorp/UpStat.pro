@@ -363,6 +363,127 @@ def calls(request: Request, db: Session = Depends(get_db)):
         "calls.html", {"request": request, "user": user, "packages": packages}
     )
 
+@router.post("/test/create-training")
+def create_test_training(request: Request, db: Session = Depends(get_db)):
+    """
+    Создаёт тестовую тренировку для отладки многоэтапных промптов.
+    
+    Поддерживается через query-параметр `stage`:
+        /test/create-training?stage=closing
+    
+    Если для указанного этапа есть папка с многоэтапными промптами
+    (app/static/docs/trainings/<stage>/), тренировка использует её.
+    Иначе создаётся обычная одно-этапная тренировка с заглушечным промптом.
+    
+    Возвращает JSON с ссылкой на запуск тренировки.
+    """
+    import json as _json
+    from fastapi import Query
+    from fastapi.responses import JSONResponse
+    
+    user = require_user(request, db)
+    stage = (request.query_params.get("stage") or "closing").strip().lower()
+    
+    # Метатексты для разных этапов продаж — используются в названии тренировки
+    stage_titles = {
+        "closing": "Завершение сделки",
+        "contact": "Вступление в контакт и открытие",
+        "needs": "Работа с потребностями",
+        "presentation": "Презентация",
+        "objections": "Работа с возражениями",
+    }
+    title_suffix = stage_titles.get(stage, stage.capitalize())
+    
+    try:
+        # Нужно служебное conversation+message — на него ссылается AnalysisTrainingPlan
+        test_conv = (
+            db.query(Conversation)
+            .filter(Conversation.user_id == user.id, Conversation.title == "[TEST] Тестовые тренировки")
+            .first()
+        )
+        if not test_conv:
+            test_conv = Conversation(user_id=user.id, title="[TEST] Тестовые тренировки")
+            db.add(test_conv)
+            db.flush()
+        
+        report_msg = Message(
+            conversation_id=test_conv.id,
+            user_id=None,
+            role="bot",
+            text=f"[TEST] Заглушка отчёта для тестовой тренировки '{title_suffix}'",
+        )
+        db.add(report_msg)
+        db.flush()
+        
+        recommendations = [{
+            "title": f"[TEST] {title_suffix}",
+            "issue": "Тестовая тренировка для проверки многоэтапных промптов",
+            "recommendation": (
+                f"Тестовая тренировка по этапу '{stage}'. Если для этапа есть многоэтапные "
+                f"промпты в app/static/docs/trainings/{stage}/, они автоматически загрузятся "
+                f"и тренировка пройдёт через все этапы с переключением роли ИИ."
+            ),
+            "priority": "high",
+            "stage": stage,
+        }]
+        
+        plan = AnalysisTrainingPlan(
+            user_id=user.id,
+            report_message_id=report_msg.id,
+            title=f"[TEST] План тренировки — {title_suffix}",
+            recommendations_json=_json.dumps(recommendations, ensure_ascii=False),
+            total_trainings=1,
+        )
+        db.add(plan)
+        db.flush()
+        
+        training = Training(
+            plan_id=plan.id,
+            order=1,
+            title=f"[TEST] {title_suffix}",
+            description="Тестовая тренировка для проверки многоэтапных промптов",
+            recommendation=recommendations[0]["recommendation"],
+            scenario_type="custom",
+            stage=stage,
+            status="available",
+            checklist_json=_json.dumps({
+                "categories": [{
+                    "name": "Тестовая тренировка",
+                    "items": [
+                        f"Пройти все этапы тренировки '{title_suffix}'",
+                        "Убедиться что роль ИИ переключается между этапами",
+                        "Дойти до финального этапа",
+                    ],
+                }],
+            }, ensure_ascii=False),
+        )
+        db.add(training)
+        db.commit()
+        db.refresh(training)
+        
+        # Проверяем что для этапа есть многоэтапные промпты — для подсказки в ответе
+        from services.training_stages_service import load_stages
+        stages_loaded = load_stages(stage)
+        
+        return JSONResponse({
+            "success": True,
+            "training_id": training.id,
+            "plan_id": plan.id,
+            "stage": stage,
+            "stages_count": len(stages_loaded),
+            "is_multistage": len(stages_loaded) > 1,
+            "training_url": f"/voice-training/training?training_id={training.id}",
+            "message": (
+                f"Создана тестовая тренировка #{training.id}. "
+                + (f"Многоэтапная: {len(stages_loaded)} этапов." if len(stages_loaded) > 1
+                   else "Одно-этапная (нет папки stage_*.txt для этого этапа).")
+            ),
+        })
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Не удалось создать тестовую тренировку: {exc}")
+
+
 @router.get("/settings")
 def settings(request: Request, db: Session = Depends(get_db)):
     user = require_user(request, db)

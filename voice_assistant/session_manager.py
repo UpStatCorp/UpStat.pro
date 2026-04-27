@@ -81,6 +81,15 @@ class UserSession:
         self.is_speaking = False
         self.silence_start = None
         
+        # Многоэтапная тренировка (если применимо).
+        # stages: список объектов TrainingStage из training_stages_service.
+        # current_stage_index: индекс активного этапа в stages (0-based).
+        # is_switching_stage: защита от повторного переключения, пока ИИ
+        #   ещё доигрывает прощальную фразу прошлого этапа.
+        self.stages = []
+        self.current_stage_index = 0
+        self.is_switching_stage = False
+        
         logger.info(f"✨ Создана новая сессия: {self.session_id} для user_id={user_id}")
     
     def update_activity(self):

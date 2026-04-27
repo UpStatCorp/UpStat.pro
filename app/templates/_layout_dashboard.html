@@ -678,6 +678,7 @@
       }
     }
   </style>
+  {% block extra_head %}{% endblock %}
 </head>
 <body>
   <script>
@@ -734,6 +735,9 @@
         {% endif %}
         {% if user and (user.role == 'manager' or user.role == 'admin' or (user.team_memberships and user.team_memberships|length > 0)) %}
         <a href="/teams/my" class="{% if request.url.path.startswith('/teams') %}active{% endif %}" aria-label="Моя команда">Моя команда</a>
+        {% endif %}
+        {% if user and (user.role == 'manager' or user.role == 'admin') %}
+        <a href="/owner" class="{% if request.url.path.startswith('/owner') %}active{% endif %}" aria-label="Экран владельца" style="background:linear-gradient(90deg,rgba(20,157,255,0.08),rgba(216,168,58,0.08));font-weight:700;">⚡ Владелец</a>
         {% endif %}
       </nav>
 

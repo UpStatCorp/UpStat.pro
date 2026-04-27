@@ -203,6 +203,7 @@ class Training(Base):
     description: Mapped[str] = mapped_column(Text, nullable=False)
     recommendation: Mapped[str] = mapped_column(Text, nullable=False)
     scenario_type: Mapped[str] = mapped_column(String(50), default="custom")
+    stage: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)  # contact, needs, presentation, objections, closing
     checklist_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     
     status: Mapped[str] = mapped_column(String(20), default="locked")  # locked, available, in_progress, completed
@@ -674,6 +675,110 @@ class WinProbabilityScore(Base):
     crm_recording = relationship("CRMRecording", foreign_keys=[crm_recording_id])
     deal = relationship("CRMDeal", foreign_keys=[deal_id])
     lead = relationship("CRMLead", foreign_keys=[lead_id])
+
+
+class SellerPassport(Base):
+    """Паспорт продавца — профиль навыков менеджера с динамикой по этапам продаж"""
+    __tablename__ = "seller_passports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True, index=True, nullable=False)
+
+    # Текущие проценты по 5 этапам (обновляются после каждого звонка)
+    score_contact: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    score_needs: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    score_presentation: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    score_objections: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    score_closing: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+
+    overall_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    total_calls_analyzed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_trainings_completed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    first_call_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user = relationship("User", backref="seller_passport")
+    snapshots = relationship("PassportSnapshot", back_populates="passport", cascade="all, delete-orphan")
+
+
+class PassportSnapshot(Base):
+    """Снимок навыков менеджера после конкретного звонка"""
+    __tablename__ = "passport_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    passport_id: Mapped[int] = mapped_column(ForeignKey("seller_passports.id", ondelete="CASCADE"), index=True, nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    conversation_id: Mapped[int] = mapped_column(ForeignKey("conversations.id"), index=True, nullable=False)
+
+    # Проценты по 5 этапам на момент этого звонка
+    score_contact: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    score_needs: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    score_presentation: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    score_objections: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    score_closing: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    overall_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+
+    # Какая тренировка была пройдена перед этим звонком
+    training_id_before: Mapped[Optional[int]] = mapped_column(ForeignKey("trainings.id"), nullable=True)
+    training_stage: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    training_applied: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # yes / no / partial
+    training_delta: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    # Комментарий GPT
+    gpt_comment: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    passport = relationship("SellerPassport", back_populates="snapshots")
+    conversation = relationship("Conversation")
+    training_before = relationship("Training", foreign_keys=[training_id_before])
+
+
+class ManagerAction(Base):
+    """Успешное или неуспешное действие менеджера, извлечённое из звонка"""
+    __tablename__ = "manager_actions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    team_id: Mapped[Optional[int]] = mapped_column(ForeignKey("teams.id"), index=True, nullable=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
+    conversation_id: Mapped[int] = mapped_column(ForeignKey("conversations.id"), index=True, nullable=False)
+
+    stage: Mapped[str] = mapped_column(String(50), nullable=False)  # contact, needs, presentation, objections, closing
+    action_text: Mapped[str] = mapped_column(String(500), nullable=False)
+    action_type: Mapped[str] = mapped_column(String(50), default="phrase")  # phrase, technique, question
+    outcome: Mapped[str] = mapped_column(String(20), nullable=False)  # positive, negative
+    client_reaction: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    confidence: Mapped[float] = mapped_column(Float, default=0.8, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    team = relationship("Team")
+    user = relationship("User")
+    conversation = relationship("Conversation")
+
+
+class ActionPattern(Base):
+    """Обнаруженный паттерн (успешное/неуспешное действие, подтверждённое статистикой)"""
+    __tablename__ = "action_patterns"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True, nullable=False)
+
+    stage: Mapped[str] = mapped_column(String(50), nullable=False)
+    pattern_text: Mapped[str] = mapped_column(String(500), nullable=False)
+    outcome: Mapped[str] = mapped_column(String(20), nullable=False)  # positive, negative
+    occurrence_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_calls: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    percentage: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+
+    status: Mapped[str] = mapped_column(String(20), default="collecting")  # collecting, confirmed, reported
+    reported_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    team = relationship("Team")
 
 
 class CRMManagerMapping(Base):

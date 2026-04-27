@@ -239,6 +239,24 @@
           <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
         </div>
       </div>
+
+      <!-- Бейдж этапа и роли ИИ (показывается только для многоэтапных тренировок) -->
+      <div class="stage-badge" id="stage-badge" style="display: none;">
+        <div class="stage-badge-row">
+          <span class="stage-badge-pill">
+            <svg class="icon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/>
+              <path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5z" clip-rule="evenodd"/>
+            </svg>
+            Этап <span id="stage-number">1</span> из <span id="stage-total">1</span>
+          </span>
+          <span class="stage-badge-role">
+            <span class="stage-badge-role-label">Роль ИИ:</span>
+            <strong id="ai-role-label">Тренер</strong>
+          </span>
+        </div>
+        <div class="stage-badge-description" id="ai-role-description"></div>
+      </div>
     </div>
 
     <!-- Список участников -->

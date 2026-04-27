@@ -270,7 +270,8 @@ class AzureVoiceLiveConnection:
         instructions: str,
         voice_name: str = "en-US-Ava:DragonHDLatestNeural",
         transcription_model: str = "gpt-4o-transcribe",
-        transcription_language: Optional[str] = None
+        transcription_language: Optional[str] = None,
+        tools: Optional[list] = None,
     ):
         """
         Отправляет обновление конфигурации сессии.
@@ -279,6 +280,15 @@ class AzureVoiceLiveConnection:
             instructions: Инструкции для AI
             voice_name: Имя голоса
             transcription_model: Модель для транскрипции
+            tools: Список tool-определений (function calling). ИИ может их вызывать
+                как отдельный канал — эти вызовы НЕ озвучиваются голосом.
+                Формат каждого элемента:
+                {
+                  "type": "function",
+                  "name": "имя_функции",
+                  "description": "когда её вызывать",
+                  "parameters": {"type": "object", "properties": {}, "required": []}
+                }
         """
         is_realtime = "realtime" in self.model.lower()
         
@@ -289,9 +299,9 @@ class AzureVoiceLiveConnection:
                 "modalities": ["audio", "text"],
                 "turn_detection": {
                     "type": "azure_semantic_vad",
-                    "threshold": 0.55,  # Вернуть к 0.4
-                    "prefix_padding_ms": 300,  # Вернуть к 300 мс
-                    "silence_duration_ms": 600,  # Вернуть к 400 мс (для realtime)
+                    "threshold": 0.55,
+                    "prefix_padding_ms": 300,
+                    "silence_duration_ms": 600,
                     "remove_filler_words": True
                     # Для realtime моделей НЕ используем end_of_utterance_detection
                 },
@@ -304,9 +314,17 @@ class AzureVoiceLiveConnection:
                 "voice": {
                     "name": voice_name,
                     "type": "azure-standard",
-                    # Максимальное качество звука - настройки для профессионального микрофона
-                    "temperature": 0.7,  # Высокое значение для максимально естественной и выразительной речи (0.0-1.0)
-                    "rate": "1.0"        # Нормальная скорость для лучшей разборчивости и качества (0.5-1.5)
+                    # Параметры temperature/rate поддерживаются ТОЛЬКО HD-голосами
+                    # (например en-US-Ava:DragonHDLatestNeural). Для обычных neural-голосов
+                    # (ru-RU-DmitryNeural, ru-RU-SvetlanaNeural и т.п.) передача этих полей
+                    # вызывает ошибку session.update → Azure отклоняет конфигурацию
+                    # → пользователь слышит только тишину в ответ на свою речь.
+                    # Поэтому добавляем параметры ТОЛЬКО для HD-голосов (содержат "DragonHD").
+                    **(
+                        {"temperature": 0.85, "rate": "1.05"}
+                        if "DragonHD" in (voice_name or "")
+                        else {}
+                    )
                 },
                 "input_audio_transcription": {
                     "enabled": True,
@@ -326,10 +344,80 @@ class AzureVoiceLiveConnection:
         else:
             logger.info("🌐 Автоматическое определение языка транскрипции (мультиязычный режим)")
         
+        # Tools/functions — специальный канал для ИИ, не озвучивается голосом.
+        # Используются в многоэтапных тренировках для перехода между этапами
+        # без произнесения тегов вслух.
+        if tools:
+            session_update["session"]["tools"] = tools
+            session_update["session"]["tool_choice"] = "auto"
+            logger.info(f"🔧 Зарегистрировано {len(tools)} tool(s): {[t.get('name') for t in tools]}")
+        
         await self.send(session_update)
         logger.info("✅ Отправлена конфигурация сессии в Azure")
         logger.debug(f"Инструкции: {instructions[:100]}...")
         logger.debug(f"Голос: {voice_name}, Модель транскрипции: {transcription_model}")
+    
+    async def send_system_item(self, text: str):
+        """
+        Добавляет в conversation history "системное" сообщение (роль system).
+        
+        В отличие от инструкций в session.update, это ПОМЕЩАЕТСЯ в историю диалога
+        и воспринимается ИИ как сильный контекстный сигнал — обычно помогает
+        "перебить" предыдущую роль при смене этапа тренировки.
+        
+        Args:
+            text: Текст системного напоминания
+        """
+        if not self.is_connected or not self.ws:
+            logger.warning("⚠️ Попытка добавить system item при разорванном соединении")
+            return
+        
+        message = {
+            "type": "conversation.item.create",
+            "event_id": "",
+            "item": {
+                "type": "message",
+                "role": "system",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": text,
+                    }
+                ],
+            },
+        }
+        logger.info(f"📌 Отправляю system item в conversation history ({len(text)} chars)")
+        await self.send(message)
+    
+    async def send_response_create(self, instructions: Optional[str] = None):
+        """
+        Просит Azure сгенерировать новый ответ ИИ прямо сейчас,
+        без ожидания реплики пользователя.
+        
+        Используется для автоматического старта нового этапа тренировки —
+        после смены системного промпта ИИ сразу начинает говорить.
+        
+        Args:
+            instructions: Дополнительные инструкции для этой конкретной реплики
+                (опционально). Если не указаны — ИИ использует инструкции из session.
+        """
+        if not self.is_connected or not self.ws:
+            logger.warning("⚠️ Попытка вызвать response.create при разорванном соединении")
+            return
+        
+        message: Dict[str, Any] = {
+            "type": "response.create",
+            "event_id": "",
+        }
+        response_payload: Dict[str, Any] = {
+            "modalities": ["audio", "text"],
+        }
+        if instructions:
+            response_payload["instructions"] = instructions
+        message["response"] = response_payload
+        
+        logger.info("📤 Отправляю response.create в Azure (форсированный старт реплики ИИ)")
+        await self.send(message)
     
     async def send_response_cancel(self, response_id: str):
         """

@@ -315,6 +315,78 @@
   100% { left: 100%; }
 }
 
+/* ===== Бейдж этапа и роли ИИ для многоэтапных тренировок ===== */
+.stage-badge {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%);
+  border: 1px solid rgba(99, 102, 241, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  animation: stage-badge-fade-in 0.4s ease;
+}
+
+@keyframes stage-badge-fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.stage-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.stage-badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: white;
+  box-shadow: 0 2px 6px rgba(99, 102, 241, 0.3);
+  white-space: nowrap;
+}
+
+.stage-badge-pill .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.stage-badge-role {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.stage-badge-role-label {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.stage-badge-role strong {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.stage-badge-description {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.stage-badge-description:empty {
+  display: none;
+}
+
 /* ===== Основная область (референс: чат слева ~75%, справа колонка) ===== */
 .training-main {
   display: grid;

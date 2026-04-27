@@ -384,56 +384,108 @@ async def get_training_page(
 
 @router.post("/training/complete")
 async def complete_training(request: Request, db: Session = Depends(get_db)):
-    """Завершает тренировку и сохраняет результаты."""
+    """Завершает тренировку, прогоняет AI-валидатор и обновляет прогресс плана."""
     try:
-        from models import TrainingSession
+        from models import TrainingSession, Training
     except ImportError:
-        from app.models import TrainingSession
+        from app.models import TrainingSession, Training
+    
+    try:
+        from services.training_validator_service import TrainingValidatorService
+    except ImportError:
+        from app.services.training_validator_service import TrainingValidatorService
     
     try:
         data = await request.json()
         session_id = data.get("session_id")
         training_id = data.get("training_id")
         transcript = data.get("transcript", "")
-        score = data.get("score", 0)
         user_responses_count = data.get("user_responses_count", 0)
         ai_questions_count = data.get("ai_questions_count", 0)
         
-        logger.info(f"💾 Завершение тренировки: session_id={session_id}, training_id={training_id}, score={score}")
+        logger.info(f"💾 Завершение тренировки: session_id={session_id}, training_id={training_id}")
         
         if not session_id:
             raise HTTPException(status_code=400, detail="session_id is required")
         
-        # Обновляем сессию тренировки
         session = db.query(TrainingSession).filter_by(id=session_id).first()
-        if session:
-            session.status = "completed"
-            session.completed_at = datetime.utcnow()
-            session.user_responses_count = user_responses_count
-            session.ai_questions_count = ai_questions_count
-            if score is not None:
-                session.score = score
-            
-            # Вычисляем длительность если не указана
-            if session.started_at and not session.duration_seconds:
-                duration = int((datetime.utcnow() - session.started_at).total_seconds())
-                session.duration_seconds = duration
-            
-            db.commit()
-            logger.info(f"✅ Сессия {session_id} завершена: score={score}, responses={user_responses_count}")
-        else:
+        if not session:
             logger.warning(f"⚠️ Сессия {session_id} не найдена в БД")
-            # Не выбрасываем ошибку, просто возвращаем успех для обратной совместимости
             return {
                 "success": True,
                 "message": "Тренировка завершена (сессия не найдена в БД)",
-                "score": score
+                "score": 0
             }
+        
+        session.user_responses_count = user_responses_count
+        session.ai_questions_count = ai_questions_count
+        
+        # Если это тренировка из плана — запускаем AI-валидатор
+        if training_id and str(training_id) != 'new':
+            training = db.query(Training).filter_by(id=int(training_id)).first()
+            
+            if training:
+                from .config import SYSTEM_PROMPT
+                
+                # Для многоэтапных тренировок собираем промпты всех этапов
+                effective_prompt = SYSTEM_PROMPT
+                if training.stage:
+                    try:
+                        try:
+                            from services.training_stages_service import load_stages
+                        except ImportError:
+                            from app.services.training_stages_service import load_stages
+                        stages = load_stages(training.stage)
+                        if stages:
+                            effective_prompt = "\n\n---\n\n".join(
+                                f"=== ЭТАП {s.number} (роль ИИ: {s.ai_role}) ===\n{s.prompt}"
+                                for s in stages
+                            )
+                    except Exception as e:
+                        logger.warning(f"⚠️ Не удалось загрузить этапы для валидации: {e}")
+                
+                validation_result = await TrainingValidatorService.validate_and_complete_training(
+                    db=db,
+                    session_id=session_id,
+                    training_id=int(training_id),
+                    transcript=transcript,
+                    system_prompt=effective_prompt
+                )
+                
+                logger.info(
+                    f"✅ AI-валидация: score={validation_result['score']}, "
+                    f"passed={validation_result['passed']}, training_id={training_id}"
+                )
+                
+                return {
+                    "success": True,
+                    "message": "Тренировка проверена AI-валидатором",
+                    "score": validation_result["score"],
+                    "passed": validation_result["passed"],
+                    "feedback": validation_result.get("feedback", ""),
+                    "criteria": validation_result.get("criteria", {}),
+                    "details": validation_result.get("details", ""),
+                    "training_completed": validation_result.get("training_completed", False),
+                    "plan_completed": validation_result.get("plan_completed", False),
+                    "session_id": session_id
+                }
+        
+        # Обычная тренировка (не из плана) — просто сохраняем
+        session.status = "completed"
+        session.completed_at = datetime.utcnow()
+        if session.started_at and not session.duration_seconds:
+            session.duration_seconds = int(
+                (datetime.utcnow() - session.started_at).total_seconds()
+            )
+        db.commit()
+        
+        logger.info(f"✅ Свободная тренировка завершена: session_id={session_id}")
         
         return {
             "success": True,
             "message": "Тренировка завершена",
-            "score": score,
+            "score": 0,
+            "passed": False,
             "session_id": session_id
         }
     except HTTPException:

@@ -15,6 +15,7 @@ class VoiceTraining {
         this.isListening = false;
         this.isConnected = false;
         this.isPaused = false;
+        this.isTrainingFinished = false;  // флаг: тренировка уже завершена и провалидирована
         this.audioQueue = [];  // Оставляем для совместимости, но используем audioChunks для батчинга
         this.isPlayingAudio = false;
         this.isProcessingAudio = false;  // Флаг обработки аудио батчами
@@ -339,8 +340,12 @@ class VoiceTraining {
             // Обрабатываем события точно так же, как в оригинале
             switch (eventType) {
                 case 'connected':
-                    console.log('✅ Сессия создана:', data.session_id);
+                    console.log('✅ Сессия создана:', data.session_id, 'db_session_id:', data.db_session_id);
                     this.isConnected = true;
+                    // Обновляем sessionId числовым ID из БД для последующей валидации
+                    if (data.db_session_id) {
+                        this.sessionId = data.db_session_id;
+                    }
                     this.showNotification('success', 'Подключено', data.message || 'Сессия создана');
                     break;
                     
@@ -591,6 +596,14 @@ class VoiceTraining {
                     this.handleStatusMessage(data);
                     break;
                     
+                case 'stage_changed':
+                    this.handleStageChanged(data);
+                    break;
+                
+                case 'training_completed':
+                    this.handleTrainingCompleted(data);
+                    break;
+                
                 case 'error':
                     this.handleError(data);
                     break;
@@ -1273,6 +1286,98 @@ class VoiceTraining {
         this.currentAudioSource = null;
     }
     
+    handleStageChanged(data) {
+        const stageNumber = data.stage_number || 1;
+        const totalStages = data.total_stages || 1;
+        const aiRole = data.ai_role || 'Тренер';
+        const description = data.ai_role_description || '';
+        
+        console.log(`🎯 Этап тренировки изменён: #${stageNumber}/${totalStages}, роль ИИ: ${aiRole}`);
+        
+        const badge = document.getElementById('stage-badge');
+        const stageNumEl = document.getElementById('stage-number');
+        const totalEl = document.getElementById('stage-total');
+        const roleEl = document.getElementById('ai-role-label');
+        const roleDescEl = document.getElementById('ai-role-description');
+        const aiParticipantRole = document.querySelector('#ai-participant .participant-role');
+        
+        if (badge) badge.style.display = 'flex';
+        if (stageNumEl) stageNumEl.textContent = String(stageNumber);
+        if (totalEl) totalEl.textContent = String(totalStages);
+        if (roleEl) roleEl.textContent = aiRole;
+        if (roleDescEl) roleDescEl.textContent = description;
+        if (aiParticipantRole) aiParticipantRole.textContent = aiRole;
+        
+        // Подсказка пользователю — показываем нотификацию о смене этапа
+        if (stageNumber > 1) {
+            this.showNotification(
+                'info',
+                `Этап ${stageNumber}/${totalStages}`,
+                `Роль ИИ: ${aiRole}${description ? ' · ' + description : ''}`
+            );
+        }
+        
+        // Обновляем прогресс-бар если возможно
+        if (this.progressFill && this.progressText && this.progressPercent) {
+            const percent = Math.round((stageNumber - 1) / totalStages * 100);
+            this.progressFill.style.width = percent + '%';
+            this.progressText.textContent = `Этап ${stageNumber} из ${totalStages}`;
+            this.progressPercent.textContent = percent + '%';
+        }
+    }
+    
+    async handleTrainingCompleted(data) {
+        console.log('🏁 Тренировка завершена:', data);
+        
+        if (this.isTrainingFinished) {
+            console.log('ℹ️ Тренировка уже завершена, пропускаем повторную обработку');
+            return;
+        }
+        this.isTrainingFinished = true;
+        
+        if (this.progressFill && this.progressText && this.progressPercent) {
+            this.progressFill.style.width = '100%';
+            this.progressText.textContent = 'Тренировка завершена';
+            this.progressPercent.textContent = '100%';
+        }
+        
+        this.showNotification(
+            'success',
+            'Тренировка завершена',
+            'AI-валидатор оценивает вашу тренировку...'
+        );
+        
+        // Останавливаем запись
+        if (this.isRecording) {
+            this.stopRecording();
+        }
+        if (this.timerInterval) {
+            clearInterval(this.timerInterval);
+        }
+        
+        // Запускаем AI-валидатор и показываем результат
+        await this.saveTrainingResults();
+        
+        // Закрываем WebSocket после валидации
+        if (this.ws) {
+            try {
+                if (this.ws.readyState === WebSocket.OPEN) {
+                    this.ws.send(JSON.stringify({ type: 'end_session', event_id: '' }));
+                }
+            } catch (e) {
+                console.error('Ошибка отправки end_session:', e);
+            }
+            this.ws.close();
+        }
+        
+        // Останавливаем медиа поток
+        if (this.mediaStream) {
+            this.mediaStream.getTracks().forEach(track => track.stop());
+        }
+        
+        window.dispatchEvent(new Event('trainingEnded'));
+    }
+    
     handleError(data) {
         console.error('❌ Ошибка от сервера:', data.message);
         this.showNotification('error', 'Ошибка', data.message);
@@ -1866,6 +1971,13 @@ class VoiceTraining {
     async confirmStopTraining() {
         console.log('🛑 Завершение тренировки');
         
+        // Если тренировка уже завершена автоматически — не дублируем валидацию
+        if (this.isTrainingFinished) {
+            console.log('ℹ️ Тренировка уже завершена, пропускаем confirmStopTraining');
+            return;
+        }
+        this.isTrainingFinished = true;
+        
         // Останавливаем все
         if (this.isRecording) {
             this.stopRecording();
@@ -1874,6 +1986,9 @@ class VoiceTraining {
         if (this.timerInterval) {
             clearInterval(this.timerInterval);
         }
+        
+        // Показываем уведомление перед запуском валидатора
+        this.showNotification('info', 'Проверка', 'AI-валидатор оценивает вашу тренировку...');
         
         // Сохраняем результаты перед закрытием
         await this.saveTrainingResults();
@@ -2288,7 +2403,6 @@ class VoiceTraining {
     }
     
     async saveTrainingResults() {
-        // Сохраняем результаты тренировки если это тренировка из плана
         if (!this.trainingId || this.trainingId === 'new' || !this.sessionId) {
             console.log('ℹ️ Обычная тренировка (не из плана), результаты не сохраняются');
             return;
@@ -2296,7 +2410,6 @@ class VoiceTraining {
         
         console.log(`💾 Сохранение результатов тренировки: training_id=${this.trainingId}, session_id=${this.sessionId}`);
         
-        // Собираем транскрипт
         const messages = this.chatMessages.querySelectorAll('.message-group');
         let transcript = '';
         messages.forEach(msg => {
@@ -2306,21 +2419,7 @@ class VoiceTraining {
             transcript += `[${time}] ${isUser ? 'Вы' : 'ИИ'}: ${text}\n`;
         });
         
-        // Рассчитываем итоговый score на основе статистики
-        const score = Math.min(100, Math.floor(
-            (this.stats.userResponses * 10) + 
-            (this.stats.checklistProgress * 0.5)
-        ));
-        
         try {
-            console.log('📤 Отправка запроса на завершение тренировки:', {
-                training_id: this.trainingId,
-                session_id: this.sessionId,
-                score: score,
-                user_responses: this.stats.userResponses,
-                ai_questions: this.stats.aiQuestions
-            });
-            
             const response = await fetch('/voice-training/training/complete', {
                 method: 'POST',
                 headers: {
@@ -2330,13 +2429,10 @@ class VoiceTraining {
                     training_id: parseInt(this.trainingId),
                     session_id: parseInt(this.sessionId),
                     transcript: transcript,
-                    score: score,
                     user_responses_count: this.stats.userResponses,
                     ai_questions_count: this.stats.aiQuestions
                 })
             });
-            
-            console.log('📥 Ответ сервера:', response.status, response.statusText);
             
             if (!response.ok) {
                 const errorText = await response.text();
@@ -2347,15 +2443,8 @@ class VoiceTraining {
             const data = await response.json();
             
             if (data.success) {
-                console.log('✅ Результаты тренировки сохранены:', data);
-                this.showNotification('success', 'Сохранено', `Ваш результат: ${score}/100`);
-                
-                // Через 3 секунды перенаправляем обратно к плану тренировок
-                setTimeout(() => {
-                    // Извлекаем report_msg_id из URL или перенаправляем на /calls
-                    const urlParams = new URLSearchParams(window.location.search);
-                    window.location.href = '/calls';
-                }, 3000);
+                console.log('✅ Результаты AI-валидации:', data);
+                this.showValidationResult(data);
             } else {
                 console.error('❌ Ошибка сохранения:', data);
                 this.showNotification('error', 'Ошибка', 'Не удалось сохранить результаты');
@@ -2364,6 +2453,82 @@ class VoiceTraining {
             console.error('❌ Ошибка при сохранении результатов:', error);
             this.showNotification('error', 'Ошибка', 'Не удалось сохранить результаты');
         }
+    }
+
+    showValidationResult(data) {
+        const score = data.score || 0;
+        const passed = data.passed || false;
+        const feedback = data.feedback || '';
+        const criteria = data.criteria || {};
+        
+        const overlay = document.createElement('div');
+        overlay.className = 'validation-overlay';
+        overlay.style.cssText = `
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7); z-index: 10000;
+            display: flex; align-items: center; justify-content: center;
+        `;
+        
+        const criteriaNames = {
+            full_cycle: 'Полный цикл',
+            understanding: 'Понимание техники',
+            execution_quality: 'Качество исполнения',
+            active_participation: 'Активное участие'
+        };
+        
+        let criteriaHtml = '';
+        for (const [key, label] of Object.entries(criteriaNames)) {
+            const val = criteria[key] || 0;
+            const barColor = val >= 18 ? '#4CAF50' : val >= 12 ? '#FFC107' : '#F44336';
+            criteriaHtml += `
+                <div style="margin-bottom: 8px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 3px;">
+                        <span>${label}</span><span>${val}/25</span>
+                    </div>
+                    <div style="background: #333; border-radius: 4px; height: 6px;">
+                        <div style="background: ${barColor}; width: ${(val/25)*100}%; height: 100%; border-radius: 4px;"></div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        const statusColor = passed ? '#4CAF50' : '#F44336';
+        const statusText = passed ? 'ТРЕНИРОВКА ПРОЙДЕНА' : 'ТРЕНИРОВКА НЕ ПРОЙДЕНА';
+        const statusIcon = passed ? '✅' : '❌';
+        
+        overlay.innerHTML = `
+            <div style="background: #1e1e2e; border-radius: 16px; padding: 32px; max-width: 480px; width: 90%; color: #fff; box-shadow: 0 20px 60px rgba(0,0,0,0.5);">
+                <div style="text-align: center; margin-bottom: 24px;">
+                    <div style="font-size: 48px; margin-bottom: 8px;">${statusIcon}</div>
+                    <div style="font-size: 20px; font-weight: 700; color: ${statusColor};">${statusText}</div>
+                </div>
+                
+                <div style="text-align: center; margin-bottom: 24px;">
+                    <div style="font-size: 56px; font-weight: 800; color: ${statusColor};">${score}</div>
+                    <div style="font-size: 14px; color: #888;">из 100 баллов (нужно 70+)</div>
+                </div>
+                
+                <div style="margin-bottom: 20px;">
+                    ${criteriaHtml}
+                </div>
+                
+                ${feedback ? `
+                <div style="background: #2a2a3e; border-radius: 8px; padding: 14px; margin-bottom: 20px;">
+                    <div style="font-size: 12px; color: #888; margin-bottom: 6px;">Обратная связь от AI</div>
+                    <div style="font-size: 14px; line-height: 1.5;">${feedback}</div>
+                </div>
+                ` : ''}
+                
+                <div style="text-align: center;">
+                    <button onclick="this.closest('.validation-overlay').remove(); window.location.href='/calls';"
+                        style="background: ${statusColor}; color: #fff; border: none; border-radius: 8px; padding: 12px 32px; font-size: 15px; cursor: pointer; font-weight: 600;">
+                        ${passed ? 'Отлично! Продолжить' : 'Понятно, попробую ещё раз'}
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(overlay);
     }
     
     getCookie(name) {
