@@ -10,44 +10,12 @@
       <p>Все проанализированные звонки и планы тренировок</p>
     </div>
     <div style="display: flex; gap: 10px; align-items: center;">
-      <button type="button" id="create-test-training-btn" class="btn btn-outline" title="Создать тестовую тренировку для отладки промптов">
-        <svg class="btn-icon" viewBox="0 0 20 20" fill="currentColor">
-          <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"/>
-          <path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5z" clip-rule="evenodd"/>
-        </svg>
-        🧪 Тестовая тренировка
-      </button>
       <a href="/chat" class="btn btn-primary">
         <svg class="btn-icon" viewBox="0 0 20 20" fill="currentColor">
           <path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd"/>
         </svg>
         Загрузить новый звонок
       </a>
-    </div>
-  </div>
-
-  <!-- Модалка выбора этапа для тестовой тренировки -->
-  <div id="test-training-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 9999; align-items: center; justify-content: center;">
-    <div style="background: var(--surface, #fff); color: var(--text, #0f172a); border-radius: 14px; padding: 24px; max-width: 460px; width: 92%; box-shadow: 0 20px 50px rgba(0,0,0,0.25);">
-      <h3 style="margin: 0 0 8px 0; font-size: 18px;">🧪 Создать тестовую тренировку</h3>
-      <p style="margin: 0 0 16px 0; color: var(--muted, #64748b); font-size: 13px;">
-        Создаст тренировку с указанным этапом продаж. Если для этапа есть многоэтапные промпты —
-        тренировка автоматически пройдёт через все этапы с переключением роли ИИ.
-      </p>
-      <div style="display: flex; flex-direction: column; gap: 10px; margin-bottom: 18px;">
-        <label style="font-size: 13px; font-weight: 600;">Этап продаж:</label>
-        <select id="test-training-stage" style="padding: 10px 12px; border-radius: 8px; border: 1.5px solid var(--border, #e2e8f0); font-size: 14px; background: var(--surface, #fff); color: var(--text, #0f172a);">
-          <option value="closing" selected>closing — Завершение сделки (4 этапа)</option>
-          <option value="contact">contact — Вступление в контакт</option>
-          <option value="needs">needs — Работа с потребностями</option>
-          <option value="presentation">presentation — Презентация</option>
-          <option value="objections">objections — Работа с возражениями</option>
-        </select>
-      </div>
-      <div style="display: flex; gap: 10px; justify-content: flex-end;">
-        <button type="button" id="test-training-cancel" class="btn btn-outline" style="padding: 8px 16px;">Отмена</button>
-        <button type="button" id="test-training-create" class="btn btn-primary" style="padding: 8px 16px;">Создать и запустить</button>
-      </div>
     </div>
   </div>
 
@@ -984,58 +952,6 @@ async function createTraining(reportMsgId) {
   }
 }
 
-// === Тестовая тренировка (для отладки многоэтапных промптов) ===
-(function setupTestTraining() {
-  const openBtn = document.getElementById('create-test-training-btn');
-  const modal = document.getElementById('test-training-modal');
-  const cancelBtn = document.getElementById('test-training-cancel');
-  const createBtn = document.getElementById('test-training-create');
-  const stageSelect = document.getElementById('test-training-stage');
-  
-  if (!openBtn || !modal || !cancelBtn || !createBtn) return;
-  
-  const showModal = () => { modal.style.display = 'flex'; };
-  const hideModal = () => { modal.style.display = 'none'; };
-  
-  openBtn.addEventListener('click', showModal);
-  cancelBtn.addEventListener('click', hideModal);
-  modal.addEventListener('click', (e) => { if (e.target === modal) hideModal(); });
-  
-  createBtn.addEventListener('click', async () => {
-    const stage = stageSelect.value;
-    createBtn.disabled = true;
-    const oldText = createBtn.textContent;
-    createBtn.textContent = 'Создаём...';
-    
-    try {
-      const resp = await fetch(`/test/create-training?stage=${encodeURIComponent(stage)}`, {
-        method: 'POST',
-        credentials: 'same-origin',
-      });
-      
-      if (!resp.ok) {
-        const errText = await resp.text();
-        throw new Error(`HTTP ${resp.status}: ${errText}`);
-      }
-      
-      const data = await resp.json();
-      console.log('🧪 Тестовая тренировка создана:', data);
-      
-      const msg = data.is_multistage
-        ? `✅ Создана многоэтапная тренировка (${data.stages_count} этапов).\nПереходим к запуску...`
-        : `✅ Создана одно-этапная тренировка (для этапа '${data.stage}' нет файлов stage_*.txt).\nПереходим к запуску...`;
-      alert(msg);
-      
-      window.location.href = data.training_url;
-    } catch (err) {
-      console.error('❌ Ошибка создания тестовой тренировки:', err);
-      alert('Ошибка: ' + err.message);
-    } finally {
-      createBtn.disabled = false;
-      createBtn.textContent = oldText;
-    }
-  });
-})();
 </script>
 
 {% endblock %}
