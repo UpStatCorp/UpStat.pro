@@ -1,14 +1,14 @@
 """Add soft disconnect fields and fix unique constraints for CRM entities
 
 Revision ID: 011
-Revises: 010
+Revises: 010_add_crm_entities
 Create Date: 2026-03-28
 """
 from alembic import op
 import sqlalchemy as sa
 
 revision = '011'
-down_revision = '010'
+down_revision = '010_add_crm_entities'
 branch_labels = None
 depends_on = None
 

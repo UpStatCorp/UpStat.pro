@@ -1,7 +1,7 @@
 """Add WebRTC meeting tables
 
-Revision ID: 006
-Revises: 005_add_google_oauth_fields
+Revision ID: 006_add_webrtc_tables
+Revises: 005_add_voice_training_fields
 Create Date: 2024-01-15 10:00:00.000000
 
 """
@@ -11,8 +11,8 @@ from sqlalchemy import inspect
 
 
 # revision identifiers, used by Alembic.
-revision = '006'
-down_revision = '005'
+revision = '006_add_webrtc_tables'
+down_revision = '005_add_voice_training_fields'
 branch_labels = None
 depends_on = None
 

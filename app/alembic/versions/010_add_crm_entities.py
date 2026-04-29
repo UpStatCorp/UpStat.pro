@@ -1,14 +1,14 @@
 """Add CRM entity tables (deals, leads, contacts, companies, activities, deal products)
 
-Revision ID: 010
-Revises: 009
+Revision ID: 010_add_crm_entities
+Revises: 009_add_chat_support
 Create Date: 2026-03-25
 """
 from alembic import op
 import sqlalchemy as sa
 
-revision = '010'
-down_revision = '009'
+revision = '010_add_crm_entities'
+down_revision = '009_add_chat_support'
 branch_labels = None
 depends_on = None
 
