@@ -417,6 +417,23 @@ async def complete_training(request: Request, db: Session = Depends(get_db)):
                 "score": 0
             }
         
+        # Если сессия уже завершена и есть score — возвращаем сохранённый результат
+        # (защита от двойного вызова при автозавершении + ручном нажатии кнопки)
+        if session.status == "completed" and session.score is not None:
+            logger.info(f"ℹ️ Сессия {session_id} уже завершена, возвращаем сохранённый результат (score={session.score})")
+            training = db.query(Training).filter_by(id=int(training_id)).first() if training_id else None
+            return {
+                "success": True,
+                "message": "Тренировка уже была проверена",
+                "score": session.score,
+                "passed": (session.score or 0) >= 70,
+                "feedback": session.feedback or "",
+                "criteria": {},
+                "training_completed": (session.score or 0) >= 70,
+                "plan_completed": training.plan.status == "completed" if training and training.plan else False,
+                "session_id": session_id
+            }
+        
         session.user_responses_count = user_responses_count
         session.ai_questions_count = ai_questions_count
         

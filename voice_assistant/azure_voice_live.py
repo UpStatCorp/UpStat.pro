@@ -297,6 +297,9 @@ class AzureVoiceLiveConnection:
             "session": {
                 "instructions": instructions,
                 "modalities": ["audio", "text"],
+                # Явно указываем формат входного аудио: pcm16 @ 24kHz (стандарт Azure Voice Live)
+                # audio-processor.js делает ресемплинг до 24kHz на клиенте
+                "input_audio_format": "pcm16",
                 "turn_detection": {
                     "type": "azure_semantic_vad",
                     "threshold": 0.55,

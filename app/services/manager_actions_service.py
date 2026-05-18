@@ -273,6 +273,33 @@ def send_patterns_report(db: Session, team_id: int, patterns: List[ActionPattern
 
     total_calls = patterns[0].total_calls if patterns else 0
 
+    tbl_style = "width: 100%; border-collapse: collapse;"
+    pos_block = (
+        "<div style='margin-bottom: 30px;'>"
+        "<h2 style='color: #16a34a;'>✅ Работает (успешные приёмы)</h2>"
+        "<table style='" + tbl_style + "'>"
+        "<tr style='background: #f0fdf4;'>"
+        "<th style='padding: 12px; text-align: left;'>Этап</th>"
+        "<th style='padding: 12px; text-align: left;'>Действие</th>"
+        "<th style='padding: 12px; text-align: left;'>% звонков</th></tr>"
+        + positive_html
+        + "</table></div>"
+    ) if positive_html else ""
+
+    neg_block = (
+        "<div style='margin-bottom: 30px;'>"
+        "<h2 style='color: #dc2626;'>❌ Не работает (вредные приёмы)</h2>"
+        "<table style='" + tbl_style + "'>"
+        "<tr style='background: #fef2f2;'>"
+        "<th style='padding: 12px; text-align: left;'>Этап</th>"
+        "<th style='padding: 12px; text-align: left;'>Действие</th>"
+        "<th style='padding: 12px; text-align: left;'>% звонков</th></tr>"
+        + negative_html
+        + "</table></div>"
+    ) if negative_html else ""
+
+    threshold_pct = int(CONFIRMATION_THRESHOLD * 100)
+
     html_body = f"""
     <!DOCTYPE html>
     <html lang="ru">
@@ -283,14 +310,14 @@ def send_patterns_report(db: Session, team_id: int, patterns: List[ActionPattern
             <p style="color: rgba(255,255,255,0.8); margin: 8px 0 0 0;">Команда: {team.name} | Проанализировано звонков: {total_calls}</p>
         </div>
         
-        {"<div style='margin-bottom: 30px;'><h2 style='color: #16a34a;'>✅ Работает (успешные приёмы)</h2><table style=\\'width: 100%; border-collapse: collapse;\\'><tr style=\\'background: #f0fdf4;\\'><th style=\\'padding: 12px; text-align: left;\\'>Этап</th><th style=\\'padding: 12px; text-align: left;\\'>Действие</th><th style=\\'padding: 12px; text-align: left;\\'>% звонков</th></tr>" + positive_html + "</table></div>" if positive_html else ""}
+        {pos_block}
         
-        {"<div style='margin-bottom: 30px;'><h2 style='color: #dc2626;'>❌ Не работает (вредные приёмы)</h2><table style=\\'width: 100%; border-collapse: collapse;\\'><tr style=\\'background: #fef2f2;\\'><th style=\\'padding: 12px; text-align: left;\\'>Этап</th><th style=\\'padding: 12px; text-align: left;\\'>Действие</th><th style=\\'padding: 12px; text-align: left;\\'>% звонков</th></tr>" + negative_html + "</table></div>" if negative_html else ""}
+        {neg_block}
         
         <div style="background: #f8fafc; padding: 20px; border-radius: 12px; margin-top: 20px;">
             <p style="font-size: 14px; color: #64748b; margin: 0;">
                 Эти паттерны выявлены автоматически на основе анализа звонков всей команды.
-                Действия, встречающиеся в {int(CONFIRMATION_THRESHOLD * 100)}%+ звонков с одинаковым результатом, считаются подтверждёнными.
+                Действия, встречающиеся в {threshold_pct}%+ звонков с одинаковым результатом, считаются подтверждёнными.
             </p>
         </div>
         

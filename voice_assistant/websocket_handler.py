@@ -394,8 +394,8 @@ async def handle_websocket_connection(
                     await handle_end_session(user_session, websocket, db, azure_connection)
                     break
         
-        except WebSocketDisconnect:
-            logger.info(f"🔌 Пользователь {user_id} отключился")
+        except WebSocketDisconnect as wsd:
+            logger.info(f"🔌 Пользователь {user_id} отключился (code={wsd.code}, reason={wsd.reason!r})")
         
         finally:
             # Отменяем задачу получения сообщений
@@ -734,7 +734,7 @@ async def receive_from_azure(
                 else:
                     # Логируем неизвестные события для отладки
                     logger.info(f"⚠️ Неизвестное событие от Azure: {event_type}")
-                    logger.debug(f"Полное событие: {json.dumps(event, indent=2)[:500]}")
+                    logger.info(f"Полное событие: {json.dumps(event, ensure_ascii=False)[:1000]}")
             
             except json.JSONDecodeError as e:
                 logger.error(f"Ошибка парсинга JSON от Azure: {e}, message: {message[:100]}")

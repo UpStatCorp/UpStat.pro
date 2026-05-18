@@ -144,6 +144,21 @@ async def extract_parameters(conversation_id: int, dialogue_json_str: str, db: O
                 logger.info(f"Распаковываем вложенный объект из ключа '{nested_key}'")
                 data = data[nested_key]
 
+        # Проверяем, есть ли уже записи для этого conversation_id,
+        # чтобы не падать с UniqueViolation и не ломать транзакцию.
+        existing_param_ids = set(
+            row[0]
+            for row in db.query(ParameterValue.parameter_id)
+            .filter(ParameterValue.conversation_id == conversation_id)
+            .all()
+        )
+        if existing_param_ids:
+            logger.info(
+                f"Параметры для conversation_id={conversation_id} уже существуют "
+                f"({len(existing_param_ids)} записей) — пропускаю повторную вставку"
+            )
+            return
+
         saved = 0
         saved_with_value = 0
         saved_null = 0

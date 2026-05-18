@@ -539,6 +539,10 @@ async def run_pipeline_from_text(user_id: int, conversation_id: int, text_attach
             await extract_parameters(conversation_id, dialogue_json_str, db)
         except Exception as e:
             logger.error(f"Ошибка извлечения параметров: {e}", exc_info=True)
+            try:
+                db.rollback()
+            except Exception:
+                pass
         
         # Паспорт продавца: оценка по 5 этапам и снимок динамики
         try:
@@ -754,6 +758,10 @@ async def run_pipeline_from_raw_text(user_id: int, conversation_id: int, raw_tex
             await extract_parameters(conversation_id, dialogue_json_str, db)
         except Exception as e:
             logger.error(f"Ошибка извлечения параметров: {e}", exc_info=True)
+            try:
+                db.rollback()
+            except Exception:
+                pass
         
         # Паспорт продавца: оценка по 5 этапам и снимок динамики
         try:
@@ -1061,6 +1069,10 @@ async def run_pipeline(user_id: int, conversation_id: int, audio_attachment_id: 
             await extract_parameters(conversation_id, dialogue_json_str, db)
         except Exception as e:
             logger.error(f"Ошибка извлечения параметров: {e}", exc_info=True)
+            try:
+                db.rollback()
+            except Exception:
+                pass
         
         # Паспорт продавца: оценка по 5 этапам и снимок динамики
         try:

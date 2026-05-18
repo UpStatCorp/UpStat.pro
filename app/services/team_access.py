@@ -63,8 +63,8 @@ def get_accessible_user_ids_for_manager(db: Session, current_user: User) -> list
         team_ids = [t.id for t in teams]
         
         if not team_ids:
-            # Если нет команд, возвращаем пустой список
-            return []
+            # Если нет команд, менеджер видит только себя
+            return [current_user.id]
         
         # Получаем всех участников этих команд
         members = db.query(TeamMember).filter(TeamMember.team_id.in_(team_ids)).all()

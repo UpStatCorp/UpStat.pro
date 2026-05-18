@@ -1466,6 +1466,17 @@ class VoiceTraining {
             this.audioContext = new AudioContextClass({
                 sampleRate: this.sampleRate  // Используем sampleRate из конструктора (24000)
             });
+            
+            // Диагностика: реальный sampleRate может отличаться от запрошенного
+            // Браузер на macOS часто игнорирует запрос 24000 и использует 44100/48000
+            const actualSampleRate = this.audioContext.sampleRate;
+            if (actualSampleRate !== this.sampleRate) {
+                console.warn(`⚠️ AudioContext sampleRate: запрошен ${this.sampleRate}Hz, реальный ${actualSampleRate}Hz. Используем реальный.`);
+                this.actualSampleRate = actualSampleRate;
+            } else {
+                console.log(`✅ AudioContext sampleRate: ${actualSampleRate}Hz (совпадает с запрошенным)`);
+                this.actualSampleRate = actualSampleRate;
+            }
 
             // В Safari может потребоваться resume() для AudioContext
             if (this.audioContext.state === 'suspended') {
@@ -1491,7 +1502,11 @@ class VoiceTraining {
     setupAudioWorklet(stream) {
         // Создаем источник из медиа потока
         const source = this.audioContext.createMediaStreamSource(stream);
-        this.audioWorkletNode = new AudioWorkletNode(this.audioContext, 'audio-processor');
+        const actualRate = this.actualSampleRate || this.audioContext.sampleRate;
+        this.audioWorkletNode = new AudioWorkletNode(this.audioContext, 'audio-processor', {
+            processorOptions: { sampleRate: actualRate }
+        });
+        console.log(`🎤 AudioWorklet создан с sampleRate: ${actualRate}Hz`);
         
         let mutedLogCount = 0;
         let audioChunkCount = 0;
@@ -1499,6 +1514,11 @@ class VoiceTraining {
         
         // Обрабатываем аудио данные от AudioWorklet
         this.audioWorkletNode.port.onmessage = (event) => {
+            // Инициализационное сообщение от AudioWorklet (не аудио)
+            if (event.data && event.data.type === 'init') {
+                console.log(`✅ AudioWorklet инициализирован: sampleRate=${event.data.sampleRate}Hz, bufferSize=${event.data.bufferSize}`);
+                return;
+            }
             audioChunkCount++;
             
             // ВАЖНО: В Safari проверяем состояние записи ПЕРЕД обработкой
@@ -2404,11 +2424,18 @@ class VoiceTraining {
     
     async saveTrainingResults() {
         if (!this.trainingId || this.trainingId === 'new' || !this.sessionId) {
-            console.log('ℹ️ Обычная тренировка (не из плана), результаты не сохраняются');
+            console.warn('⚠️ saveTrainingResults: trainingId или sessionId не установлен', {
+                trainingId: this.trainingId, sessionId: this.sessionId
+            });
+            // Показываем сообщение что тренировка завершена, даже без валидации
+            this._showSimpleCompletionMessage();
             return;
         }
         
         console.log(`💾 Сохранение результатов тренировки: training_id=${this.trainingId}, session_id=${this.sessionId}`);
+        
+        // Показываем overlay загрузки пока AI-валидатор работает
+        const loadingOverlay = this._showValidationLoading();
         
         const messages = this.chatMessages.querySelectorAll('.message-group');
         let transcript = '';
@@ -2434,6 +2461,11 @@ class VoiceTraining {
                 })
             });
             
+            // Убираем loading overlay
+            if (loadingOverlay && loadingOverlay.parentNode) {
+                loadingOverlay.remove();
+            }
+            
             if (!response.ok) {
                 const errorText = await response.text();
                 console.error('❌ Ошибка HTTP:', response.status, errorText);
@@ -2450,9 +2482,61 @@ class VoiceTraining {
                 this.showNotification('error', 'Ошибка', 'Не удалось сохранить результаты');
             }
         } catch (error) {
+            // Убираем loading overlay при ошибке
+            if (loadingOverlay && loadingOverlay.parentNode) {
+                loadingOverlay.remove();
+            }
             console.error('❌ Ошибка при сохранении результатов:', error);
             this.showNotification('error', 'Ошибка', 'Не удалось сохранить результаты');
         }
+    }
+
+    _showValidationLoading() {
+        // Убираем предыдущий loading если есть
+        document.querySelector('.validation-loading-overlay')?.remove();
+        
+        const overlay = document.createElement('div');
+        overlay.className = 'validation-loading-overlay';
+        overlay.style.cssText = `
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.75); z-index: 10000;
+            display: flex; align-items: center; justify-content: center;
+            flex-direction: column; gap: 16px;
+        `;
+        overlay.innerHTML = `
+            <div style="width: 56px; height: 56px; border: 4px solid #444; border-top-color: #6c63ff;
+                border-radius: 50%; animation: spin 0.9s linear infinite;"></div>
+            <div style="color: #fff; font-size: 16px; font-weight: 600;">AI-валидатор оценивает тренировку...</div>
+            <div style="color: #aaa; font-size: 13px;">Это может занять до 30 секунд</div>
+            <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+        `;
+        document.body.appendChild(overlay);
+        return overlay;
+    }
+
+    _showSimpleCompletionMessage() {
+        document.querySelector('.validation-overlay')?.remove();
+        const overlay = document.createElement('div');
+        overlay.className = 'validation-overlay';
+        overlay.style.cssText = `
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7); z-index: 10000;
+            display: flex; align-items: center; justify-content: center;
+        `;
+        overlay.innerHTML = `
+            <div style="background: #1e1e2e; border-radius: 16px; padding: 32px; max-width: 400px;
+                width: 90%; color: #fff; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.5);">
+                <div style="font-size: 48px; margin-bottom: 16px;">✅</div>
+                <div style="font-size: 20px; font-weight: 700; margin-bottom: 12px;">Тренировка завершена</div>
+                <div style="font-size: 14px; color: #aaa; margin-bottom: 24px;">Все этапы пройдены успешно</div>
+                <button onclick="window.location.href='/calls';"
+                    style="background: #6c63ff; color: #fff; border: none; border-radius: 8px;
+                    padding: 12px 32px; font-size: 15px; cursor: pointer; font-weight: 600;">
+                    Продолжить
+                </button>
+            </div>
+        `;
+        document.body.appendChild(overlay);
     }
 
     showValidationResult(data) {
