@@ -342,9 +342,13 @@ class VoiceTraining {
                 case 'connected':
                     console.log('✅ Сессия создана:', data.session_id, 'db_session_id:', data.db_session_id);
                     this.isConnected = true;
-                    // Обновляем sessionId числовым ID из БД для последующей валидации
+                    // ВСЕГДА обновляем sessionId на db_session_id текущего подключения
+                    // (старый session_id из URL — от прошлой сессии, он не годится для валидации)
                     if (data.db_session_id) {
                         this.sessionId = data.db_session_id;
+                        console.log(`✅ sessionId обновлён на db_session_id=${data.db_session_id} (для валидации)`);
+                    } else {
+                        console.warn('⚠️ connected: db_session_id не пришёл, sessionId остаётся:', this.sessionId);
                     }
                     this.showNotification('success', 'Подключено', data.message || 'Сессия создана');
                     break;
@@ -2447,11 +2451,14 @@ class VoiceTraining {
         });
         
         try {
+            // Таймаут 60 сек — GPT-валидатор может думать долго
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 60000);
+            
             const response = await fetch('/voice-training/training/complete', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
+                signal: controller.signal,
                 body: JSON.stringify({
                     training_id: parseInt(this.trainingId),
                     session_id: parseInt(this.sessionId),
@@ -2460,6 +2467,8 @@ class VoiceTraining {
                     ai_questions_count: this.stats.aiQuestions
                 })
             });
+            
+            clearTimeout(timeoutId);
             
             // Убираем loading overlay
             if (loadingOverlay && loadingOverlay.parentNode) {
@@ -2473,21 +2482,28 @@ class VoiceTraining {
             }
             
             const data = await response.json();
+            console.log('📊 Ответ валидатора:', data);
             
             if (data.success) {
                 console.log('✅ Результаты AI-валидации:', data);
                 this.showValidationResult(data);
             } else {
                 console.error('❌ Ошибка сохранения:', data);
-                this.showNotification('error', 'Ошибка', 'Не удалось сохранить результаты');
+                // Показываем простое завершение если валидатор не вернул success
+                this._showSimpleCompletionMessage();
             }
         } catch (error) {
             // Убираем loading overlay при ошибке
             if (loadingOverlay && loadingOverlay.parentNode) {
                 loadingOverlay.remove();
             }
-            console.error('❌ Ошибка при сохранении результатов:', error);
-            this.showNotification('error', 'Ошибка', 'Не удалось сохранить результаты');
+            if (error.name === 'AbortError') {
+                console.error('❌ Таймаут: валидатор не ответил за 60 сек');
+                this._showSimpleCompletionMessage();
+            } else {
+                console.error('❌ Ошибка при сохранении результатов:', error);
+                this._showSimpleCompletionMessage();
+            }
         }
     }
 
