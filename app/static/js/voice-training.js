@@ -2544,12 +2544,19 @@ class VoiceTraining {
                 width: 90%; color: #fff; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.5);">
                 <div style="font-size: 48px; margin-bottom: 16px;">✅</div>
                 <div style="font-size: 20px; font-weight: 700; margin-bottom: 12px;">Тренировка завершена</div>
-                <div style="font-size: 14px; color: #aaa; margin-bottom: 24px;">Все этапы пройдены успешно</div>
-                <button onclick="window.location.href='/calls';"
-                    style="background: #6c63ff; color: #fff; border: none; border-radius: 8px;
-                    padding: 12px 32px; font-size: 15px; cursor: pointer; font-weight: 600;">
-                    Продолжить
-                </button>
+                <div style="font-size: 14px; color: #aaa; margin-bottom: 24px;">Все этапы пройдены</div>
+                <div style="display: flex; flex-direction: column; gap: 10px; align-items: center;">
+                    <button onclick="window.location.href='/calls';"
+                        style="background: #6c63ff; color: #fff; border: none; border-radius: 8px;
+                        padding: 12px 32px; font-size: 15px; cursor: pointer; font-weight: 600;">
+                        Продолжить
+                    </button>
+                    <button onclick="window.location.reload();"
+                        style="background: transparent; color: #aaa; border: 1px solid #444; border-radius: 8px;
+                        padding: 10px 24px; font-size: 13px; cursor: pointer;">
+                        Пройти ещё раз
+                    </button>
+                </div>
             </div>
         `;
         document.body.appendChild(overlay);
@@ -2619,11 +2626,22 @@ class VoiceTraining {
                 </div>
                 ` : ''}
                 
-                <div style="text-align: center;">
-                    <button onclick="this.closest('.validation-overlay').remove(); window.location.href='/calls';"
-                        style="background: ${statusColor}; color: #fff; border: none; border-radius: 8px; padding: 12px 32px; font-size: 15px; cursor: pointer; font-weight: 600;">
-                        ${passed ? 'Отлично! Продолжить' : 'Понятно, попробую ещё раз'}
-                    </button>
+                <div style="text-align: center; display: flex; flex-direction: column; gap: 10px; align-items: center;">
+                    ${passed ? `
+                        <button onclick="window.location.href='/calls';"
+                            style="background: ${statusColor}; color: #fff; border: none; border-radius: 8px; padding: 12px 32px; font-size: 15px; cursor: pointer; font-weight: 600;">
+                            Отлично! Продолжить
+                        </button>
+                    ` : `
+                        <button onclick="window.location.reload();"
+                            style="background: #6c63ff; color: #fff; border: none; border-radius: 8px; padding: 12px 32px; font-size: 15px; cursor: pointer; font-weight: 600;">
+                            Попробовать ещё раз
+                        </button>
+                        <button onclick="window.location.href='/calls';"
+                            style="background: transparent; color: #aaa; border: 1px solid #444; border-radius: 8px; padding: 10px 24px; font-size: 13px; cursor: pointer;">
+                            Выйти
+                        </button>
+                    `}
                 </div>
             </div>
         `;
