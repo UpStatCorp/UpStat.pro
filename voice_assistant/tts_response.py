@@ -87,12 +87,19 @@ class TTSEngine:
                     from elevenlabs.client import ElevenLabs
                     from elevenlabs.core.api_error import ApiError
                     self.client = ElevenLabs(api_key=self.api_key)
-                    self.elevenlabs_api_error = ApiError  # Сохраняем класс для обработки ошибок
+                    self.elevenlabs_api_error = ApiError
                     logger.info(f"TTS инициализирован: ElevenLabs, voice_id={self.voice_id}, model={self.elevenlabs_model}")
                     logger.info(f"🎙️  Параметры стабильности голоса: stability={ELEVENLABS_STABILITY}, similarity={ELEVENLABS_SIMILARITY_BOOST}, style={ELEVENLABS_STYLE}, speaker_boost={ELEVENLABS_USE_SPEAKER_BOOST}")
                 except ImportError:
-                    logger.error("Библиотека elevenlabs не установлена!")
-                    raise
+                    logger.warning("Библиотека elevenlabs не установлена! Переключаемся на OpenAI TTS.")
+                    if OPENAI_API_KEY:
+                        self.provider = "openai"
+                        self.api_key = OPENAI_API_KEY
+                        self.client = AsyncOpenAI(api_key=self.api_key)
+                        logger.info(f"TTS инициализирован: OpenAI (fallback вместо ElevenLabs), голос={self.voice}, модель={self.model}")
+                    else:
+                        logger.error("Библиотека elevenlabs не установлена и OPENAI_API_KEY тоже отсутствует!")
+                        raise
         
         else:
             raise ValueError(f"Неподдерживаемый провайдер TTS: {self.provider}")
