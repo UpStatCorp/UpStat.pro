@@ -49,20 +49,24 @@ async def get_current_user_from_token(token: str, db: Session):
 async def websocket_training_endpoint(
     websocket: WebSocket,
     training_id: int = Query(1, description="ID тренировки"),
+    db_session_id: Optional[int] = Query(None, description="ID существующей TrainingSession для реконнекта"),
     db: Session = Depends(get_db)
 ):
     """
     WebSocket endpoint для голосовой тренировки.
-    
+
     Параметры:
         training_id: ID тренировки из БД (опционально, по умолчанию 1)
-    
+        db_session_id: ID существующей TrainingSession — если передан и сессия активна,
+                       при реконнекте мы продолжаем её, а не создаём новую.
+
     Поддерживает:
         - Изолированные сессии для каждого пользователя
         - Автоматическое сохранение в БД
         - Ограничение одновременных подключений
         - Voice Activity Detection (VAD)
         - Session-based аутентификация (через cookies)
+        - Auto-reconnect: при том же db_session_id продолжаем сессию
     """
     
     # Аутентификация пользователя через сессию (cookies)
@@ -126,8 +130,8 @@ async def websocket_training_endpoint(
         await websocket.close(code=1011, reason="Authentication error")
         return
     
-    # Передаём управление обработчику
-    await handle_websocket_connection(websocket, user_id, training_id, db)
+    # Передаём управление обработчику (db_session_id для реконнекта)
+    await handle_websocket_connection(websocket, user_id, training_id, db, db_session_id)
 
 
 @router.get("/stats")

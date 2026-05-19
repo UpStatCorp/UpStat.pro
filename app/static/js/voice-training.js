@@ -32,7 +32,19 @@ class VoiceTraining {
         this.isCancelling = false;  // Флаг: идет отмена ответа
         this.cancelledResponses = new Set();  // Множество отмененных ответов
         this.completedResponses = new Set();  // Множество завершенных ответов
-        
+
+        // Auto-reconnect & heartbeat
+        this.connectionState = 'idle';   // idle | connecting | connected | reconnecting | failed
+        this.reconnectAttempt = 0;
+        this.maxReconnectAttempts = 5;
+        this.reconnectTimer = null;
+        this.heartbeatTimer = null;
+        this.heartbeatTimeoutTimer = null;
+        this.heartbeatIntervalMs = 15000;
+        this.heartbeatTimeoutMs = 30000;
+        this.manualClose = false;          // true — закрытие инициировано клиентом (не реконнект)
+        this.pendingAudioBuffer = [];      // буфер аудио чанков, пока соединение не восстановлено
+
         // Статистика
         this.stats = {
             userResponses: 0,
@@ -230,8 +242,17 @@ class VoiceTraining {
         }
     }
     
-    async connectWebSocket() {
+    async connectWebSocket(isReconnect = false) {
         try {
+            if (this.reconnectTimer) {
+                clearTimeout(this.reconnectTimer);
+                this.reconnectTimer = null;
+            }
+
+            this.connectionState = isReconnect ? 'reconnecting' : 'connecting';
+            this.updateConnectionIndicator();
+            this.manualClose = false;
+
             // Закрываем старое соединение если оно есть (при переподключении)
             if (this.ws) {
                 const oldState = this.ws.readyState;
@@ -239,89 +260,230 @@ class VoiceTraining {
                     state: oldState,
                     stateName: ['CONNECTING', 'OPEN', 'CLOSING', 'CLOSED'][oldState]
                 });
-                // Убираем все обработчики, чтобы не было автопереподключения
                 this.ws.onclose = null;
                 this.ws.onopen = null;
                 this.ws.onmessage = null;
                 this.ws.onerror = null;
-                // Закрываем соединение с кодом 1000 (нормальное закрытие)
                 if (oldState === WebSocket.OPEN || oldState === WebSocket.CONNECTING) {
-                    this.ws.close(1000, "Client reconnecting");
+                    try { this.ws.close(1000, "Client reconnecting"); } catch (_) {}
                 }
                 this.ws = null;
-                // Даем больше времени на закрытие
-                await new Promise(resolve => setTimeout(resolve, 1000));
+                await new Promise(resolve => setTimeout(resolve, 200));
             }
-            
+
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            
-            // Используем новый масштабируемый endpoint с сохранением в БД
+
             const userId = window.currentUserId;
             const urlParams = new URLSearchParams(window.location.search);
             const trainingId = urlParams.get('training_id') || this.trainingId || '1';
-            
+
             let wsUrl;
             if (userId) {
                 wsUrl = `${protocol}//${window.location.host}/voice-training/ws?user_id=${userId}&training_id=${trainingId}`;
-                console.log('🔌 Подключение к WebSocket (масштабируемая версия с сохранением в БД)', {userId, trainingId});
+                if (this.sessionId) {
+                    wsUrl += `&db_session_id=${encodeURIComponent(this.sessionId)}`;
+                }
+                console.log('🔌 Подключение к WebSocket', {userId, trainingId, isReconnect, db_session_id: this.sessionId});
             } else {
-                // Fallback на старый endpoint
                 wsUrl = `${protocol}//${window.location.host}/voice-assistant/ws`;
                 console.log('⚠️ user_id не найден, используем старый endpoint');
             }
-            
+
             this.ws = new WebSocket(wsUrl);
-            
+
             this.ws.onopen = () => {
                 console.log('✅ WebSocket подключен');
                 this.isConnected = true;
+                this.connectionState = 'connected';
+                this.reconnectAttempt = 0;
                 this.updateConnectionStatus('connected', 'Подключено к серверу');
-                // НЕ показываем уведомление здесь - дождемся сообщения 'connected' с session_id
-                // this.showNotification('success', 'Подключено', 'Соединение с сервером установлено');
-                
-                // Разблокируем кнопку микрофона
+                this.updateConnectionIndicator();
+
                 if (this.micButton) {
                     this.micButton.disabled = false;
                     this.micStatus.textContent = 'Ожидание сессии...';
                 }
+
+                this.startHeartbeat();
+                this.flushPendingAudio();
+
+                if (isReconnect) {
+                    this.showNotification('success', 'Соединение восстановлено', 'Можно продолжать тренировку.');
+                }
             };
-            
+
             this.ws.onmessage = (event) => {
                 this.handleWebSocketMessage(event);
             };
-            
+
             this.ws.onerror = (error) => {
                 console.error('❌ Ошибка WebSocket:', error);
                 this.updateConnectionStatus('error', 'Ошибка подключения');
-                this.showNotification('error', 'Ошибка', 'Проблема с подключением к серверу');
+                this.updateConnectionIndicator();
             };
-            
+
             this.ws.onclose = (event) => {
                 console.log('🔌 WebSocket отключен', {
                     code: event.code,
                     reason: event.reason,
-                    wasClean: event.wasClean
+                    wasClean: event.wasClean,
                 });
                 this.isConnected = false;
-                this.updateConnectionStatus('connecting', 'Отключено');
-                
-                // Попытка переподключения через 3 секунды (только если не было нормального закрытия)
-                if (event.code !== 1000 && event.code !== 1001) {
-                    setTimeout(() => {
-                        if (!this.isConnected) {
-                            console.log('🔄 Попытка переподключения...');
-                            this.connectWebSocket();
-                        }
-                    }, 3000);
-                } else {
-                    console.log('✅ WebSocket закрыт нормально, переподключение не требуется');
+                this.stopHeartbeat();
+
+                const wasManual = this.manualClose || event.code === 1000 || event.code === 1001;
+                if (wasManual || this.isTrainingFinished) {
+                    this.connectionState = 'idle';
+                    this.updateConnectionStatus('connecting', 'Отключено');
+                    this.updateConnectionIndicator();
+                    return;
                 }
+
+                this.scheduleReconnect();
             };
-            
+
         } catch (error) {
             console.error('❌ Ошибка при подключении WebSocket:', error);
-            this.showNotification('error', 'Ошибка', 'Не удалось подключиться к серверу');
+            this.connectionState = 'failed';
+            this.updateConnectionIndicator();
+            this.scheduleReconnect();
         }
+    }
+
+    scheduleReconnect() {
+        if (this.reconnectAttempt >= this.maxReconnectAttempts) {
+            console.error('❌ Достигнут лимит попыток реконнекта');
+            this.connectionState = 'failed';
+            this.updateConnectionIndicator();
+            this.showReconnectFailedOverlay();
+            return;
+        }
+
+        this.reconnectAttempt += 1;
+        const delays = [1000, 2000, 4000, 8000, 16000];
+        const delay = delays[Math.min(this.reconnectAttempt - 1, delays.length - 1)];
+
+        this.connectionState = 'reconnecting';
+        this.updateConnectionStatus('connecting', `Переподключение (попытка ${this.reconnectAttempt}/${this.maxReconnectAttempts}) через ${Math.round(delay/1000)}с…`);
+        this.updateConnectionIndicator();
+
+        console.log(`🔄 Реконнект через ${delay}мс (попытка ${this.reconnectAttempt}/${this.maxReconnectAttempts})`);
+        this.reconnectTimer = setTimeout(() => {
+            this.connectWebSocket(true);
+        }, delay);
+    }
+
+    startHeartbeat() {
+        this.stopHeartbeat();
+        this.heartbeatTimer = setInterval(() => {
+            if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+            try {
+                this.ws.send(JSON.stringify({ type: 'ping', ts: Date.now() }));
+                if (this.heartbeatTimeoutTimer) clearTimeout(this.heartbeatTimeoutTimer);
+                this.heartbeatTimeoutTimer = setTimeout(() => {
+                    console.warn('⚠️ Heartbeat timeout — соединение считаем мёртвым, инициируем реконнект');
+                    try { this.ws && this.ws.close(4000, 'Heartbeat timeout'); } catch (_) {}
+                }, this.heartbeatTimeoutMs);
+            } catch (e) {
+                console.warn('⚠️ Не удалось отправить ping:', e);
+            }
+        }, this.heartbeatIntervalMs);
+    }
+
+    stopHeartbeat() {
+        if (this.heartbeatTimer) {
+            clearInterval(this.heartbeatTimer);
+            this.heartbeatTimer = null;
+        }
+        if (this.heartbeatTimeoutTimer) {
+            clearTimeout(this.heartbeatTimeoutTimer);
+            this.heartbeatTimeoutTimer = null;
+        }
+    }
+
+    handlePong() {
+        if (this.heartbeatTimeoutTimer) {
+            clearTimeout(this.heartbeatTimeoutTimer);
+            this.heartbeatTimeoutTimer = null;
+        }
+    }
+
+    flushPendingAudio() {
+        if (!this.pendingAudioBuffer || this.pendingAudioBuffer.length === 0) return;
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+        console.log(`📤 Отправляем ${this.pendingAudioBuffer.length} буферизованных аудио-сообщений после реконнекта`);
+        const buffer = this.pendingAudioBuffer.slice();
+        this.pendingAudioBuffer = [];
+        for (const msg of buffer) {
+            try { this.ws.send(typeof msg === 'string' ? msg : JSON.stringify(msg)); }
+            catch (e) { console.warn('⚠️ Не удалось отправить буферизованное сообщение:', e); }
+        }
+    }
+
+    bufferAudioMessage(payload) {
+        // Ограничиваем буфер ~5 секундами (около 100 чанков по 50мс)
+        const MAX_BUFFER = 100;
+        if (this.pendingAudioBuffer.length >= MAX_BUFFER) {
+            this.pendingAudioBuffer.shift();
+        }
+        this.pendingAudioBuffer.push(payload);
+    }
+
+    updateConnectionIndicator() {
+        let el = document.getElementById('vt-conn-indicator');
+        if (!el) {
+            el = document.createElement('div');
+            el.id = 'vt-conn-indicator';
+            el.style.cssText = 'position:fixed;top:14px;right:14px;z-index:9999;padding:8px 14px;border-radius:999px;font-size:12px;font-weight:700;letter-spacing:.02em;box-shadow:0 8px 22px rgba(0,0,0,.18);transition:all .25s ease;display:flex;align-items:center;gap:8px;font-family:Inter,system-ui,sans-serif;';
+            document.body.appendChild(el);
+        }
+        const state = this.connectionState;
+        const map = {
+            idle:         { bg: '#64748b', text: 'Не подключено' },
+            connecting:   { bg: '#f59e0b', text: 'Подключение…' },
+            connected:    { bg: '#10b981', text: 'Соединение' },
+            reconnecting: { bg: '#f59e0b', text: `Переподключение ${this.reconnectAttempt}/${this.maxReconnectAttempts}` },
+            failed:       { bg: '#ef4444', text: 'Соединение потеряно' },
+        };
+        const cfg = map[state] || map.idle;
+        el.style.background = cfg.bg;
+        el.style.color = 'white';
+        el.innerHTML = `<span style="width:8px;height:8px;border-radius:50%;background:white;opacity:.85;${state==='connected'?'box-shadow:0 0 0 4px rgba(255,255,255,.25);':''}"></span>${cfg.text}`;
+    }
+
+    showReconnectFailedOverlay() {
+        if (document.getElementById('vt-reconnect-overlay')) return;
+        const overlay = document.createElement('div');
+        overlay.id = 'vt-reconnect-overlay';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(10,35,64,.78);backdrop-filter:blur(6px);display:grid;place-items:center;padding:20px;font-family:Inter,system-ui,sans-serif;';
+        overlay.innerHTML = `
+          <div style="background:white;border-radius:24px;padding:28px;max-width:440px;width:100%;box-shadow:0 28px 80px rgba(0,0,0,.3);text-align:center;">
+            <div style="font-size:42px;margin-bottom:8px;">🔌</div>
+            <div style="font-size:20px;font-weight:900;color:#0a2340;margin-bottom:10px;">Соединение потеряно</div>
+            <div style="font-size:14px;color:#4b6f92;line-height:1.6;margin-bottom:20px;">
+              Не удалось восстановить связь с сервером после нескольких попыток. Проверьте интернет
+              и попробуйте подключиться вручную, или завершите тренировку.
+            </div>
+            <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+              <button id="vt-reconnect-btn" style="background:linear-gradient(90deg,#149dff,#31b4ff);color:white;border:0;padding:12px 20px;border-radius:14px;font-weight:800;font-size:14px;cursor:pointer;">Переподключиться</button>
+              <button id="vt-end-btn" style="background:#f1f5f9;color:#0a2340;border:1px solid #e2e8f0;padding:12px 20px;border-radius:14px;font-weight:800;font-size:14px;cursor:pointer;">Завершить тренировку</button>
+            </div>
+          </div>
+        `;
+        document.body.appendChild(overlay);
+        document.getElementById('vt-reconnect-btn').addEventListener('click', () => {
+            overlay.remove();
+            this.reconnectAttempt = 0;
+            this.connectWebSocket(true);
+        });
+        document.getElementById('vt-end-btn').addEventListener('click', () => {
+            overlay.remove();
+            if (typeof this.endTraining === 'function') {
+                this.endTraining();
+            } else if (typeof this.finishTraining === 'function') {
+                this.finishTraining();
+            }
+        });
     }
     
     handleWebSocketMessage(event) {
@@ -336,7 +498,13 @@ class VoiceTraining {
                 console.error('❌ eventType не является строкой:', typeof eventType, eventType);
                 return;
             }
-            
+
+            // Heartbeat: сервер ответил на ping — соединение живое
+            if (eventType === 'pong') {
+                this.handlePong();
+                return;
+            }
+
             // Обрабатываем события точно так же, как в оригинале
             switch (eventType) {
                 case 'connected':
@@ -1362,7 +1530,9 @@ class VoiceTraining {
         // Запускаем AI-валидатор и показываем результат
         await this.saveTrainingResults();
         
-        // Закрываем WebSocket после валидации
+        // Закрываем WebSocket после валидации (вручную, без реконнекта)
+        this.manualClose = true;
+        this.stopHeartbeat();
         if (this.ws) {
             try {
                 if (this.ws.readyState === WebSocket.OPEN) {
@@ -1371,7 +1541,7 @@ class VoiceTraining {
             } catch (e) {
                 console.error('Ошибка отправки end_session:', e);
             }
-            this.ws.close();
+            try { this.ws.close(1000, 'Training ended by user'); } catch (_) {}
         }
         
         // Останавливаем медиа поток
@@ -1729,12 +1899,17 @@ class VoiceTraining {
             const base64 = btoa(String.fromCharCode(...bytes));
             
             // Отправляем в формате input_audio_buffer.append (как в оригинале)
-            this.ws.send(JSON.stringify({
+            const audioMsg = {
                 type: 'input_audio_buffer.append',
                 audio: base64,
                 event_id: ''
-            }));
-            
+            };
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify(audioMsg));
+            } else {
+                this.bufferAudioMessage(audioMsg);
+            }
+
         } catch (error) {
             console.error('❌ Ошибка отправки аудио:', error);
         }
@@ -1792,9 +1967,13 @@ class VoiceTraining {
                 audio: base64,
                 event_id: ''
             };
-            
-            this.ws.send(JSON.stringify(message));
-            
+
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify(message));
+            } else {
+                this.bufferAudioMessage(message);
+            }
+
             // Логируем только первые несколько отправок для диагностики в Safari
             if (!this._audioSendCount) {
                 this._audioSendCount = 0;
@@ -1817,11 +1996,16 @@ class VoiceTraining {
                         .map(byte => String.fromCharCode(byte))
                         .join('');
                     const base64 = btoa(binaryString);
-                    this.ws.send(JSON.stringify({
+                    const altMsg = {
                         type: 'input_audio_buffer.append',
                         audio: base64,
                         event_id: ''
-                    }));
+                    };
+                    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                        this.ws.send(JSON.stringify(altMsg));
+                    } else {
+                        this.bufferAudioMessage(altMsg);
+                    }
                     console.log('✅ Аудио отправлено (альтернативный метод)');
                 } catch (altError) {
                     console.error('❌ Альтернативный метод также не сработал:', altError);
@@ -2017,9 +2201,10 @@ class VoiceTraining {
         // Сохраняем результаты перед закрытием
         await this.saveTrainingResults();
         
-        // Закрываем WebSocket
+        // Закрываем WebSocket (ручное завершение, без реконнекта)
+        this.manualClose = true;
+        this.stopHeartbeat();
         if (this.ws) {
-            // Отправляем сообщение о завершении сессии
             try {
                 if (this.ws.readyState === WebSocket.OPEN) {
                     this.ws.send(JSON.stringify({
@@ -2030,7 +2215,7 @@ class VoiceTraining {
             } catch (e) {
                 console.error('Ошибка отправки end_session:', e);
             }
-            this.ws.close();
+            try { this.ws.close(1000, 'Training ended by user'); } catch (_) {}
         }
         
         // Останавливаем медиа поток

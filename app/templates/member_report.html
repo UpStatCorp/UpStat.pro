@@ -1,1001 +1,673 @@
 {% extends "_layout_dashboard.html" %}
-{% block title %}Отчет: {{ analytics.user.name }} — UpStat{% endblock %}
+{% block title %}Паспорт продавца — {{ member.user.name or member.user.email }} — UpStat{% endblock %}
 
-{% block content %}
-<link href="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.css" rel="stylesheet">
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <style>
-  /* === SENIOR UI/UX DESIGN SYSTEM === */
-  
-  :root {
-    --card-bg: var(--surface);
-    --card-border: 1px solid var(--border);
-    --card-radius: 16px;
-    --accent-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
-    --success-gradient: linear-gradient(135deg, #10b981 0%, #059669 100%);
-    --glass-bg: rgba(255, 255, 255, 0.03);
-    --glass-border: 1px solid rgba(255, 255, 255, 0.05);
+  .sp-root {
+    --sp-bg-1: #f6fcff;
+    --sp-bg-2: #eaf8ff;
+    --sp-bg-3: #d8efff;
+    --sp-line: rgba(11, 95, 169, 0.12);
+    --sp-line-strong: rgba(11, 95, 169, 0.22);
+    --sp-text: #0a2340;
+    --sp-muted: #4b6f92;
+    --sp-blue: #149dff;
+    --sp-blue-deep: #0a5ea8;
+    --sp-blue-soft: #84d7ff;
+    --sp-gold: #d8a83a;
+    --sp-gold-deep: #b88414;
+    --sp-gold-soft: #f6d97b;
+    --sp-mint: #17a87a;
+    --sp-danger: #d95d73;
+    --sp-warn: #f2aa3d;
+    --sp-shadow-lg: 0 18px 46px rgba(10,95,168,0.10);
+    --sp-radius-2xl: 28px;
+    --sp-radius-xl: 20px;
+    --sp-radius-md: 14px;
+    --sp-font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  body.dark .sp-root {
+    --sp-bg-1: #0a1828;
+    --sp-bg-2: #0c1f33;
+    --sp-bg-3: #0e2640;
+    --sp-line: rgba(132, 215, 255, 0.14);
+    --sp-line-strong: rgba(132, 215, 255, 0.24);
+    --sp-text: #e8f3ff;
+    --sp-muted: #93b3d6;
+    --sp-shadow-lg: 0 18px 46px rgba(0,0,0,0.35);
   }
 
-  body.dark {
-    --card-bg: #1e293b; /* Slate 800 */
-    --card-border: 1px solid #334155;
-  }
+  .sp-root { font-family: var(--sp-font); color: var(--sp-text); }
+  .sp-root *, .sp-root *::before, .sp-root *::after { box-sizing: border-box; }
 
-  .dashboard-container {
-    max-width: 100%;
-    box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
-    gap: 32px;
-  }
-
-  /* 1. PROFILE HERO SECTION (Discord Style) */
-  .profile-hero {
-    position: relative !important;
-    background: var(--card-bg) !important;
-    border-radius: var(--card-radius) !important;
-    border: var(--card-border) !important;
-    overflow: hidden !important;
-    padding: 0 !important;
-    margin-bottom: 32px !important;
-  }
-
-  .hero-banner {
-    height: 120px !important;
-    background: var(--accent-gradient) !important;
-    opacity: 0.9 !important;
-  }
-
-  .hero-content {
-    padding: 0 32px 32px !important;
-    margin-top: -50px !important;
-    display: flex !important;
-    justify-content: space-between !important;
-    align-items: flex-end !important;
-    flex-wrap: wrap !important;
-    gap: 24px !important;
-  }
-
-  .profile-main {
-    display: flex !important;
-    align-items: flex-end !important;
-    gap: 24px !important;
-  }
-
-  .profile-avatar-wrapper {
-    position: relative !important;
-    padding: 4px !important;
-    background: var(--card-bg) !important;
-    border-radius: 50% !important;
-  }
-
-  .profile-avatar {
-    width: 100px !important;
-    height: 100px !important;
-    border-radius: 50% !important;
-    background: var(--surface) !important;
-    color: var(--text) !important;
-    font-size: 40px !important;
-    font-weight: 800 !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    border: 4px solid var(--card-bg) !important;
-    box-shadow: 0 4px 6px rgba(0,0,0,0.1) !important;
-  }
-
-  .profile-info h1 {
-    font-size: 28px !important;
-    font-weight: 800 !important;
-    margin: 0 0 4px 0 !important;
-    color: var(--text) !important;
-  }
-
-  .profile-info p {
-    color: var(--muted) !important;
-    font-size: 15px !important;
-    margin: 0 !important;
-    display: flex !important;
-    align-items: center !important;
-    gap: 8px !important;
-  }
-
-  .hero-actions {
-    display: flex !important;
-    gap: 12px !important;
-    padding-bottom: 8px !important;
-  }
-
-  /* 2. METRICS GRID (Google Analytics Style) */
-  .metrics-grid {
-    display: grid !important;
-    grid-template-columns: repeat(5, 1fr) !important;
-    gap: 24px !important;
-    margin-bottom: 32px !important;
-  }
-
-  .kpi-card {
-    background: var(--card-bg) !important;
-    border: var(--card-border) !important;
-    border-radius: var(--card-radius) !important;
-    padding: 24px !important;
-    display: flex !important;
-    flex-direction: column !important;
-    justify-content: space-between !important;
-    height: 140px !important;
-    transition: transform 0.2s, box-shadow 0.2s !important;
-  }
-
-  .kpi-card:hover {
-    transform: translateY(-2px) !important;
-    box-shadow: 0 10px 20px rgba(0,0,0,0.05) !important;
-    border-color: var(--primary) !important;
-  }
-
-  .kpi-header {
-    display: flex !important;
-    justify-content: space-between !important;
-    align-items: flex-start !important;
-    color: var(--muted) !important;
-    font-size: 13px !important;
-    font-weight: 600 !important;
-    text-transform: uppercase !important;
-    letter-spacing: 0.5px !important;
-  }
-
-  .kpi-icon {
-    width: 32px !important;
-    height: 32px !important;
-    border-radius: 8px !important;
-    background: var(--bg) !important;
-    display: flex !important;
-    align-items: center !important;
-    justify-content: center !important;
-    color: var(--primary) !important;
-  }
-
-  .kpi-value {
-    font-size: 36px !important;
-    font-weight: 800 !important;
-    color: var(--text) !important;
-    margin-top: auto !important;
-    line-height: 1 !important;
-  }
-
-  .kpi-subtext {
-    font-size: 12px !important;
-    color: var(--muted) !important;
-    margin-top: 8px !important;
-  }
-
-  /* 3. CONTENT LAYOUT (Grid with Sidebar) */
-  .content-layout {
-    display: grid !important;
-    grid-template-columns: 2fr 1fr !important;
-    gap: 32px !important;
-    margin-top: 32px !important;
-  }
-
-  .section-title {
-    font-size: 20px !important;
-    font-weight: 700 !important;
-    margin-bottom: 20px !important;
-    display: flex !important;
-    align-items: center !important;
-    gap: 10px !important;
-    color: var(--text) !important;
-  }
-
-  /* 4. TRAINING PLANS (The Requested Card Style) */
-  /* These styles are COPIED EXACTLY from Dashboard to ensure 100% match */
-  .training-plans-container {
-    background: transparent;
-    border-radius: 0;
-    margin-bottom: 40px;
-  }
-
-  .training-plans-scroll {
-    display: flex;
-    gap: 20px;
-    overflow-x: auto;
-    padding-bottom: 20px;
-    scrollbar-width: thin;
-  }
-  
-  .training-plans-scroll::-webkit-scrollbar {
-    height: 8px;
-  }
-  
-  .training-plans-scroll::-webkit-scrollbar-thumb {
-    background: var(--border);
-    border-radius: 4px;
-  }
-
-  /* --- EXACT DASHBOARD CARD STYLES START --- */
-  .training-plan-card {
-    background: var(--surface) !important;
-    border: 1.5px solid var(--border) !important;
-    border-radius: 12px !important;
-    padding: 16px !important;
-    transition: all 0.3s ease;
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 14px !important;
-    width: 340px !important;
-    min-width: 340px !important; /* Force width in flex container */
-    flex-shrink: 0 !important;
-    box-sizing: border-box !important;
-  }
-  
-  body.dark .training-plan-card {
-    background: rgba(30, 41, 59, 0.4) !important; /* Slightly more transparent for modern feel */
-    border-color: #334155 !important;
-  }
-
-  .training-plan-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 12px 24px rgba(0,0,0,0.15) !important;
-    border-color: var(--primary) !important;
-  }
-
-  .training-plan-card.completed {
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.03), rgba(5, 150, 105, 0.01));
-    border-color: rgba(16, 185, 129, 0.3);
-  }
-
-  .training-plan-header {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-  }
-
-  .training-plan-icon {
-    flex-shrink: 0;
-    font-size: 24px;
-  }
-
-  .training-plan-title-section {
-    flex: 1;
-  }
-
-  .training-plan-title {
-    margin: 0;
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--text);
-    line-height: 1.3;
-  }
-
-  .training-plan-date {
-    margin: 3px 0 0 0;
-    font-size: 11px;
-    color: var(--muted);
-  }
-
-  .status-badge {
-    display: inline-block;
-    padding: 3px 10px;
-    border-radius: 10px;
-    font-size: 11px;
-    font-weight: 600;
-  }
-
-  .status-badge.active {
-    background: rgba(37, 99, 235, 0.1);
-    color: var(--primary);
-  }
-
-  .status-badge.completed {
-    background: rgba(16, 185, 129, 0.1);
-    color: #059669;
-  }
-
-  .training-plan-progress {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-  }
-
-  .progress-info {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-size: 12px;
-  }
-
-  .progress-label { color: var(--muted); }
-  .progress-value { font-weight: 600; color: var(--text); }
-
-  .progress-bar-container {
-    width: 100%;
-    height: 18px;
-    background: var(--bg);
-    border-radius: 9px;
-    overflow: hidden;
+  .sp-page {
     position: relative;
+    overflow: hidden;
+    padding: 20px 12px 40px;
+    background:
+      radial-gradient(circle at 0% 0%, rgba(87,220,255,0.25), transparent 32%),
+      radial-gradient(circle at 100% 18%, rgba(246,217,123,0.25), transparent 30%),
+      linear-gradient(180deg, var(--sp-bg-1) 0%, var(--sp-bg-2) 54%, var(--sp-bg-3) 100%);
+    min-height: 100vh;
+  }
+  body.dark .sp-page {
+    background:
+      radial-gradient(circle at 0% 0%, rgba(87,220,255,0.08), transparent 32%),
+      radial-gradient(circle at 100% 18%, rgba(246,217,123,0.08), transparent 30%),
+      linear-gradient(180deg, var(--sp-bg-1) 0%, var(--sp-bg-2) 54%, var(--sp-bg-3) 100%);
   }
 
-  .progress-bar-fill {
-    height: 100%;
-    background: linear-gradient(90deg, #10b981, #059669);
-    transition: width 0.5s ease;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 32px;
+  .sp-wrap {
+    max-width: 1400px;
+    margin: 0 auto;
+    display: grid; gap: 18px;
+    position: relative; z-index: 1;
   }
 
-  .progress-percent {
-    font-size: 10px;
-    font-weight: 700;
-    color: white;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+  .sp-glass {
+    background: linear-gradient(180deg, rgba(255,255,255,0.94), rgba(255,255,255,0.80));
+    border: 1px solid var(--sp-line);
+    box-shadow: var(--sp-shadow-lg);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-radius: var(--sp-radius-2xl);
+  }
+  body.dark .sp-glass {
+    background: linear-gradient(180deg, rgba(25,38,60,0.85), rgba(20,30,50,0.7));
   }
 
-  .current-training-section {
-    padding: 12px;
-    background: rgba(16, 185, 129, 0.05);
-    border: 1px solid rgba(16, 185, 129, 0.2);
-    border-radius: 10px;
+  .sp-hero {
+    padding: 28px 28px 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .sp-hero::before {
+    content: "";
+    position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(130deg, rgba(20,157,255,0.10) 0%, rgba(20,157,255,0.01) 38%, rgba(216,168,58,0.09) 100%);
   }
 
-  .current-training-label {
-    font-size: 10px;
-    font-weight: 600;
-    color: #059669;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 6px;
+  .sp-hero-top {
+    position: relative; z-index: 1;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; flex-wrap: wrap; margin-bottom: 18px;
   }
 
-  .current-training-title {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text);
-    margin-bottom: 5px;
-    line-height: 1.3;
+  .sp-back {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 16px; border-radius: 999px;
+    background: rgba(255,255,255,0.82);
+    color: #205786;
+    border: 1px solid var(--sp-line);
+    text-decoration: none;
+    font-size: 13px; font-weight: 700;
+    transition: all .2s ease;
+  }
+  body.dark .sp-back { background: rgba(25,38,60,0.65); color: var(--sp-blue-soft); }
+  .sp-back:hover { transform: translateX(-2px); box-shadow: 0 10px 20px rgba(20,157,255,0.08); }
+
+  .sp-eyebrow {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 14px; border-radius: 999px;
+    background: linear-gradient(90deg, rgba(20,157,255,0.12), rgba(216,168,58,0.16));
+    border: 1px solid rgba(20,157,255,0.14);
+    color: var(--sp-blue-deep);
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.22em; font-weight: 800;
+  }
+  body.dark .sp-eyebrow { color: var(--sp-blue-soft); }
+  .sp-eyebrow .dot {
+    width: 9px; height: 9px; border-radius: 999px;
+    background: linear-gradient(180deg, var(--sp-blue), var(--sp-gold));
   }
 
-  .current-training-desc {
-    font-size: 12px;
-    color: var(--muted);
-    line-height: 1.4;
-    margin-bottom: 6px;
-  }
+  .sp-hero-body { position: relative; z-index: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  @media (max-width: 900px) { .sp-hero-body { grid-template-columns: 1fr; } }
 
-  .training-attempts {
-    font-size: 11px;
-    color: var(--muted);
+  .sp-avatar-row { display: flex; align-items: center; gap: 18px; }
+  .sp-avatar {
+    width: 80px; height: 80px; border-radius: 24px;
+    background: linear-gradient(135deg, var(--sp-blue), var(--sp-gold));
+    display: grid; place-items: center;
+    color: white; font-size: 30px; font-weight: 900;
+    box-shadow: 0 10px 28px rgba(20,157,255,0.22);
+  }
+  .sp-name { font-size: 28px; font-weight: 900; letter-spacing: -0.03em; }
+  .sp-email { margin-top: 4px; color: var(--sp-muted); font-size: 14px; }
+
+  .sp-kpi-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;
+  }
+  .sp-kpi {
+    padding: 14px 16px;
+    border-radius: 18px;
+    background: rgba(255,255,255,0.82);
+    border: 1px solid var(--sp-line);
+  }
+  body.dark .sp-kpi { background: rgba(25,38,60,0.65); }
+  .sp-kpi .label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.18em;
+    color: var(--sp-muted); font-weight: 800;
+  }
+  .sp-kpi .value {
     margin-top: 6px;
+    font-size: 24px; font-weight: 900; letter-spacing: -0.04em;
+    color: var(--sp-blue-deep);
   }
+  body.dark .sp-kpi .value { color: var(--sp-blue-soft); }
+  .sp-kpi .sub { margin-top: 4px; font-size: 12px; color: var(--sp-muted); }
 
-  .trainings-list {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
+  .sp-grid-2 {
+    display: grid; grid-template-columns: 1fr 1.4fr; gap: 18px;
   }
+  @media (max-width: 1100px) { .sp-grid-2 { grid-template-columns: 1fr; } }
 
-  .training-mini-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 7px 10px;
-    background: var(--bg);
-    border-radius: 7px;
-    font-size: 12px;
-    transition: all 0.2s ease;
+  .sp-panel {
+    padding: 22px;
+    position: relative; overflow: hidden;
   }
-
-  .training-mini-item:hover:not(.locked):not(.more) {
-    background: rgba(37, 99, 235, 0.05) !important;
+  .sp-panel::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(160deg, rgba(20,157,255,0.04), rgba(216,168,58,0.04));
   }
+  .sp-panel > * { position: relative; z-index: 1; }
 
-  .training-mini-item.completed {
-    background: rgba(16, 185, 129, 0.08) !important;
+  .sp-panel-head {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 14px; flex-wrap: wrap; margin-bottom: 14px;
   }
-
-  .training-mini-item.locked { opacity: 0.5; }
-
-  .training-mini-item.more {
-    justify-content: center;
-    font-style: italic;
-    color: var(--muted);
+  .sp-panel-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.20em;
+    color: var(--sp-muted); font-weight: 800;
   }
-
-  .training-mini-number {
-    flex-shrink: 0;
-    width: 20px;
-    height: 20px;
-    background: white;
-    border: 1.5px solid var(--border);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 10px;
-    font-weight: 700;
+  .sp-panel-title {
+    margin-top: 6px;
+    font-size: 22px; font-weight: 900; letter-spacing: -0.03em;
+    color: var(--sp-text);
   }
+  .sp-panel-copy { color: var(--sp-muted); font-size: 13px; line-height: 1.7; }
 
-  .training-mini-item.completed .training-mini-number {
-    background: #10b981;
-    border-color: #10b981;
-    color: white;
-  }
-
-  .training-mini-title { flex: 1; color: var(--text); }
-
-  .training-plan-actions {
-    display: flex;
-    gap: 7px;
-  }
-
-  .btn-block {
+  .sp-chart-box {
+    position: relative;
     width: 100%;
-    justify-content: center;
-    padding: 10px 16px;
-    font-size: 13px;
-  }
-  
-  .btn-icon-sm {
-    width: 16px;
-    height: 16px;
-    margin-right: 6px;
-  }
-  /* --- EXACT DASHBOARD CARD STYLES END --- */
-
-
-  /* 5. ERRORS & CORRECTIONS (Notion/Jira Style) */
-  .errors-container {
-    background: var(--card-bg) !important;
-    border: var(--card-border) !important;
-    border-radius: var(--card-radius) !important;
-    padding: 24px !important;
+    height: 340px;
+    padding: 8px;
   }
 
-  .error-item-modern {
-    padding: 16px !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 12px !important;
-    margin-bottom: 16px !important;
-    background: var(--bg) !important;
-    transition: background 0.2s !important;
+  .sp-stages-list { display: grid; gap: 10px; margin-top: 14px; }
+  .sp-stage-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 12px; align-items: center;
+    padding: 12px 14px;
+    background: rgba(255,255,255,0.82);
+    border: 1px solid var(--sp-line);
+    border-radius: 14px;
+  }
+  body.dark .sp-stage-row { background: rgba(25,38,60,0.65); }
+  .sp-stage-name { font-weight: 700; font-size: 13px; }
+  .sp-stage-bar {
+    width: 120px; height: 8px; border-radius: 999px;
+    background: rgba(20,157,255,0.08); overflow: hidden;
+  }
+  .sp-stage-bar-fill {
+    height: 100%; border-radius: 999px;
+    background: linear-gradient(90deg, var(--sp-blue), var(--sp-gold));
+  }
+  .sp-stage-val {
+    font-size: 14px; font-weight: 900; letter-spacing: -0.02em;
+    color: var(--sp-blue-deep); min-width: 50px; text-align: right;
+  }
+  body.dark .sp-stage-val { color: var(--sp-blue-soft); }
+  .sp-stage-delta {
+    font-size: 12px; font-weight: 800;
+    padding: 4px 10px; border-radius: 999px;
+    white-space: nowrap;
+  }
+  .sp-delta-pos { color: var(--sp-mint); background: rgba(23, 168, 122, 0.12); }
+  .sp-delta-neg { color: var(--sp-danger); background: rgba(217, 93, 115, 0.12); }
+  .sp-delta-zero { color: var(--sp-muted); background: rgba(75, 111, 146, 0.08); }
+
+  .sp-table-wrap {
+    margin-top: 6px;
+    overflow-x: auto;
+    border-radius: var(--sp-radius-xl);
+    border: 1px solid var(--sp-line);
+    background: rgba(255,255,255,0.7);
+  }
+  body.dark .sp-table-wrap { background: rgba(20,30,50,0.5); }
+  .sp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .sp-table th, .sp-table td {
+    padding: 12px 14px;
+    text-align: left;
+    border-bottom: 1px solid var(--sp-line);
+    vertical-align: middle;
+  }
+  .sp-table th {
+    background: rgba(20,157,255,0.06);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.16em;
+    color: var(--sp-muted);
+    font-weight: 800;
+  }
+  body.dark .sp-table th { background: rgba(132,215,255,0.06); }
+  .sp-table tr:last-child td { border-bottom: 0; }
+  .sp-table tr:hover td { background: rgba(20,157,255,0.04); }
+
+  .sp-badge {
+    display: inline-block;
+    padding: 4px 10px; border-radius: 999px;
+    font-size: 11px; font-weight: 800;
+    text-transform: uppercase; letter-spacing: 0.08em;
+  }
+  .sp-badge-yes { color: #0a6b4a; background: rgba(23, 168, 122, 0.16); }
+  .sp-badge-no { color: #8a3140; background: rgba(217, 93, 115, 0.16); }
+  .sp-badge-partial { color: #8a5b14; background: rgba(216, 168, 58, 0.16); }
+  body.dark .sp-badge-yes { color: #6be6b0; background: rgba(23, 168, 122, 0.24); }
+  body.dark .sp-badge-no { color: #ffb0c0; background: rgba(217, 93, 115, 0.24); }
+  body.dark .sp-badge-partial { color: #ffd97b; background: rgba(216, 168, 58, 0.24); }
+
+  .sp-link {
+    color: var(--sp-blue-deep); text-decoration: none; font-weight: 700;
+  }
+  body.dark .sp-link { color: var(--sp-blue-soft); }
+  .sp-link:hover { text-decoration: underline; }
+
+  .sp-empty {
+    padding: 60px 22px;
+    text-align: center;
+    color: var(--sp-muted);
+    font-size: 14px;
+    line-height: 1.7;
+  }
+  .sp-empty h3 {
+    font-size: 20px; font-weight: 900; color: var(--sp-text);
+    margin: 0 0 8px;
   }
 
-  .error-item-modern:hover {
-    background: var(--surface-hover) !important;
+  .sp-overall-ring {
+    width: 100px; height: 100px; border-radius: 50%;
+    display: grid; place-items: center;
+    position: relative;
+    background: conic-gradient(var(--sp-blue) 0deg, var(--sp-gold) 360deg);
+    box-shadow: 0 10px 28px rgba(20,157,255,0.16);
   }
+  .sp-overall-ring::after {
+    content: ""; position: absolute; inset: 6px; border-radius: 50%;
+    background: rgba(255,255,255,0.96);
+  }
+  body.dark .sp-overall-ring::after { background: rgba(20,30,50,0.95); }
+  .sp-overall-ring span {
+    position: relative; z-index: 1;
+    font-size: 24px; font-weight: 900; letter-spacing: -0.02em;
+    color: var(--sp-blue-deep);
+  }
+  body.dark .sp-overall-ring span { color: var(--sp-blue-soft); }
 
-  .error-tags {
-    display: flex !important;
-    gap: 8px !important;
-    margin-bottom: 12px !important;
+  .sp-comment {
+    margin-top: 4px;
+    padding: 8px 12px;
+    background: rgba(20,157,255,0.06);
+    border-left: 3px solid var(--sp-blue);
+    border-radius: 8px;
+    font-size: 12px; line-height: 1.6;
+    color: var(--sp-text);
+    max-width: 360px;
   }
+  body.dark .sp-comment { background: rgba(132,215,255,0.06); }
 
-  .tag {
-    padding: 4px 10px !important;
-    border-radius: 6px !important;
-    font-size: 11px !important;
-    font-weight: 600 !important;
-    text-transform: uppercase !important;
-  }
-
-  .tag-type { background: rgba(59, 130, 246, 0.1) !important; color: #3b82f6 !important; }
-  .tag-status-pending { background: rgba(245, 158, 11, 0.1) !important; color: #f59e0b !important; }
-  .tag-status-applied { background: rgba(16, 185, 129, 0.1) !important; color: #10b981 !important; }
-
-  .error-content-grid {
-    display: grid !important;
-    grid-template-columns: 1fr 1fr !important;
-    gap: 16px !important;
-  }
-
-  .error-box-title {
-    font-size: 11px !important;
-    color: var(--muted) !important;
-    text-transform: uppercase !important;
-    margin-bottom: 6px !important;
-    font-weight: 600 !important;
-  }
-
-  .error-text {
-    font-size: 14px !important;
-    line-height: 1.5 !important;
-    color: var(--text) !important;
-  }
-
-  /* 6. CHARTS & SIDEBAR */
-  .chart-card {
-    background: var(--card-bg) !important;
-    border: var(--card-border) !important;
-    border-radius: var(--card-radius) !important;
-    padding: 24px !important;
-    height: 100% !important;
-  }
-
-  /* Responsive */
-  @media (max-width: 1400px) {
-    .metrics-grid { grid-template-columns: repeat(3, 1fr); }
-  }
-  @media (max-width: 1200px) {
-    .metrics-grid { grid-template-columns: repeat(2, 1fr); }
-    .content-layout { grid-template-columns: 1fr; }
-  }
-  @media (max-width: 768px) {
-    .hero-content { flex-direction: column; align-items: flex-start; }
-    .metrics-grid { grid-template-columns: 1fr; }
+  .sp-section-title {
+    font-size: 18px; font-weight: 800; letter-spacing: -0.02em;
+    color: var(--sp-text); margin: 0 0 14px;
   }
 </style>
+{% endblock %}
 
-<div class="dashboard-container">
-  
-  <!-- 1. HEADER (Discord Style Profile) -->
-  <div class="profile-hero">
-    <div class="hero-banner"></div>
-    <div class="hero-content">
-      <div class="profile-main">
-        <div class="profile-avatar-wrapper">
-          <div class="profile-avatar">
-            {{ analytics.user.name[0].upper() }}
+{% block content %}
+<div class="sp-root">
+  <section class="sp-page">
+    <div class="sp-wrap">
+
+      <div class="sp-glass sp-hero">
+        <div class="sp-hero-top">
+          <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+            <a class="sp-back" href="/teams/{{ team.id }}/members">← Назад к команде</a>
+            <div class="sp-eyebrow"><span class="dot"></span>UPSTAT · ПАСПОРТ ПРОДАВЦА · {{ team.name }}</div>
           </div>
         </div>
-        <div class="profile-info">
-          <h1>{{ analytics.user.name }}</h1>
-          <p>
-            <svg style="width:16px; height:16px;" viewBox="0 0 20 20" fill="currentColor">
-              <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z" />
-              <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z" />
-            </svg>
-            {{ analytics.user.email }}
-          </p>
-        </div>
-      </div>
-      <div class="hero-actions">
-        <a href="/teams/{{ team.id }}/analytics" class="btn btn-outline" style="background: var(--surface);">
-          ← К команде
-        </a>
-      </div>
-    </div>
-  </div>
 
-  <!-- 2. METRICS (Google Ads Style) -->
-  <div class="metrics-grid">
-    <!-- Card 1 -->
-    <div class="kpi-card">
-      <div class="kpi-header">
-        <span>Активность</span>
-        <div class="kpi-icon"><svg style="width:18px" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/></svg></div>
-      </div>
-      <div class="kpi-value">{{ analytics.stats.completed_trainings }}</div>
-      <div class="kpi-subtext">Тренировок завершено</div>
-    </div>
-    
-    <!-- Card 2 -->
-    <div class="kpi-card">
-      <div class="kpi-header">
-        <span>Качество</span>
-        <div class="kpi-icon"><svg style="width:18px" viewBox="0 0 20 20" fill="currentColor"><path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/></svg></div>
-      </div>
-      <div class="kpi-value">{{ "%.1f"|format(analytics.stats.avg_score) }}</div>
-      <div class="kpi-subtext">Средний балл</div>
-    </div>
-
-    <!-- Card 3 -->
-    <div class="kpi-card">
-      <div class="kpi-header">
-        <span>Прогресс</span>
-        <div class="kpi-icon"><svg style="width:18px" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12 7a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0V8.414l-4.293 4.293a1 1 0 01-1.414 0L8 10.414l-4.293 4.293a1 1 0 01-1.414-1.414l5-5a1 1 0 011.414 0L11 10.586 14.586 7H12z" clip-rule="evenodd"/></svg></div>
-      </div>
-      <div class="kpi-value">{{ analytics.stats.completed_plans }}</div>
-      <div class="kpi-subtext">Планов выполнено из {{ analytics.stats.total_plans }}</div>
-    </div>
-
-    <!-- Card 4 -->
-    <div class="kpi-card">
-      <div class="kpi-header">
-        <span>Работа над ошибками</span>
-        <div class="kpi-icon"><svg style="width:18px" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg></div>
-      </div>
-      <div class="kpi-value">{{ analytics.stats.corrections_applied }}</div>
-      <div class="kpi-subtext">Исправлений применено</div>
-    </div>
-
-    <!-- Card 5: Последний вход -->
-    <div class="kpi-card">
-      <div class="kpi-header">
-        <span>Последний вход</span>
-        <div class="kpi-icon"><svg style="width:18px" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/></svg></div>
-      </div>
-      <div class="kpi-value" id="last-login-time" style="font-size: 18px; line-height: 1.4;">
-        {% if analytics.user.last_login_at %}
-          <span data-utc-time="{{ analytics.user.last_login_at.isoformat() }}">Загрузка...</span>
-        {% else %}
-          Никогда
-        {% endif %}
-      </div>
-      <div class="kpi-subtext" id="last-login-timezone">Определение часового пояса...</div>
-    </div>
-  </div>
-
-  <!-- 3. TRAINING PLANS (Canva Style Layout) -->
-  <div class="training-plans-container">
-    <div class="section-title">
-      <span style="font-size: 24px">🎯</span>
-      Планы тренировок
-      <span style="background: var(--surface); padding: 2px 10px; border-radius: 12px; font-size: 14px; border: 1px solid var(--border);">{{ training_plans|length }}</span>
-    </div>
-
-    {% if training_plans %}
-    <div class="training-plans-scroll">
-      {% for item in training_plans %}
-        <!-- CARD START (EXACT REPLICA) -->
-        <div class="training-plan-card {% if item.plan.status == 'completed' %}completed{% endif %}">
-          <div class="training-plan-header">
-            <div class="training-plan-icon">
-              {% if item.plan.status == 'completed' %}🎉{% else %}🎯{% endif %}
-            </div>
-            <div class="training-plan-title-section">
-              <h3 class="training-plan-title">{{ item.plan.title }}</h3>
-              <p class="training-plan-date">
-                <svg style="width: 12px; height: 12px; display: inline; vertical-align: middle;" viewBox="0 0 20 20" fill="currentColor">
-                  <path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd"/>
-                </svg>
-                Создан {{ item.plan.created_at.strftime("%d.%m.%Y") }}
-              </p>
-            </div>
-            <div class="training-plan-status {% if item.plan.status == 'completed' %}completed{% else %}active{% endif %}">
-              {% if item.plan.status == 'completed' %}
-                <span class="status-badge completed">✅ Завершён</span>
-              {% else %}
-                <span class="status-badge active">🔄 В процессе</span>
-              {% endif %}
-            </div>
-          </div>
-
-          <div class="training-plan-progress">
-            <div class="progress-info">
-              <span class="progress-label">Прогресс тренировок</span>
-              <span class="progress-value">{{ item.plan.completed_trainings }}/{{ item.plan.total_trainings }}</span>
-            </div>
-            <div class="progress-bar-container">
-              <div class="progress-bar-fill" style="width: {{ item.progress_percent }}%">
-                <span class="progress-percent">{{ item.progress_percent }}%</span>
+        <div class="sp-hero-body">
+          <div>
+            <div class="sp-avatar-row">
+              <div class="sp-avatar">{{ (member.user.name or member.user.email or '?')[0]|upper }}</div>
+              <div>
+                <div class="sp-name">{{ member.user.name or member.user.email.split('@')[0] }}</div>
+                <div class="sp-email">{{ member.user.email }}</div>
+                {% if passport and passport.first_call_at %}
+                <div class="sp-email" style="margin-top:6px;">Первый звонок: {{ passport.first_call_at }}</div>
+                {% endif %}
+                {% if passport and passport.last_updated_at %}
+                <div class="sp-email">Обновлён: {{ passport.last_updated_at }}</div>
+                {% endif %}
               </div>
             </div>
           </div>
 
-          {% if item.current_training %}
-          <div class="current-training-section">
-            <div class="current-training-label">
-              <svg style="width: 16px; height: 16px; display: inline; margin-right: 6px;" viewBox="0 0 20 20" fill="currentColor">
-                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/>
-              </svg>
-              Следующая тренировка:
+          <div class="sp-kpi-grid">
+            <div class="sp-kpi" style="display:flex; align-items:center; gap:14px;">
+              <div class="sp-overall-ring">
+                <span>{{ ((passport.overall_score if passport else 0) | round(0, 'floor')) | int }}</span>
+              </div>
+              <div>
+                <div class="label">Общий балл</div>
+                <div class="value" style="font-size:18px; margin-top:6px;">{{ ((passport.overall_score if passport else 0) | round(1)) }}%</div>
+                <div class="sub">Среднее по 5 этапам.</div>
+              </div>
             </div>
-            <div class="current-training-title">{{ item.current_training.title }}</div>
-            <div class="current-training-desc">{{ item.current_training.description[:80] }}{% if item.current_training.description|length > 80 %}...{% endif %}</div>
-            {% if item.current_training.attempts > 0 %}
-            <div class="training-attempts">
-              📊 Попыток: {{ item.current_training.attempts }}
-              {% if item.current_training.best_score %}
-              | ⭐ Лучший: {{ item.current_training.best_score }}/100
-              {% endif %}
+            <div class="sp-kpi">
+              <div class="label">Проанализировано звонков</div>
+              <div class="value">{{ passport.total_calls_analyzed if passport else 0 }}</div>
+              <div class="sub">За всё время.</div>
             </div>
-            {% endif %}
-          </div>
-          {% endif %}
-
-          <div class="trainings-list">
-            {% for training in item.trainings[:5] %}
-            <div class="training-mini-item {% if training.status == 'completed' %}completed{% elif training.status == 'locked' %}locked{% endif %}">
-              <span class="training-mini-number">
-                {% if training.status == 'completed' %}✅{% elif training.status == 'locked' %}🔒{% else %}{{ training.order }}{% endif %}
-              </span>
-              <span class="training-mini-title">{{ training.title[:40] }}{% if training.title|length > 40 %}...{% endif %}</span>
+            <div class="sp-kpi">
+              <div class="label">Пройдено тренировок</div>
+              <div class="value">{{ passport.total_trainings_completed if passport else 0 }}</div>
+              <div class="sub">С применённым эффектом.</div>
             </div>
-            {% endfor %}
-            {% if item.trainings|length > 5 %}
-            <div class="training-mini-item more">
-              <span>+{{ item.trainings|length - 5 }} еще...</span>
+            <div class="sp-kpi">
+              <div class="label">Снимков в истории</div>
+              <div class="value">{{ snapshots|length }}</div>
+              <div class="sub">Для отслеживания динамики.</div>
             </div>
-            {% endif %}
-          </div>
-
-          <div class="training-plan-actions">
-            {% if item.plan.status == 'completed' %}
-              <a href="/training-plan/{{ item.plan.report_message_id }}?view_mode=1" class="btn btn-outline btn-block">
-                <svg class="btn-icon-sm" viewBox="0 0 20 20" fill="currentColor">
-                  <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/>
-                  <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/>
-                </svg>
-                Подробнее
-              </a>
-            {% elif item.current_training %}
-              <a href="/training-plan/{{ item.plan.report_message_id }}?view_mode=1" class="btn btn-outline btn-block">
-                <svg class="btn-icon-sm" viewBox="0 0 20 20" fill="currentColor">
-                  <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/>
-                  <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/>
-                </svg>
-                Подробнее
-              </a>
-            {% else %}
-              <a href="/training-plan/{{ item.plan.report_message_id }}?view_mode=1" class="btn btn-outline btn-block">
-                <svg class="btn-icon-sm" viewBox="0 0 20 20" fill="currentColor">
-                  <path d="M10 12a2 2 0 100-4 2 2 0 000 4z"/>
-                  <path fill-rule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clip-rule="evenodd"/>
-                </svg>
-                Подробнее
-              </a>
-            {% endif %}
           </div>
         </div>
-        <!-- CARD END -->
-      {% endfor %}
-    </div>
-    {% else %}
-    <div style="padding: 60px 40px; text-align: center; border: 2px dashed var(--border); border-radius: 20px; color: var(--muted);">
-      <div style="font-size: 48px; margin-bottom: 16px;">🎯</div>
-      <p style="margin: 0; font-size: 16px;">Нет активных планов тренировок</p>
-    </div>
-    {% endif %}
-  </div>
-
-  <!-- 4. CONTENT SPLIT: CHARTS & ERRORS -->
-  <div class="content-layout">
-    
-    <!-- Left: Errors List -->
-    <div class="errors-container">
-      <div class="section-title">
-        <span style="font-size: 24px">⚠️</span>
-        Работа над ошибками
-        <span style="background: rgba(239, 68, 68, 0.1); color: #ef4444; padding: 2px 10px; border-radius: 12px; font-size: 14px;">{{ analytics.errors|length if analytics.errors else 0 }}</span>
       </div>
 
-      {% if analytics.errors and analytics.errors|length > 0 %}
-        {% for error in analytics.errors[:10] %}
-        <div class="error-item-modern">
-          <div class="error-tags">
-            <span class="tag tag-type">{{ error.error_type }}</span>
-            <span class="tag {{ 'tag-status-applied' if error.correction_applied else 'tag-status-pending' }}">
-              {{ 'Исправлено' if error.correction_applied else 'Ожидает' }}
-            </span>
-            <span style="font-size: 11px; color: var(--muted); margin-left: auto;">{{ error.detected_at.strftime('%d.%m.%Y') }}</span>
-          </div>
-          <div class="error-content-grid">
-            <div>
-              <div class="error-box-title">Обнаруженная проблема</div>
-              <div class="error-text">{{ error.error_description }}</div>
-            </div>
-            <div style="border-left: 1px solid var(--border); padding-left: 16px;">
-              <div class="error-box-title" style="color: var(--primary);">Рекомендация</div>
-              <div class="error-text">{{ error.correction_text }}</div>
-            </div>
-          </div>
+      {% if not passport or snapshots|length == 0 %}
+      <div class="sp-glass">
+        <div class="sp-empty">
+          <h3>Пока нет данных для паспорта</h3>
+          <p>У этого участника ещё не проанализированы звонки или не накоплены снимки. <br>
+          Загрузите звонки этого менеджера для построения паспорта продавца.</p>
         </div>
-        {% endfor %}
+      </div>
       {% else %}
-        <div style="text-align: center; padding: 40px; color: var(--muted);">
-          Ошибок не обнаружено. Отличная работа! 🎉
+
+      <div class="sp-grid-2">
+        <div class="sp-glass sp-panel">
+          <div class="sp-panel-head">
+            <div>
+              <div class="sp-panel-label">Радар по 5 этапам продаж</div>
+              <div class="sp-panel-title">Текущий профиль навыков</div>
+            </div>
+          </div>
+          <div class="sp-chart-box">
+            <canvas id="sp-radar"></canvas>
+          </div>
+
+          <div class="sp-stages-list">
+            {% set stages = ['contact', 'needs', 'presentation', 'objections', 'closing'] %}
+            {% for stage in stages %}
+              {% set val = passport.scores[stage] %}
+              {% set delta = deltas[stage] if deltas else None %}
+              <div class="sp-stage-row">
+                <div class="sp-stage-name">{{ stage_labels[stage] }}</div>
+                <div style="display:flex; align-items:center; gap:12px;">
+                  <div class="sp-stage-bar"><div class="sp-stage-bar-fill" style="width: {{ val|round(0) }}%"></div></div>
+                  <div class="sp-stage-val">{{ val|round(1) }}%</div>
+                </div>
+                {% if delta is not none %}
+                  {% if delta > 0.5 %}
+                    <div class="sp-stage-delta sp-delta-pos">+{{ delta|round(1) }}</div>
+                  {% elif delta < -0.5 %}
+                    <div class="sp-stage-delta sp-delta-neg">{{ delta|round(1) }}</div>
+                  {% else %}
+                    <div class="sp-stage-delta sp-delta-zero">0</div>
+                  {% endif %}
+                {% else %}
+                  <div class="sp-stage-delta sp-delta-zero">—</div>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
         </div>
+
+        <div class="sp-glass sp-panel">
+          <div class="sp-panel-head">
+            <div>
+              <div class="sp-panel-label">Динамика по звонкам</div>
+              <div class="sp-panel-title">Как растёт менеджер со временем</div>
+              <div class="sp-panel-copy" style="margin-top:8px;">Каждая линия — этап продаж. По оси X — последовательные снимки после каждого проанализированного звонка.</div>
+            </div>
+          </div>
+          <div class="sp-chart-box" style="height: 380px;">
+            <canvas id="sp-line"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="sp-glass sp-panel">
+        <div class="sp-panel-head">
+          <div>
+            <div class="sp-panel-label">История звонков и тренировок</div>
+            <div class="sp-panel-title">Снимки паспорта</div>
+            <div class="sp-panel-copy" style="margin-top:8px;">Какие тренировки прошёл менеджер между звонками, применил ли их и какая дельта получилась.</div>
+          </div>
+        </div>
+
+        <div class="sp-table-wrap">
+          <table class="sp-table">
+            <thead>
+              <tr>
+                <th>Дата</th>
+                <th>Звонок</th>
+                <th>Общий балл</th>
+                <th>Тренировка перед</th>
+                <th>Применил?</th>
+                <th>Дельта</th>
+                <th>Комментарий AI</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for s in snapshots|reverse %}
+              <tr>
+                <td style="white-space:nowrap;">{{ s.created_at_human }}</td>
+                <td>
+                  <a class="sp-link" href="/calls/{{ s.conversation_id }}" title="Открыть разбор звонка">#{{ s.conversation_id }} →</a>
+                </td>
+                <td><strong>{{ s.overall_score|round(1) }}%</strong></td>
+                <td>
+                  {% if s.training_stage_label %}
+                    <div style="font-weight:700;">{{ s.training_stage_label }}</div>
+                    {% if s.training_topic %}
+                    <div style="font-size:11px; color:var(--sp-muted); margin-top:2px;">{{ s.training_topic|truncate(60, true) }}</div>
+                    {% endif %}
+                  {% else %}
+                    <span style="color:var(--sp-muted);">—</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if s.training_applied == 'yes' %}
+                    <span class="sp-badge sp-badge-yes">Да</span>
+                  {% elif s.training_applied == 'no' %}
+                    <span class="sp-badge sp-badge-no">Нет</span>
+                  {% elif s.training_applied == 'partial' %}
+                    <span class="sp-badge sp-badge-partial">Частично</span>
+                  {% else %}
+                    <span style="color:var(--sp-muted);">—</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if s.training_delta is not none %}
+                    {% if s.training_delta > 0.5 %}
+                      <span class="sp-stage-delta sp-delta-pos">+{{ s.training_delta|round(1) }}</span>
+                    {% elif s.training_delta < -0.5 %}
+                      <span class="sp-stage-delta sp-delta-neg">{{ s.training_delta|round(1) }}</span>
+                    {% else %}
+                      <span class="sp-stage-delta sp-delta-zero">0</span>
+                    {% endif %}
+                  {% else %}
+                    <span style="color:var(--sp-muted);">—</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if s.gpt_comment %}
+                    <div class="sp-comment">{{ s.gpt_comment }}</div>
+                  {% else %}
+                    <span style="color:var(--sp-muted);">—</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {% endif %}
-    </div>
 
-    <!-- Right: Stats Chart -->
-    <div class="chart-card">
-      <div class="section-title">
-        <span style="font-size: 24px">📈</span>
-        Конверсия
-      </div>
-      <div style="height: 300px; width: 100%;">
-        <canvas id="conversionChart"></canvas>
-      </div>
     </div>
-
-  </div>
+  </section>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% if passport and snapshots|length > 0 %}
 <script>
-  const ctx = document.getElementById('conversionChart');
-  if (ctx) {
-    // Получаем данные из API
-    fetch(`/api/teams/{{ team.id }}/conversion-metrics?member_id={{ analytics.user.id }}&period=weekly&days=30`)
-      .then(r => r.json())
-      .then(data => {
-        // Находим данные для нужного участника
-        const memberData = data.metrics.find(m => m.user_id === {{ analytics.user.id }}) || data.metrics[0];
-        
-        if (!memberData || !memberData.conversions || Object.keys(memberData.conversions).length === 0) {
-          // Если данных нет, показываем сообщение
-          ctx.parentElement.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--muted);">Нет данных о конверсии</div>';
-          return;
-        }
-        
-        // Сортируем этапы конверсии в правильном порядке
-        const conversionStages = [
-          'plan_created_to_first_training',
-          'first_training_to_second_training',
-          'second_training_to_third_training',
-          'third_training_to_fourth_training',
-          'fourth_training_to_fifth_training',
-          'fifth_training_to_completion'
-        ];
-        
-        const labels = [];
-        const conversionData = [];
-        const colors = [];
-        
-        conversionStages.forEach((stage, index) => {
-          if (memberData.conversions[stage] !== undefined) {
-            const value = (memberData.conversions[stage] || 0) * 100;
-            labels.push(getStageLabel(stage));
-            conversionData.push(value);
-            // Градиент цветов от зеленого к красному
-            const hue = 120 - (index * 20); // От зеленого (120) к красному (0)
-            colors.push(`hsl(${hue}, 70%, 50%)`);
-          }
-        });
-        
-        // Если есть завершение, добавляем его
-        const completionKey = Object.keys(memberData.conversions).find(k => k.includes('_completion'));
-        if (completionKey) {
-          labels.push('Финиш');
-          conversionData.push((memberData.conversions[completionKey] || 0) * 100);
-          colors.push('hsl(0, 70%, 50%)');
-        }
-        
-        if (labels.length === 0) {
-          ctx.parentElement.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--muted);">Нет данных о конверсии</div>';
-          return;
-        }
-        
-        // Используем линейный график для отображения воронки конверсии
-        new Chart(ctx, {
-          type: 'line',
-          data: {
-            labels: labels,
-            datasets: [{
-              label: 'Конверсия (%)',
-              data: conversionData,
-              borderColor: '#6366f1',
-              backgroundColor: 'rgba(99, 102, 241, 0.1)',
-              fill: true,
-              tension: 0.4,
-              pointRadius: 6,
-              pointHoverRadius: 8,
-              pointBackgroundColor: '#6366f1',
-              pointBorderColor: '#fff',
-              pointBorderWidth: 2
-            }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: { display: false },
-              tooltip: {
-                callbacks: {
-                  label: function(context) {
-                    return 'Конверсия: ' + context.parsed.y.toFixed(1) + '%';
-                  }
-                }
-              }
-            },
-            scales: {
-              y: {
-                beginAtZero: true,
-                max: 100,
-                ticks: {
-                  callback: function(value) {
-                    return value + '%';
-                  }
-                },
-                grid: {
-                  color: 'rgba(255, 255, 255, 0.1)'
-                }
-              },
-              x: {
-                grid: {
-                  display: false
-                },
-                ticks: {
-                  color: '#94a3b8',
-                  font: { size: 11 }
-                }
-              }
+(function(){
+  const stageLabels = {{ stage_labels|tojson }};
+  const stageOrder = ['contact', 'needs', 'presentation', 'objections', 'closing'];
+  const passport = {{ passport|tojson }};
+  const snapshots = {{ snapshots|tojson }};
+
+  const isDark = document.body.classList.contains('dark');
+  const textColor = isDark ? '#e8f3ff' : '#0a2340';
+  const gridColor = isDark ? 'rgba(132,215,255,0.12)' : 'rgba(11,95,169,0.10)';
+
+  const stageColors = {
+    contact: '#149dff',
+    needs: '#17a87a',
+    presentation: '#d8a83a',
+    objections: '#d95d73',
+    closing: '#7e57c2',
+  };
+
+  // ── Радар ──
+  const radarCtx = document.getElementById('sp-radar');
+  if (radarCtx) {
+    new Chart(radarCtx, {
+      type: 'radar',
+      data: {
+        labels: stageOrder.map(s => stageLabels[s]),
+        datasets: [{
+          label: 'Текущий профиль (%)',
+          data: stageOrder.map(s => passport.scores[s] || 0),
+          backgroundColor: 'rgba(20, 157, 255, 0.22)',
+          borderColor: '#149dff',
+          borderWidth: 2,
+          pointBackgroundColor: '#0a5ea8',
+          pointBorderColor: '#fff',
+          pointHoverBackgroundColor: '#fff',
+          pointHoverBorderColor: '#149dff',
+          pointRadius: 5,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => ctx.parsed.r.toFixed(1) + '%'
             }
           }
-        });
-      })
-      .catch(error => {
-        console.error('Ошибка загрузки данных конверсии:', error);
-        ctx.parentElement.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--muted);">Ошибка загрузки данных</div>';
-      });
-    
-    // Функция для получения читаемых названий этапов
-    function getStageLabel(stage) {
-      const labels = {
-        'plan_created_to_first_training': 'Старт',
-        'first_training_to_second_training': 'Этап 1→2',
-        'second_training_to_third_training': 'Этап 2→3',
-        'third_training_to_fourth_training': 'Этап 3→4',
-        'fourth_training_to_fifth_training': 'Этап 4→5',
-        'fifth_training_to_completion': 'Этап 5→Финиш'
-      };
-      return labels[stage] || stage.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
-    }
+        },
+        scales: {
+          r: {
+            min: 0, max: 100,
+            ticks: {
+              stepSize: 20,
+              color: textColor,
+              backdropColor: 'transparent',
+              font: { size: 10 },
+            },
+            grid: { color: gridColor },
+            angleLines: { color: gridColor },
+            pointLabels: {
+              color: textColor,
+              font: { size: 12, weight: 'bold' },
+            }
+          }
+        }
+      }
+    });
   }
 
-  // Отображение времени последнего входа в часовом поясе пользователя
-  (function() {
-    const lastLoginElement = document.getElementById('last-login-time');
-    const timezoneElement = document.getElementById('last-login-timezone');
-    
-    if (!lastLoginElement) return;
-    
-    const utcTimeStr = lastLoginElement.querySelector('[data-utc-time]')?.getAttribute('data-utc-time');
-    if (!utcTimeStr) {
-      if (timezoneElement) {
-        timezoneElement.textContent = '';
+  // ── Линейный график динамики ──
+  const lineCtx = document.getElementById('sp-line');
+  if (lineCtx && snapshots.length > 0) {
+    const labels = snapshots.map((s, i) => '#' + (i + 1));
+
+    const datasets = stageOrder.map(stage => ({
+      label: stageLabels[stage],
+      data: snapshots.map(s => s.scores[stage] || 0),
+      borderColor: stageColors[stage],
+      backgroundColor: stageColors[stage] + '22',
+      tension: 0.32,
+      borderWidth: 2.5,
+      pointRadius: 3,
+      pointHoverRadius: 6,
+      fill: false,
+    }));
+
+    new Chart(lineCtx, {
+      type: 'line',
+      data: { labels, datasets },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: {
+              color: textColor,
+              font: { size: 12 },
+              boxWidth: 14,
+              boxHeight: 14,
+              usePointStyle: true,
+            }
+          },
+          tooltip: {
+            callbacks: {
+              title: (items) => {
+                const idx = items[0].dataIndex;
+                const s = snapshots[idx];
+                return s.created_at_human + ' · звонок #' + s.conversation_id;
+              },
+              label: (ctx) => ctx.dataset.label + ': ' + ctx.parsed.y.toFixed(1) + '%'
+            }
+          }
+        },
+        scales: {
+          x: {
+            ticks: { color: textColor, font: { size: 11 } },
+            grid: { color: gridColor },
+          },
+          y: {
+            min: 0, max: 100,
+            ticks: {
+              color: textColor,
+              font: { size: 11 },
+              callback: (v) => v + '%',
+            },
+            grid: { color: gridColor },
+          }
+        }
       }
-      return;
-    }
-    
-    // Определяем часовой пояс пользователя (участника команды)
-    // Используем часовой пояс браузера менеджера как приближение
-    // В будущем можно сохранять часовой пояс пользователя в БД
-    const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const timezoneName = userTimezone.replace('_', ' ');
-    
-    // Конвертируем UTC время в локальное время пользователя
-    const utcDate = new Date(utcTimeStr);
-    
-    // Форматируем дату и время
-    const formatter = new Intl.DateTimeFormat('ru-RU', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      timeZone: userTimezone
     });
-    
-    const formattedTime = formatter.format(utcDate);
-    
-    // Отображаем время
-    lastLoginElement.innerHTML = formattedTime;
-    
-    // Отображаем часовой пояс
-    if (timezoneElement) {
-      timezoneElement.textContent = timezoneName;
-    }
-    
-    // Обновляем время каждую минуту (показываем относительное время)
-    function updateRelativeTime() {
-      const now = new Date();
-      const diffMs = now - utcDate;
-      const diffMins = Math.floor(diffMs / 60000);
-      const diffHours = Math.floor(diffMs / 3600000);
-      const diffDays = Math.floor(diffMs / 86400000);
-      
-      let relativeTime = '';
-      if (diffMins < 1) {
-        relativeTime = 'только что';
-      } else if (diffMins < 60) {
-        relativeTime = `${diffMins} ${diffMins === 1 ? 'минуту' : diffMins < 5 ? 'минуты' : 'минут'} назад`;
-      } else if (diffHours < 24) {
-        relativeTime = `${diffHours} ${diffHours === 1 ? 'час' : diffHours < 5 ? 'часа' : 'часов'} назад`;
-      } else if (diffDays < 7) {
-        relativeTime = `${diffDays} ${diffDays === 1 ? 'день' : diffDays < 5 ? 'дня' : 'дней'} назад`;
-      } else {
-        relativeTime = formattedTime;
-      }
-      
-      lastLoginElement.innerHTML = relativeTime;
-    }
-    
-    // Обновляем сразу и затем каждую минуту
-    updateRelativeTime();
-    setInterval(updateRelativeTime, 60000);
-  })();
+  }
+})();
 </script>
+{% endif %}
 {% endblock %}

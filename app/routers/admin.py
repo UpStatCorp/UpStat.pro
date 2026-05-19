@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Request, status, HTTPException, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
+from datetime import datetime, timedelta
 from database import get_db
 from models import (
     User, Conversation, ZoomMeeting, Message, Attachment,
@@ -28,22 +29,36 @@ def admin_dashboard(request: Request, db: Session = Depends(get_db)):
             detail="Недостаточно прав для доступа к админ-панели"
         )
     
-    # Получаем статистику
     total_users = db.query(User).count()
     total_conversations = db.query(Conversation).count()
     total_meetings = db.query(ZoomMeeting).count()
-    
-    # Получаем последних пользователей
+
     recent_users = db.query(User).order_by(User.created_at.desc()).limit(5).all()
-    
+
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    fifteen_min_ago = datetime.utcnow() - timedelta(minutes=15)
+
+    new_users_today = db.query(User).filter(User.created_at >= today_start).count()
+    new_conversations_today = (
+        db.query(Conversation).filter(Conversation.created_at >= today_start).count()
+    )
+    new_meetings_today = (
+        db.query(ZoomMeeting).filter(ZoomMeeting.created_at >= today_start).count()
+    )
+    active_sessions = (
+        db.query(User)
+        .filter(User.last_login_at.isnot(None), User.last_login_at >= fifteen_min_ago)
+        .count()
+    )
+
     stats = {
         "total_users": total_users,
         "total_conversations": total_conversations,
         "total_meetings": total_meetings,
-        "new_users_today": 0,  # TODO: реализовать подсчет новых пользователей за день
-        "new_conversations_today": 0,  # TODO: реализовать подсчет новых диалогов за день
-        "new_meetings_today": 0,  # TODO: реализовать подсчет новых встреч за день
-        "active_sessions": 1  # TODO: реализовать подсчет активных сессий
+        "new_users_today": new_users_today,
+        "new_conversations_today": new_conversations_today,
+        "new_meetings_today": new_meetings_today,
+        "active_sessions": active_sessions,
     }
     
     return request.app.state.templates.TemplateResponse(

@@ -63,16 +63,19 @@ async def handle_websocket_connection(
     websocket: WebSocket,
     user_id: int,
     training_id: int,
-    db: Session
+    db: Session,
+    existing_db_session_id: Optional[int] = None,
 ):
     """
     Обрабатывает WebSocket подключение для голосовой тренировки с Azure Voice Live API.
-    
+
     Args:
         websocket: WebSocket соединение
         user_id: ID пользователя
         training_id: ID тренировки
         db: Сессия БД
+        existing_db_session_id: если передан — пытаемся переиспользовать существующую
+                                TrainingSession (реконнект клиента), иначе создаём новую.
     """
     session_manager = get_session_manager()
     user_session: Optional[UserSession] = None
@@ -122,14 +125,59 @@ async def handle_websocket_connection(
             await websocket.close(code=1008, reason="Server capacity reached")
             return
         
-        # Создаём запись в БД
-        db_session_id = await VoiceTrainingDBService.create_training_session(
-            db, user_id, training_id, user_session.session_id
-        )
+        # Создаём запись в БД (или переиспользуем существующую при реконнекте)
+        db_session_id = None
+        is_reconnect = False
+
+        if existing_db_session_id:
+            try:
+                from models import TrainingSession  # type: ignore
+            except ImportError:
+                from app.models import TrainingSession  # type: ignore
+
+            existing = (
+                db.query(TrainingSession)
+                .filter(TrainingSession.id == existing_db_session_id)
+                .first()
+            )
+            if (
+                existing
+                and existing.user_id == user_id
+                and existing.training_id == training_id
+                and existing.status in ("active", "in_progress")
+                and existing.completed_at is None
+            ):
+                db_session_id = existing.id
+                is_reconnect = True
+                try:
+                    existing.websocket_session_id = user_session.session_id
+                    db.commit()
+                except Exception as e:
+                    logger.warning(f"⚠️ Не удалось обновить websocket_session_id при реконнекте: {e}")
+                    db.rollback()
+                logger.info(
+                    f"🔁 Реконнект: переиспользуем TrainingSession id={db_session_id} "
+                    f"для user_id={user_id}, training_id={training_id}"
+                )
+
+        if db_session_id is None:
+            db_session_id = await VoiceTrainingDBService.create_training_session(
+                db, user_id, training_id, user_session.session_id
+            )
+
         user_session.db_session_id = db_session_id
         user_session.websocket = websocket
-        
-        logger.info(f"✅ Пользователь {user_id} подключён к тренировке {training_id}, session={user_session.session_id}")
+
+        if is_reconnect:
+            logger.info(
+                f"✅ Пользователь {user_id} переподключён к тренировке {training_id}, "
+                f"session={user_session.session_id} (db_session_id={db_session_id})"
+            )
+        else:
+            logger.info(
+                f"✅ Пользователь {user_id} подключён к тренировке {training_id}, "
+                f"session={user_session.session_id}"
+            )
         
         # Получаем Azure токен (если не используется API key)
         azure_token = None
@@ -389,6 +437,17 @@ async def handle_websocket_connection(
                     # Можно отправить как аудио или пропустить
                     logger.warning("Текстовые запросы не поддерживаются Azure Voice Live API")
                 
+                elif msg_type == "ping":
+                    # Heartbeat от клиента — отвечаем pong, чтобы клиент знал,
+                    # что соединение живое (используется auto-reconnect логикой).
+                    try:
+                        await websocket.send_json({
+                            "type": "pong",
+                            "ts": data.get("ts"),
+                        })
+                    except Exception as e:
+                        logger.warning(f"⚠️ Не удалось отправить pong: {e}")
+
                 elif msg_type == "end_session":
                     # Завершение сессии
                     await handle_end_session(user_session, websocket, db, azure_connection)

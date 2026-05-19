@@ -4,11 +4,23 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy.orm import Session
 from database import get_db
 from deps import require_user
-from models import Team, TeamMember, TrainingErrorCorrection
+from models import (
+    Team, TeamMember, TrainingErrorCorrection,
+    SellerPassport, PassportSnapshot, Training,
+)
 from services.team_access import assert_can_manage_team, get_accessible_user_ids_for_manager
 from services.analytics_service import AnalyticsService
 from datetime import datetime, timedelta
 from typing import Optional
+
+
+STAGE_LABELS = {
+    "contact": "Вступление в контакт",
+    "needs": "Работа с потребностями",
+    "presentation": "Презентация",
+    "objections": "Работа с возражениями",
+    "closing": "Завершение сделки",
+}
 
 router = APIRouter(tags=["team_analytics"])
 
@@ -46,66 +58,89 @@ def member_report_page(
     request: Request,
     db: Session = Depends(get_db)
 ):
-    """Детальный отчет по участнику команды"""
+    """Паспорт продавца участника команды: радар по этапам, динамика и снимки."""
     current_user = require_user(request, db)
-    
-    # Проверяем права доступа
+
     team = assert_can_manage_team(db, current_user, team_id)
-    
-    # Проверяем, что участник действительно в команде
+
     from sqlalchemy.orm import joinedload
     member = db.query(TeamMember).options(joinedload(TeamMember.user)).filter(
         TeamMember.team_id == team_id,
         TeamMember.user_id == member_id
     ).first()
-    
+
     if not member:
         raise HTTPException(status_code=404, detail="Участник не найден в команде")
-    
-    # Получаем аналитику участника
-    member_analytics = AnalyticsService.get_member_analytics(db, member_id, team_id)
-    
-    # Убеждаемся, что user объект загружен с last_login_at
-    if member_analytics and member_analytics.get('user'):
-        # Обновляем user объект из member, чтобы получить актуальные данные
-        member_analytics['user'] = member.user
-    
-    # Получаем планы тренировок участника в формате для карточек (как в dashboard)
-    from models import AnalysisTrainingPlan, Training
-    
-    training_plans = (
-        db.query(AnalysisTrainingPlan)
-        .filter(AnalysisTrainingPlan.user_id == member_id)
-        .order_by(AnalysisTrainingPlan.created_at.desc())
-        .limit(20)
+
+    passport = (
+        db.query(SellerPassport)
+        .filter(SellerPassport.user_id == member_id)
+        .first()
+    )
+
+    snapshot_rows = (
+        db.query(PassportSnapshot)
+        .filter(PassportSnapshot.user_id == member_id)
+        .order_by(PassportSnapshot.created_at.asc())
+        .limit(50)
         .all()
     )
-    
-    # Добавляем информацию о тренировках к каждому плану
-    training_plans_data = []
-    for plan in training_plans:
-        # Получаем тренировки плана
-        trainings = (
-            db.query(Training)
-            .filter(Training.plan_id == plan.id)
-            .order_by(Training.order)
-            .all()
-        )
-        
-        # Находим текущую доступную тренировку
-        current_training = None
-        for t in trainings:
-            if t.status in ('available', 'in_progress'):
-                current_training = t
-                break
-        
-        training_plans_data.append({
-            'plan': plan,
-            'trainings': trainings,
-            'current_training': current_training,
-            'progress_percent': int((plan.completed_trainings / plan.total_trainings * 100)) if plan.total_trainings > 0 else 0
+
+    training_ids = [s.training_id_before for s in snapshot_rows if s.training_id_before]
+    trainings_map = {}
+    if training_ids:
+        for tr in db.query(Training).filter(Training.id.in_(training_ids)).all():
+            trainings_map[tr.id] = tr
+
+    snapshots = []
+    for s in snapshot_rows:
+        training_topic = None
+        if s.training_id_before and s.training_id_before in trainings_map:
+            training_topic = trainings_map[s.training_id_before].topic
+        snapshots.append({
+            "id": s.id,
+            "conversation_id": s.conversation_id,
+            "created_at": s.created_at.isoformat() if s.created_at else None,
+            "created_at_human": s.created_at.strftime("%d.%m.%Y %H:%M") if s.created_at else "—",
+            "scores": {
+                "contact": s.score_contact,
+                "needs": s.score_needs,
+                "presentation": s.score_presentation,
+                "objections": s.score_objections,
+                "closing": s.score_closing,
+            },
+            "overall_score": s.overall_score,
+            "training_stage": s.training_stage,
+            "training_stage_label": STAGE_LABELS.get(s.training_stage, s.training_stage) if s.training_stage else None,
+            "training_applied": s.training_applied,
+            "training_delta": s.training_delta,
+            "training_topic": training_topic,
+            "gpt_comment": s.gpt_comment,
         })
-    
+
+    deltas = None
+    if len(snapshots) >= 2:
+        first = snapshots[0]["scores"]
+        last = snapshots[-1]["scores"]
+        deltas = {k: round((last.get(k, 0) or 0) - (first.get(k, 0) or 0), 1) for k in first}
+
+    passport_data = None
+    if passport:
+        passport_data = {
+            "scores": {
+                "contact": passport.score_contact,
+                "needs": passport.score_needs,
+                "presentation": passport.score_presentation,
+                "objections": passport.score_objections,
+                "closing": passport.score_closing,
+            },
+            "overall_score": passport.overall_score,
+            "total_calls_analyzed": passport.total_calls_analyzed,
+            "total_trainings_completed": passport.total_trainings_completed,
+            "first_call_at": passport.first_call_at.strftime("%d.%m.%Y") if passport.first_call_at else None,
+            "last_updated_at": passport.last_updated_at.strftime("%d.%m.%Y %H:%M") if passport.last_updated_at else None,
+        }
+
     return request.app.state.templates.TemplateResponse(
         "member_report.html",
         {
@@ -113,8 +148,10 @@ def member_report_page(
             "user": current_user,
             "team": team,
             "member": member,
-            "analytics": member_analytics,
-            "training_plans": training_plans_data
+            "passport": passport_data,
+            "snapshots": snapshots,
+            "deltas": deltas,
+            "stage_labels": STAGE_LABELS,
         }
     )
 
