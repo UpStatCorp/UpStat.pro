@@ -8,7 +8,7 @@
 import json
 import asyncio
 import logging
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any  # noqa: F401
 
 from openai import OpenAI
 from sqlalchemy.orm import Session
@@ -27,9 +27,15 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 _client = OpenAI(api_key=OPENAI_API_KEY)
 
 
-def _build_extraction_prompt(param_defs: List[ParameterDefinition]) -> str:
+def _build_extraction_prompt(
+    param_defs: List[ParameterDefinition],
+    research_mode: bool = False,
+) -> str:
     """
     Генерирует промпт для извлечения ВСЕХ параметров динамически из справочника.
+
+    При research_mode=True добавляет требование вернуть поле reasoning для каждого
+    параметра — для прозрачности оценок (включается админом через Research Mode).
     """
     params_desc = []
     example_json = {}
@@ -53,10 +59,20 @@ def _build_extraction_prompt(param_defs: List[ParameterDefinition]) -> str:
             f"{i}. {p.code} — {p.title}: {p.description or 'N/A'}{unit_str} [{type_hint}]"
         )
         
-        example_json[p.code] = {"value": example_val, "confidence": 80}
+        entry: Dict[str, Any] = {"value": example_val, "confidence": 80}
+        if research_mode:
+            entry["reasoning"] = "Почему такое значение и confidence (до 250 символов)"
+        example_json[p.code] = entry
     
     params_list = "\n".join(params_desc)
     example_str = json.dumps(example_json, ensure_ascii=False, indent=2)
+
+    research_rule = (
+        '- Добавь поле "reasoning" для каждого параметра — '
+        'короткое объяснение (до 250 символов), почему ты выбрал такое value '
+        'и такое значение confidence. Это нужно админу для отладки модели.\n'
+        if research_mode else ""
+    )
     
     prompt = f"""Ты — аналитик телефонных продаж. Проанализируй транскрипт звонка и извлеки параметры.
 
@@ -75,7 +91,7 @@ def _build_extraction_prompt(param_defs: List[ParameterDefinition]) -> str:
   * 90 — высокая уверенность, данные чёткие
   * 99 — абсолютная уверенность, прямое упоминание в тексте
 - Если параметр невозможно определить — поставь value: null и confidence: 0.
-
+{research_rule}
 ФОРМАТ ОТВЕТА (строго JSON, без markdown):
 {example_str}
 
@@ -84,7 +100,12 @@ def _build_extraction_prompt(param_defs: List[ParameterDefinition]) -> str:
     return prompt
 
 
-async def extract_parameters(conversation_id: int, dialogue_json_str: str, db: Optional[Session] = None):
+async def extract_parameters(
+    conversation_id: int,
+    dialogue_json_str: str,
+    db: Optional[Session] = None,
+    research: Optional[object] = None,
+):
     """
     Извлекает ВСЕ активные параметры из транскрипта через GPT-4o и сохраняет в parameter_values.
     Вызывается последовательно после основного анализа pipeline.
@@ -115,7 +136,7 @@ async def extract_parameters(conversation_id: int, dialogue_json_str: str, db: O
         logger.info(f"Извлечение {len(param_defs)} параметров для conversation_id={conversation_id}")
 
         # Извлекаем ВСЕ параметры через GPT
-        prompt = _build_extraction_prompt(param_defs) + dialogue_json_str
+        prompt = _build_extraction_prompt(param_defs, research_mode=research is not None) + dialogue_json_str
 
         response = await asyncio.to_thread(
             lambda: _client.chat.completions.create(
@@ -128,6 +149,19 @@ async def extract_parameters(conversation_id: int, dialogue_json_str: str, db: O
 
         raw = response.choices[0].message.content.strip()
         data = json.loads(raw)
+
+        if research is not None:
+            try:
+                research.capture_stage(
+                    stage_name="Извлечение параметров (динамический справочник)",
+                    model="gpt-4o",
+                    prompt=prompt,
+                    raw_response=raw,
+                    parsed_decisions=data,
+                    usage=getattr(response, "usage", None),
+                )
+            except Exception as research_err:  # noqa: BLE001
+                logger.warning(f"Research capture (parameter_extraction) failed: {research_err}")
         
         # Логируем ответ GPT для отладки
         logger.info(f"GPT вернул {len(data)} ключей верхнего уровня: {list(data.keys())[:10]}...")

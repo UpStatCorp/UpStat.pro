@@ -27,12 +27,29 @@ CONFIRMATION_THRESHOLD = 0.60
 
 
 async def extract_manager_actions(
-    dialogue_json_str: str, analysis_text: str
+    dialogue_json_str: str,
+    analysis_text: str,
+    research: Optional[object] = None,
 ) -> Optional[List[Dict]]:
-    """GPT извлекает успешные/неуспешные действия менеджера из звонка."""
+    """GPT извлекает успешные/неуспешные действия менеджера из звонка.
+
+    Если передан research (ResearchLogger), включает расширенный режим:
+    в каждое действие добавляется поле reasoning, и результат логируется.
+    """
     from openai import AsyncOpenAI
 
     client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+    reasoning_field = (
+        ',\n      "reasoning": "Почему ты считаешь это действие именно positive/negative — '
+        'что увидел в диалоге, какие были альтернативы интерпретации (до 400 символов)"'
+        if research is not None else ""
+    )
+    research_note = (
+        "\nДОПОЛНИТЕЛЬНО (РЕЖИМ ИССЛЕДОВАНИЯ): для каждого действия объясни в поле "
+        "reasoning, почему ты так классифицировал его outcome, и почему именно эта реакция клиента важна.\n"
+        if research is not None else ""
+    )
 
     prompt = f"""Ты — аналитик продаж. На основе диалога менеджера с клиентом и результатов анализа 
 выдели конкретные действия/фразы менеджера, которые повлияли на решение клиента.
@@ -44,7 +61,7 @@ async def extract_manager_actions(
 - Результат: positive (клиент стал ближе к покупке, заинтересовался, раскрылся) 
   или negative (клиент отдалился от покупки, закрылся, стал сопротивляться)
 - Как отреагировал клиент
-
+{research_note}
 Этапы продаж:
 - "contact" — Вступление в контакт и открытие
 - "needs" — Работа с потребностями
@@ -67,7 +84,7 @@ async def extract_manager_actions(
       "action_type": "phrase | technique | question",
       "outcome": "positive | negative",
       "client_reaction": "Как отреагировал клиент (до 200 символов)",
-      "confidence": 0.85
+      "confidence": 0.85{reasoning_field}
     }}
   ]
 }}
@@ -82,7 +99,8 @@ async def extract_manager_actions(
             temperature=0.3,
             timeout=30.0,
         )
-        result = json.loads(response.choices[0].message.content)
+        raw_content = response.choices[0].message.content
+        result = json.loads(raw_content)
         actions = result.get("actions", [])
 
         valid = []
@@ -94,9 +112,28 @@ async def extract_manager_actions(
                 a["client_reaction"] = (a.get("client_reaction") or "")[:300]
                 a["confidence"] = max(0.0, min(1.0, float(a.get("confidence", 0.8))))
                 valid.append(a)
+
+        if research is not None:
+            try:
+                research.capture_stage(
+                    stage_name="Действия менеджера (positive/negative)",
+                    model="gpt-4o-mini",
+                    prompt=prompt,
+                    raw_response=raw_content or "",
+                    parsed_decisions={"actions_total": len(actions), "valid_actions": valid},
+                    usage=getattr(response, "usage", None),
+                )
+            except Exception as research_err:  # noqa: BLE001
+                logger.warning(f"Research capture (manager_actions) failed: {research_err}")
+
         return valid
     except Exception as e:
         logger.error(f"Ошибка извлечения действий менеджера: {e}", exc_info=True)
+        if research is not None:
+            try:
+                research.capture_note(f"Ошибка извлечения действий менеджера: {e}")
+            except Exception:
+                pass
         return None
 
 
@@ -374,12 +411,13 @@ async def process_manager_actions(
     conversation_id: int,
     dialogue_json_str: str,
     analysis_text: str,
+    research: Optional[object] = None,
 ):
     """Главная функция: извлекает действия, сохраняет, проверяет паттерны, шлёт отчёт."""
     team_member = db.query(TeamMember).filter(TeamMember.user_id == user_id).first()
     team_id = team_member.team_id if team_member else None
 
-    actions = await extract_manager_actions(dialogue_json_str, analysis_text)
+    actions = await extract_manager_actions(dialogue_json_str, analysis_text, research=research)
     if not actions:
         logger.info(f"Действия менеджера не извлечены: user={user_id}, conv={conversation_id}")
         return

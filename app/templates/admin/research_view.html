@@ -1,0 +1,186 @@
+{% extends "admin/_layout_admin.html" %}
+
+{% block title %}Research #{{ log.id }} — Админ-панель — UpStat{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+    <div>
+        <a href="/admin/research" style="color: var(--admin-info); text-decoration: none; font-size: 13px;">
+            <i class="fas fa-arrow-left"></i> Назад к списку
+        </a>
+        <h1 style="font-size: 22px; font-weight: 700; color: var(--text); margin: 6px 0 4px 0;">
+            <i class="fas fa-flask" style="color: var(--admin-primary); margin-right: 8px;"></i>
+            Research-лог #{{ log.id }}
+        </h1>
+        <p style="color: var(--muted); margin: 0; font-size: 13px;">
+            Conversation: <span style="font-family: monospace;">{{ log.conversation_id }}</span>
+            {% if log.conv_title %} · «{{ log.conv_title }}»{% endif %}
+            · Файл: <span style="font-family: monospace;">{{ log.file_name }}</span>
+        </p>
+    </div>
+    <div style="display: flex; gap: 8px;">
+        <a href="/admin/research/{{ log.id }}/download" class="btn" style="background: var(--admin-info); color: white; border-color: var(--admin-info);">
+            <i class="fas fa-download"></i> Скачать .txt
+        </a>
+        <form method="post" action="/admin/research/{{ log.id }}/delete" style="margin: 0;">
+            <button type="submit" class="btn" style="background: var(--admin-primary); color: white; border-color: var(--admin-primary);"
+                    onclick="return confirm('Удалить research-лог #{{ log.id }}? Файл будет удалён безвозвратно.')">
+                <i class="fas fa-trash"></i> Удалить
+            </button>
+        </form>
+    </div>
+</div>
+
+<!-- Метаинформация -->
+<div class="admin-cards" style="margin-bottom: 20px;">
+    <div class="admin-card">
+        <div class="admin-card-header">
+            <div class="admin-card-title">Этапов</div>
+            <div class="admin-card-icon" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);">
+                <i class="fas fa-layer-group"></i>
+            </div>
+        </div>
+        <div class="admin-metric">{{ log.stages_count }}</div>
+        <div class="admin-metric-change">
+            <i class="fas fa-cubes"></i>
+            <span>AI-вызовов в pipeline</span>
+        </div>
+    </div>
+
+    <div class="admin-card">
+        <div class="admin-card-header">
+            <div class="admin-card-title">Токены</div>
+            <div class="admin-card-icon" style="background: linear-gradient(135deg, var(--admin-info), #2563eb);">
+                <i class="fas fa-coins"></i>
+            </div>
+        </div>
+        <div class="admin-metric">{{ log.total_input_tokens + log.total_output_tokens }}</div>
+        <div class="admin-metric-change">
+            <i class="fas fa-arrows-left-right"></i>
+            <span>in {{ log.total_input_tokens }} / out {{ log.total_output_tokens }}</span>
+        </div>
+    </div>
+
+    <div class="admin-card">
+        <div class="admin-card-header">
+            <div class="admin-card-title">Модели</div>
+            <div class="admin-card-icon" style="background: linear-gradient(135deg, var(--admin-success), #059669);">
+                <i class="fas fa-microchip"></i>
+            </div>
+        </div>
+        <div class="admin-metric" style="font-size: 16px; font-weight: 600; line-height: 1.4;">{{ log.models_summary }}</div>
+        <div class="admin-metric-change">
+            <i class="fas fa-robot"></i>
+            <span>OpenAI</span>
+        </div>
+    </div>
+
+    <div class="admin-card">
+        <div class="admin-card-header">
+            <div class="admin-card-title">Статус</div>
+            <div class="admin-card-icon"
+                 style="background: {% if log.status == 'completed' %}linear-gradient(135deg, var(--admin-success), #059669){% elif log.status == 'failed' %}linear-gradient(135deg, var(--admin-primary), #ef4444){% else %}linear-gradient(135deg, var(--admin-info), #2563eb){% endif %};">
+                <i class="fas {% if log.status == 'completed' %}fa-check{% elif log.status == 'failed' %}fa-times{% else %}fa-spinner{% endif %}"></i>
+            </div>
+        </div>
+        <div class="admin-metric" style="font-size: 18px; font-weight: 700;">{{ log.status }}</div>
+        <div class="admin-metric-change">
+            <i class="fas fa-clock"></i>
+            <span>
+                {{ log.created_at.strftime('%d.%m.%Y %H:%M') if log.created_at else '—' }}
+                {% if log.completed_at %}
+                    → {{ log.completed_at.strftime('%H:%M:%S') }}
+                {% endif %}
+            </span>
+        </div>
+    </div>
+</div>
+
+{% if log.error_message %}
+<div style="background: rgba(220, 38, 38, 0.05); border: 1px solid rgba(220, 38, 38, 0.2); border-radius: var(--radius); padding: 14px 18px; margin-bottom: 16px;">
+    <div style="font-weight: 600; color: var(--admin-primary); margin-bottom: 6px;">
+        <i class="fas fa-triangle-exclamation"></i> Ошибка
+    </div>
+    <div style="font-family: monospace; font-size: 12px; color: #7f1d1d; white-space: pre-wrap; word-break: break-word;">{{ log.error_message }}</div>
+</div>
+{% endif %}
+
+<!-- Содержимое файла -->
+<div class="admin-table-container">
+    <div class="admin-table-header" style="display: flex; align-items: center; justify-content: space-between;">
+        <h3 class="admin-table-title">
+            <i class="fas fa-file-lines" style="color: var(--admin-info); margin-right: 8px;"></i>
+            Содержимое research-файла · {{ log.file_size_human }}
+        </h3>
+        <div style="display: flex; gap: 6px; align-items: center;">
+            <input type="text" id="research-search" placeholder="Поиск в логе…"
+                   style="padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 12px; width: 220px;"/>
+            <button type="button" onclick="copyResearchContent()" class="btn" style="padding: 6px 10px; font-size: 12px;">
+                <i class="fas fa-copy"></i> Скопировать
+            </button>
+        </div>
+    </div>
+
+    {% if file_missing %}
+    <div style="padding: 36px 24px; text-align: center; color: var(--muted);">
+        <i class="fas fa-file-excel" style="font-size: 32px; color: #d1d5db; margin-bottom: 12px;"></i>
+        <h3 style="margin: 0 0 6px 0;">Файл не найден на диске</h3>
+        <p style="margin: 0; font-size: 13px;">Запись в БД есть, но физический файл отсутствует. Возможно, был удалён вручную.</p>
+    </div>
+    {% elif too_large %}
+    <div style="padding: 36px 24px; text-align: center; color: var(--muted);">
+        <i class="fas fa-weight-hanging" style="font-size: 32px; color: #d1d5db; margin-bottom: 12px;"></i>
+        <h3 style="margin: 0 0 6px 0;">Файл слишком большой для просмотра в браузере</h3>
+        <p style="margin: 0 0 12px 0; font-size: 13px;">Размер: {{ log.file_size_human }}. Скачайте, чтобы открыть локально.</p>
+        <a href="/admin/research/{{ log.id }}/download" class="btn" style="background: var(--admin-info); color: white; border-color: var(--admin-info);">
+            <i class="fas fa-download"></i> Скачать .txt
+        </a>
+    </div>
+    {% else %}
+    <pre id="research-content" style="margin: 0; padding: 16px 20px; background: #0f172a; color: #e2e8f0; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; line-height: 1.55; max-height: 80vh; overflow: auto; white-space: pre-wrap; word-break: break-word; border-radius: 0 0 var(--radius) var(--radius);">{{ file_content }}</pre>
+    {% endif %}
+</div>
+
+<script>
+function copyResearchContent() {
+    const el = document.getElementById('research-content');
+    if (!el) return;
+    const text = el.innerText;
+    navigator.clipboard.writeText(text).then(function() {
+        const btn = event.target.closest('button');
+        if (btn) {
+            const original = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-check"></i> Скопировано';
+            setTimeout(function(){ btn.innerHTML = original; }, 1800);
+        }
+    }).catch(function() {
+        alert('Не удалось скопировать');
+    });
+}
+
+// Простой поиск с подсветкой
+(function(){
+    const input = document.getElementById('research-search');
+    const pre = document.getElementById('research-content');
+    if (!input || !pre) return;
+    const original = pre.textContent;
+    input.addEventListener('input', function() {
+        const q = input.value.trim();
+        if (!q) {
+            pre.textContent = original;
+            return;
+        }
+        const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const re = new RegExp(escaped, 'gi');
+        const escapedHtml = original
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+        const highlighted = escapedHtml.replace(re, function(m) {
+            return '<mark style="background:#fde68a;color:#1f2937;padding:1px 2px;border-radius:2px;">' + m + '</mark>';
+        });
+        pre.innerHTML = highlighted;
+    });
+})();
+</script>
+{% endblock %}

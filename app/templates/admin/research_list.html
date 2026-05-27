@@ -1,0 +1,258 @@
+{% extends "admin/_layout_admin.html" %}
+
+{% block title %}Исследование — Админ-панель — UpStat{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 20px;">
+    <h1 style="font-size: 22px; font-weight: 700; color: var(--text); margin: 0 0 4px 0;">
+        <i class="fas fa-flask" style="color: var(--admin-primary); margin-right: 8px;"></i>
+        Исследование (Research Mode)
+    </h1>
+    <p style="color: var(--muted); margin: 0; font-size: 13px;">
+        Детальные CoT-логи всех AI-вызовов анализа звонков. Видны только админам.
+    </p>
+</div>
+
+<!-- Метрики -->
+<div class="admin-cards" style="margin-bottom: 20px;">
+    <div class="admin-card">
+        <div class="admin-card-header">
+            <div class="admin-card-title">Всего логов</div>
+            <div class="admin-card-icon" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);">
+                <i class="fas fa-flask"></i>
+            </div>
+        </div>
+        <div class="admin-metric">{{ stats.total }}</div>
+        <div class="admin-metric-change">
+            <i class="fas fa-database"></i>
+            <span>Все запуски pipeline</span>
+        </div>
+    </div>
+
+    <div class="admin-card">
+        <div class="admin-card-header">
+            <div class="admin-card-title">Завершено</div>
+            <div class="admin-card-icon" style="background: linear-gradient(135deg, var(--admin-success), #059669);">
+                <i class="fas fa-check"></i>
+            </div>
+        </div>
+        <div class="admin-metric">{{ stats.completed }}</div>
+        <div class="admin-metric-change positive">
+            <i class="fas fa-check-circle"></i>
+            <span>Успешные</span>
+        </div>
+    </div>
+
+    <div class="admin-card">
+        <div class="admin-card-header">
+            <div class="admin-card-title">В работе</div>
+            <div class="admin-card-icon" style="background: linear-gradient(135deg, var(--admin-info), #2563eb);">
+                <i class="fas fa-spinner"></i>
+            </div>
+        </div>
+        <div class="admin-metric">{{ stats.running }}</div>
+        <div class="admin-metric-change">
+            <i class="fas fa-circle-notch"></i>
+            <span>Сейчас выполняются</span>
+        </div>
+    </div>
+
+    <div class="admin-card">
+        <div class="admin-card-header">
+            <div class="admin-card-title">С ошибкой</div>
+            <div class="admin-card-icon" style="background: linear-gradient(135deg, var(--admin-primary), #ef4444);">
+                <i class="fas fa-triangle-exclamation"></i>
+            </div>
+        </div>
+        <div class="admin-metric">{{ stats.failed }}</div>
+        <div class="admin-metric-change negative">
+            <i class="fas fa-bug"></i>
+            <span>Требуют внимания</span>
+        </div>
+    </div>
+</div>
+
+<!-- Фильтры -->
+<div class="admin-table-container" style="margin-bottom: 16px;">
+    <div class="admin-table-header" style="padding: 16px 20px;">
+        <form method="get" action="/admin/research" style="display: flex; flex-wrap: wrap; gap: 10px; align-items: end;">
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+                <label style="font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase;">Статус</label>
+                <select name="status" style="padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; background: white; min-width: 130px;">
+                    <option value="" {% if not filters.status %}selected{% endif %}>Все</option>
+                    <option value="completed" {% if filters.status == 'completed' %}selected{% endif %}>completed</option>
+                    <option value="running" {% if filters.status == 'running' %}selected{% endif %}>running</option>
+                    <option value="failed" {% if filters.status == 'failed' %}selected{% endif %}>failed</option>
+                </select>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+                <label style="font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase;">User ID</label>
+                <input type="number" name="user_id" value="{{ filters.user_id }}" min="1"
+                       style="padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; width: 110px;"/>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+                <label style="font-size: 11px; color: var(--muted); font-weight: 600; text-transform: uppercase;">Conversation ID</label>
+                <input type="number" name="conversation_id" value="{{ filters.conversation_id }}" min="1"
+                       style="padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 13px; width: 130px;"/>
+            </div>
+            <div style="display: flex; gap: 6px;">
+                <button type="submit" class="btn" style="padding: 8px 14px;">
+                    <i class="fas fa-filter"></i> Применить
+                </button>
+                <a href="/admin/research" class="btn" style="padding: 8px 14px; background: #f3f4f6;">
+                    <i class="fas fa-times"></i> Сбросить
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Таблица -->
+<div class="admin-table-container">
+    <div class="admin-table-header">
+        <h3 class="admin-table-title">
+            <i class="fas fa-list" style="color: var(--admin-info); margin-right: 8px;"></i>
+            Логи · Найдено {{ total }}
+        </h3>
+    </div>
+
+    {% if rows %}
+    <table class="admin-table">
+        <colgroup>
+            <col style="width: 6%;">
+            <col style="width: 9%;">
+            <col style="width: 20%;">
+            <col style="width: 14%;">
+            <col style="width: 9%;">
+            <col style="width: 12%;">
+            <col style="width: 14%;">
+            <col style="width: 8%;">
+            <col style="width: 8%;">
+        </colgroup>
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Conv</th>
+                <th>Пользователь</th>
+                <th>Дата</th>
+                <th>Этапов</th>
+                <th>Токены (in/out)</th>
+                <th>Модели</th>
+                <th>Статус</th>
+                <th>Действия</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in rows %}
+            <tr>
+                <td>
+                    <a href="/admin/research/{{ r.id }}" style="font-weight: 600; color: var(--admin-primary); text-decoration: none;">
+                        #{{ r.id }}
+                    </a>
+                </td>
+                <td>
+                    <span style="font-family: monospace; color: var(--muted);">{{ r.conversation_id }}</span>
+                </td>
+                <td title="{{ r.user_email or '' }}">
+                    {% if r.user_email %}
+                    <div style="font-weight: 500; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ r.user_name or r.user_email }}</div>
+                    <div style="font-size: 11px; color: var(--muted);">{{ r.user_email }}</div>
+                    {% else %}
+                    <span style="color: var(--muted);">user #{{ r.user_id }}</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <div style="font-size: 12px;">{{ r.created_at.strftime('%d.%m.%Y %H:%M') if r.created_at else '—' }}</div>
+                    <div style="font-size: 11px; color: var(--muted);">{{ r.file_size_human }}</div>
+                </td>
+                <td style="text-align: center;">
+                    <span style="font-weight: 600;">{{ r.stages_count }}</span>
+                </td>
+                <td>
+                    <span style="font-family: monospace; font-size: 12px;">
+                        {{ r.total_input_tokens }} / {{ r.total_output_tokens }}
+                    </span>
+                </td>
+                <td title="{{ r.models_summary }}">
+                    <span style="font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; max-width: 100%;">{{ r.models_summary }}</span>
+                </td>
+                <td>
+                    {% if r.status == 'completed' %}
+                    <span class="role-badge" style="background: rgba(16, 185, 129, 0.1); color: var(--admin-success); border: 1px solid rgba(16, 185, 129, 0.2);">
+                        <i class="fas fa-check"></i> completed
+                    </span>
+                    {% elif r.status == 'running' %}
+                    <span class="role-badge" style="background: rgba(59, 130, 246, 0.1); color: var(--admin-info); border: 1px solid rgba(59, 130, 246, 0.2);">
+                        <i class="fas fa-spinner"></i> running
+                    </span>
+                    {% elif r.status == 'failed' %}
+                    <span class="role-badge" style="background: rgba(220, 38, 38, 0.1); color: var(--admin-primary); border: 1px solid rgba(220, 38, 38, 0.2);" title="{{ r.error_message or '' }}">
+                        <i class="fas fa-times"></i> failed
+                    </span>
+                    {% else %}
+                    <span class="role-badge user">{{ r.status }}</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <div style="display: flex; gap: 4px;">
+                        <a href="/admin/research/{{ r.id }}" title="Открыть"
+                           style="padding: 4px 8px; border-radius: 6px; background: #6366f1; color: white; font-size: 11px; text-decoration: none;">
+                            <i class="fas fa-eye"></i>
+                        </a>
+                        <a href="/admin/research/{{ r.id }}/download" title="Скачать .txt"
+                           style="padding: 4px 8px; border-radius: 6px; background: #6b7280; color: white; font-size: 11px; text-decoration: none;">
+                            <i class="fas fa-download"></i>
+                        </a>
+                        <form method="post" action="/admin/research/{{ r.id }}/delete" style="margin: 0;">
+                            <button type="submit"
+                                    style="padding: 4px 8px; border: none; border-radius: 6px; font-size: 11px; cursor: pointer; background: var(--admin-primary); color: white;"
+                                    onclick="return confirm('Удалить research-лог #{{ r.id }}? Файл будет удалён безвозвратно.')"
+                                    title="Удалить">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </form>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Пагинация -->
+    {% if total_pages > 1 %}
+    <div style="padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--border); background: #fafafa;">
+        <div style="color: var(--muted); font-size: 13px;">
+            Страница {{ page }} из {{ total_pages }}
+        </div>
+        <div style="display: flex; gap: 6px;">
+            {% set qs_status = '&status=' ~ filters.status if filters.status else '' %}
+            {% set qs_user = '&user_id=' ~ filters.user_id if filters.user_id else '' %}
+            {% set qs_conv = '&conversation_id=' ~ filters.conversation_id if filters.conversation_id else '' %}
+            {% if page > 1 %}
+            <a class="btn" href="?page={{ page - 1 }}{{ qs_status }}{{ qs_user }}{{ qs_conv }}" style="padding: 6px 12px; font-size: 12px;">
+                <i class="fas fa-chevron-left"></i> Назад
+            </a>
+            {% endif %}
+            {% if page < total_pages %}
+            <a class="btn" href="?page={{ page + 1 }}{{ qs_status }}{{ qs_user }}{{ qs_conv }}" style="padding: 6px 12px; font-size: 12px;">
+                Вперёд <i class="fas fa-chevron-right"></i>
+            </a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% else %}
+    <div style="padding: 48px 24px; text-align: center;">
+        <div style="width: 80px; height: 80px; background: #f3f4f6; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; color: #9ca3af;">
+            <i class="fas fa-flask" style="font-size: 32px;"></i>
+        </div>
+        <h3 style="color: var(--muted); margin: 0 0 8px 0;">Research-логов пока нет</h3>
+        <p style="color: var(--muted); margin: 0;">
+            Они автоматически создаются при каждом анализе звонка в pipeline.
+            Запустите анализ звонка — здесь появятся подробные CoT-логи.
+        </p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1010,3 +1010,49 @@ class CRMActivity(Base):
     synced_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     integration = relationship("CRMIntegration")
+
+
+# ─── Research Mode: CoT-логи AI-анализа звонков ────────────────────
+
+class ResearchLog(Base):
+    """
+    Лог режима исследования (Research Mode).
+
+    Для каждого запуска pipeline анализа звонка создаётся один файл
+    с детальными размышлениями ИИ (промпты, raw-ответы, reasoning,
+    финальные решения, токены).
+
+    Файл лежит в uploads/research/<conversation_id>/research_<TS>.txt
+    и доступен ТОЛЬКО админу через /admin/research.
+    """
+    __tablename__ = "research_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    conversation_id: Mapped[int] = mapped_column(
+        ForeignKey("conversations.id"), index=True, nullable=False
+    )
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), index=True, nullable=False
+    )
+
+    file_path: Mapped[str] = mapped_column(String(500), nullable=False)
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_size_bytes: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # JSON {"gpt-4o": 7, "gpt-4o-mini": 3}
+    models_used: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    total_input_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    total_output_tokens: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    stages_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # running / completed / failed
+    status: Mapped[str] = mapped_column(String(20), default="running", nullable=False)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=datetime.utcnow, server_default=sa_func.now()
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+
+    conversation = relationship("Conversation")
+    user = relationship("User")

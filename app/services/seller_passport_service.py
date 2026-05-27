@@ -33,11 +33,36 @@ STAGE_SCORE_CRITERIA = """
 """
 
 
-async def evaluate_stage_scores(dialogue_json_str: str, analysis_text: str) -> Optional[Dict]:
-    """GPT оценивает менеджера по 5 этапам продаж и возвращает проценты."""
+async def evaluate_stage_scores(
+    dialogue_json_str: str,
+    analysis_text: str,
+    research: Optional[object] = None,
+) -> Optional[Dict]:
+    """GPT оценивает менеджера по 5 этапам продаж и возвращает проценты.
+
+    Если передан research (ResearchLogger), включает расширенный режим:
+    модель должна вернуть stage_reasoning по каждому этапу, и результат
+    логируется в research-файл.
+    """
     from openai import AsyncOpenAI
 
     client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+    research_schema = (
+        ',\n  "stage_reasoning": {\n'
+        '    "contact": "Почему именно такой балл за contact — что увидел в диалоге, какие сомнения были, что повлияло на оценку (до 400 символов)",\n'
+        '    "needs": "...",\n'
+        '    "presentation": "...",\n'
+        '    "objections": "...",\n'
+        '    "closing": "..."\n'
+        '  }'
+    ) if research is not None else ""
+
+    research_note = (
+        "\nДОПОЛНИТЕЛЬНО (РЕЖИМ ИССЛЕДОВАНИЯ): для КАЖДОГО этапа объясни в поле "
+        "stage_reasoning, что именно увидел в диалоге, какие альтернативные оценки "
+        "рассматривал и почему остановился на этом числе.\n"
+    ) if research is not None else ""
 
     prompt = f"""Ты — эксперт по оценке навыков продаж. На основе диалога и результатов анализа 
 оцени работу менеджера по каждому из 5 этапов продаж.
@@ -53,7 +78,7 @@ async def evaluate_stage_scores(dialogue_json_str: str, analysis_text: str) -> O
 5. closing — Завершение сделки
 
 {STAGE_SCORE_CRITERIA}
-
+{research_note}
 Результаты анализа по чек-листам:
 {analysis_text[:4000]}
 
@@ -70,7 +95,7 @@ async def evaluate_stage_scores(dialogue_json_str: str, analysis_text: str) -> O
     "closing": <число от 0 до 100>
   }},
   "overall_score": <среднее по всем этапам, число от 0 до 100>,
-  "comment": "Краткий комментарий о сильных/слабых сторонах (до 300 символов)"
+  "comment": "Краткий комментарий о сильных/слабых сторонах (до 300 символов)"{research_schema}
 }}"""
 
     try:
@@ -81,7 +106,8 @@ async def evaluate_stage_scores(dialogue_json_str: str, analysis_text: str) -> O
             temperature=0.3,
             timeout=30.0,
         )
-        result = json.loads(response.choices[0].message.content)
+        raw_content = response.choices[0].message.content
+        result = json.loads(raw_content)
         scores = result.get("stage_scores", {})
 
         for stage in STAGES:
@@ -92,9 +118,27 @@ async def evaluate_stage_scores(dialogue_json_str: str, analysis_text: str) -> O
         if "overall_score" not in result:
             result["overall_score"] = round(sum(scores.values()) / len(STAGES), 1)
 
+        if research is not None:
+            try:
+                research.capture_stage(
+                    stage_name="Паспорт продавца (5 этапов)",
+                    model="gpt-4o-mini",
+                    prompt=prompt,
+                    raw_response=raw_content or "",
+                    parsed_decisions=result,
+                    usage=getattr(response, "usage", None),
+                )
+            except Exception as research_err:  # noqa: BLE001
+                logger.warning(f"Research capture (seller_passport) failed: {research_err}")
+
         return result
     except Exception as e:
         logger.error(f"Ошибка оценки этапов продаж (SellerPassport): {e}", exc_info=True)
+        if research is not None:
+            try:
+                research.capture_note(f"Ошибка оценки паспорта продавца: {e}")
+            except Exception:
+                pass
         return None
 
 
@@ -143,11 +187,12 @@ async def update_seller_passport(
     conversation_id: int,
     dialogue_json_str: str,
     analysis_text: str,
+    research: Optional[object] = None,
 ) -> Optional[SellerPassport]:
     """Главная функция: оценивает этапы, создаёт снимок, обновляет паспорт."""
     manager_id = _resolve_manager_user_id(db, user_id, conversation_id)
 
-    scores_data = await evaluate_stage_scores(dialogue_json_str, analysis_text)
+    scores_data = await evaluate_stage_scores(dialogue_json_str, analysis_text, research=research)
     if not scores_data:
         logger.warning(f"Не удалось получить оценки этапов для user_id={manager_id}, conv={conversation_id}")
         return None

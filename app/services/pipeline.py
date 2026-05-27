@@ -29,6 +29,11 @@ from services.error_handler import (
 from services.progress_tracker import get_progress_tracker, ProgressStage
 from services.notification_service import get_notification_service, NotificationType, NotificationPriority
 from services.pii_redactor import redact_pii, redact_pii_in_dialogue
+from services.research_service import (
+    ResearchLogger,
+    REASONING_INSTRUCTION_CHECKLIST,
+    REASONING_INSTRUCTION_SUMMARY,
+)
 from dotenv import load_dotenv
 
 logger = logging.getLogger("main")
@@ -189,7 +194,14 @@ def _attach_file(db: Session, message_id: int, original_name: str, mime: str, ab
     return att
 
 
-async def _analyze_checklist(data: Dict[str, Any], title: str, dialogue_json_str: str, analyses: List[str], checklist_scores: Optional[List[Dict]] = None):
+async def _analyze_checklist(
+    data: Dict[str, Any],
+    title: str,
+    dialogue_json_str: str,
+    analyses: List[str],
+    checklist_scores: Optional[List[Dict]] = None,
+    research: Optional[ResearchLogger] = None,
+):
     """
     Анализирует чеклист или скрипт команды по диалогу.
     
@@ -199,6 +211,7 @@ async def _analyze_checklist(data: Dict[str, Any], title: str, dialogue_json_str
         dialogue_json_str: JSON строка диалога
         analyses: Список для добавления результатов анализа
         checklist_scores: Опциональный список для сбора структурированных +/- оценок
+        research: Опциональный ResearchLogger — для CoT-логирования (Research Mode)
     """
     logger.info(f"🔍 Начинаю анализ чеклиста/скрипта: {title}")
 
@@ -251,6 +264,7 @@ async def _analyze_checklist(data: Dict[str, Any], title: str, dialogue_json_str
         "- [Пункт 1]: Да/Нет/Частично — комментарий. Цитаты (если есть): «…» [t=00:12–00:18]\n"
         "- [Пункт 2]: ...\n"
         + scoring_instruction
+        + (REASONING_INSTRUCTION_CHECKLIST if research is not None else "")
     )
 
     try:
@@ -265,14 +279,38 @@ async def _analyze_checklist(data: Dict[str, Any], title: str, dialogue_json_str
         logger.info(f"✅ Получен ответ от GPT для: {title}")
         full_response = resp.choices[0].message.content.strip()
 
+        # Перед тем как _extract_and_collect_scores режет JSON, сохраним «исходник» для research-лога.
+        raw_for_research = full_response
+
+        stage_scores_snapshot: Optional[List[Dict]] = None
         text_part = full_response
         if checklist_scores is not None:
+            scores_before = len(checklist_scores)
             text_part = _extract_and_collect_scores(full_response, checklist_scores)
+            stage_scores_snapshot = checklist_scores[scores_before:]
+
+        if research is not None:
+            try:
+                research.capture_stage(
+                    stage_name=f"Чек-лист: {title}",
+                    model="gpt-4o",
+                    prompt=prompt,
+                    raw_response=raw_for_research,
+                    parsed_decisions=stage_scores_snapshot,
+                    usage=getattr(resp, "usage", None),
+                )
+            except Exception as research_err:  # noqa: BLE001
+                logger.warning(f"Research capture (checklist) failed: {research_err}")
 
         analyses.append(f"=== {title.upper()} ===\n{text_part}\n")
     except Exception as e:
         logger.error(f"❌ Ошибка анализа чеклиста {title}: {e}", exc_info=True)
         analyses.append(f"=== {title.upper()} ===\nОшибка LLM: {e}\n")
+        if research is not None:
+            try:
+                research.capture_note(f"Ошибка анализа чек-листа «{title}»: {e}")
+            except Exception:
+                pass
 
 
 def _extract_and_collect_scores(response_text: str, checklist_scores: List[Dict]) -> str:
@@ -352,6 +390,15 @@ async def run_pipeline_from_text(user_id: int, conversation_id: int, text_attach
         can_cancel=False
     )
     progress.metadata = {"user_id": user_id, "conversation_id": conversation_id}
+
+    # Research Mode: лог промежуточных размышлений для админки
+    research: Optional[ResearchLogger] = None
+    try:
+        research = ResearchLogger(conversation_id=conversation_id, user_id=user_id)
+        research.write_header(source=f"attachment_id={text_attachment_id}", source_kind="text-file")
+    except Exception as research_err:  # noqa: BLE001
+        logger.warning(f"ResearchLogger init failed: {research_err}")
+        research = None
     
     try:
         text_att = db.get(Attachment, text_attachment_id)
@@ -436,12 +483,12 @@ async def run_pipeline_from_text(user_id: int, conversation_id: int, text_attach
             script_title = cf.stem.upper()
             
             # Анализируем чеклист
-            await _analyze_checklist(data, script_title, dialogue_json_str, analyses, checklist_scores)
+            await _analyze_checklist(data, script_title, dialogue_json_str, analyses, checklist_scores, research=research)
         
         # Обрабатываем скрипт команды, если он есть
         if team_script:
             script_title = team_script.get("title", "Скрипт команды")
-            await _analyze_checklist(team_script, script_title, dialogue_json_str, analyses)
+            await _analyze_checklist(team_script, script_title, dialogue_json_str, analyses, research=research)
 
         combined = "\n".join(analyses)
 
@@ -470,14 +517,30 @@ async def run_pipeline_from_text(user_id: int, conversation_id: int, text_attach
                 f"Анализы по чек-листам (с role mapping вверху):\n{combined}\n\n"
                 f"ДИАЛОГ_JSON (для ссылок на таймкоды):\n{dialogue_json_str}\n"
             )
+        if research is not None:
+            final_prompt_for_call = final_prompt + REASONING_INSTRUCTION_SUMMARY
+        else:
+            final_prompt_for_call = final_prompt
         final_resp = await asyncio.to_thread(
             lambda: client.chat.completions.create(
                 model="gpt-4o",
-                messages=[{"role": "user", "content": final_prompt}],
+                messages=[{"role": "user", "content": final_prompt_for_call}],
                 temperature=0.2,
             )
         )
-        summary = "=== ИТОГОВЫЙ ОТЧЁТ ===\n" + final_resp.choices[0].message.content.strip()
+        summary_raw = final_resp.choices[0].message.content.strip()
+        summary = "=== ИТОГОВЫЙ ОТЧЁТ ===\n" + summary_raw
+        if research is not None:
+            try:
+                research.capture_stage(
+                    stage_name="Итоговый отчёт",
+                    model="gpt-4o",
+                    prompt=final_prompt_for_call,
+                    raw_response=summary_raw,
+                    usage=getattr(final_resp, "usage", None),
+                )
+            except Exception as research_err:  # noqa: BLE001
+                logger.warning(f"Research capture (summary) failed: {research_err}")
 
         report_path = temp_dir / f"analysis_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.txt"
         report_path.write_text(combined + "\n\n" + summary, encoding="utf-8")
@@ -536,7 +599,7 @@ async def run_pipeline_from_text(user_id: int, conversation_id: int, text_attach
         # Извлечение структурированных параметров (Слой 2 — аналитика)
         try:
             from services.parameter_extraction import extract_parameters
-            await extract_parameters(conversation_id, dialogue_json_str, db)
+            await extract_parameters(conversation_id, dialogue_json_str, db, research=research)
         except Exception as e:
             logger.error(f"Ошибка извлечения параметров: {e}", exc_info=True)
             try:
@@ -548,7 +611,7 @@ async def run_pipeline_from_text(user_id: int, conversation_id: int, text_attach
         try:
             from services.seller_passport_service import update_seller_passport
             analysis_text_full = combined + "\n\n" + summary
-            await update_seller_passport(db, user_id, conversation_id, dialogue_json_str, analysis_text_full)
+            await update_seller_passport(db, user_id, conversation_id, dialogue_json_str, analysis_text_full, research=research)
         except Exception as e:
             logger.error(f"Ошибка обновления паспорта продавца: {e}", exc_info=True)
         
@@ -556,7 +619,7 @@ async def run_pipeline_from_text(user_id: int, conversation_id: int, text_attach
         try:
             from services.manager_actions_service import process_manager_actions
             analysis_text_full = combined + "\n\n" + summary
-            await process_manager_actions(db, user_id, conversation_id, dialogue_json_str, analysis_text_full)
+            await process_manager_actions(db, user_id, conversation_id, dialogue_json_str, analysis_text_full, research=research)
         except Exception as e:
             logger.error(f"Ошибка сбора действий менеджера: {e}", exc_info=True)
         
@@ -564,6 +627,11 @@ async def run_pipeline_from_text(user_id: int, conversation_id: int, text_attach
         tracker.complete_operation(operation_id, "Готово ✅ Отчёт во вложении.")
 
     finally:
+        if research is not None:
+            try:
+                research.finalize(status="completed")
+            except Exception as research_err:  # noqa: BLE001
+                logger.warning(f"ResearchLogger finalize failed: {research_err}")
         db.close()
 
 
@@ -591,6 +659,15 @@ async def run_pipeline_from_raw_text(user_id: int, conversation_id: int, raw_tex
         can_cancel=False
     )
     progress.metadata = {"user_id": user_id, "conversation_id": conversation_id}
+
+    # Research Mode: лог промежуточных размышлений для админки
+    research: Optional[ResearchLogger] = None
+    try:
+        research = ResearchLogger(conversation_id=conversation_id, user_id=user_id)
+        research.write_header(source="raw_text", source_kind="text-paste")
+    except Exception as research_err:  # noqa: BLE001
+        logger.warning(f"ResearchLogger init failed: {research_err}")
+        research = None
     
     try:
         text = raw_text.strip()
@@ -659,12 +736,12 @@ async def run_pipeline_from_raw_text(user_id: int, conversation_id: int, raw_tex
         for cf in check_files:
             data = json.loads(cf.read_text(encoding="utf-8"))
             script_title = cf.stem.upper()
-            await _analyze_checklist(data, script_title, dialogue_json_str, analyses, checklist_scores)
+            await _analyze_checklist(data, script_title, dialogue_json_str, analyses, checklist_scores, research=research)
         
         # Обрабатываем скрипт команды, если он есть
         if team_script:
             script_title = team_script.get("title", "Скрипт команды")
-            await _analyze_checklist(team_script, script_title, dialogue_json_str, analyses)
+            await _analyze_checklist(team_script, script_title, dialogue_json_str, analyses, research=research)
 
         combined = "\n".join(analyses)
 
@@ -691,14 +768,30 @@ async def run_pipeline_from_raw_text(user_id: int, conversation_id: int, raw_tex
                 f"Анализы по чек-листам (с role mapping вверху):\n{combined}\n\n"
                 f"ДИАЛОГ_JSON (для ссылок на таймкоды):\n{dialogue_json_str}\n"
             )
+        if research is not None:
+            final_prompt_for_call = final_prompt + REASONING_INSTRUCTION_SUMMARY
+        else:
+            final_prompt_for_call = final_prompt
         final_resp = await asyncio.to_thread(
             lambda: client.chat.completions.create(
                 model="gpt-4o",
-                messages=[{"role": "user", "content": final_prompt}],
+                messages=[{"role": "user", "content": final_prompt_for_call}],
                 temperature=0.2,
             )
         )
-        summary = "=== ИТОГОВЫЙ ОТЧЁТ ===\n" + final_resp.choices[0].message.content.strip()
+        summary_raw = final_resp.choices[0].message.content.strip()
+        summary = "=== ИТОГОВЫЙ ОТЧЁТ ===\n" + summary_raw
+        if research is not None:
+            try:
+                research.capture_stage(
+                    stage_name="Итоговый отчёт",
+                    model="gpt-4o",
+                    prompt=final_prompt_for_call,
+                    raw_response=summary_raw,
+                    usage=getattr(final_resp, "usage", None),
+                )
+            except Exception as research_err:  # noqa: BLE001
+                logger.warning(f"Research capture (summary) failed: {research_err}")
 
         report_path = temp_dir / f"analysis_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.txt"
         report_path.write_text(combined + "\n\n" + summary, encoding="utf-8")
@@ -755,7 +848,7 @@ async def run_pipeline_from_raw_text(user_id: int, conversation_id: int, raw_tex
         # Извлечение структурированных параметров (Слой 2 — аналитика)
         try:
             from services.parameter_extraction import extract_parameters
-            await extract_parameters(conversation_id, dialogue_json_str, db)
+            await extract_parameters(conversation_id, dialogue_json_str, db, research=research)
         except Exception as e:
             logger.error(f"Ошибка извлечения параметров: {e}", exc_info=True)
             try:
@@ -767,7 +860,7 @@ async def run_pipeline_from_raw_text(user_id: int, conversation_id: int, raw_tex
         try:
             from services.seller_passport_service import update_seller_passport
             analysis_text_full = combined + "\n\n" + summary
-            await update_seller_passport(db, user_id, conversation_id, dialogue_json_str, analysis_text_full)
+            await update_seller_passport(db, user_id, conversation_id, dialogue_json_str, analysis_text_full, research=research)
         except Exception as e:
             logger.error(f"Ошибка обновления паспорта продавца: {e}", exc_info=True)
         
@@ -775,13 +868,18 @@ async def run_pipeline_from_raw_text(user_id: int, conversation_id: int, raw_tex
         try:
             from services.manager_actions_service import process_manager_actions
             analysis_text_full = combined + "\n\n" + summary
-            await process_manager_actions(db, user_id, conversation_id, dialogue_json_str, analysis_text_full)
+            await process_manager_actions(db, user_id, conversation_id, dialogue_json_str, analysis_text_full, research=research)
         except Exception as e:
             logger.error(f"Ошибка сбора действий менеджера: {e}", exc_info=True)
         
         tracker.complete_operation(operation_id, "Готово ✅ Отчёт во вложении.")
 
     finally:
+        if research is not None:
+            try:
+                research.finalize(status="completed")
+            except Exception as research_err:  # noqa: BLE001
+                logger.warning(f"ResearchLogger finalize failed: {research_err}")
         db.close()
 
 
@@ -813,6 +911,15 @@ async def run_pipeline(user_id: int, conversation_id: int, audio_attachment_id: 
         can_cancel=False
     )
     progress.metadata = {"user_id": user_id, "conversation_id": conversation_id}
+
+    # Research Mode: лог промежуточных размышлений для админки
+    research: Optional[ResearchLogger] = None
+    try:
+        research = ResearchLogger(conversation_id=conversation_id, user_id=user_id)
+        research.write_header(source=f"attachment_id={audio_attachment_id}", source_kind="audio")
+    except Exception as research_err:  # noqa: BLE001
+        logger.warning(f"ResearchLogger init failed: {research_err}")
+        research = None
     
     try:
         audio_att = db.get(Attachment, audio_attachment_id)
@@ -966,12 +1073,12 @@ async def run_pipeline(user_id: int, conversation_id: int, audio_attachment_id: 
             script_title = cf.stem.upper()
             
             # Анализируем чеклист
-            await _analyze_checklist(data, script_title, dialogue_json_str, analyses, checklist_scores)
+            await _analyze_checklist(data, script_title, dialogue_json_str, analyses, checklist_scores, research=research)
         
         # Обрабатываем скрипт команды, если он есть
         if team_script:
             script_title = team_script.get("title", "Скрипт команды")
-            await _analyze_checklist(team_script, script_title, dialogue_json_str, analyses)
+            await _analyze_checklist(team_script, script_title, dialogue_json_str, analyses, research=research)
 
         combined = "\n".join(analyses)
 
@@ -1000,14 +1107,30 @@ async def run_pipeline(user_id: int, conversation_id: int, audio_attachment_id: 
                 f"Анализы по чек-листам (с role mapping вверху):\n{combined}\n\n"
                 f"ДИАЛОГ_JSON (для ссылок на таймкоды):\n{dialogue_json_str}\n"
             )
+        if research is not None:
+            final_prompt_for_call = final_prompt + REASONING_INSTRUCTION_SUMMARY
+        else:
+            final_prompt_for_call = final_prompt
         final_resp = await asyncio.to_thread(
             lambda: client.chat.completions.create(
                 model="gpt-4o",
-                messages=[{"role": "user", "content": final_prompt}],
+                messages=[{"role": "user", "content": final_prompt_for_call}],
                 temperature=0.2,
             )
         )
-        summary = "=== ИТОГОВЫЙ ОТЧЁТ ===\n" + final_resp.choices[0].message.content.strip()
+        summary_raw = final_resp.choices[0].message.content.strip()
+        summary = "=== ИТОГОВЫЙ ОТЧЁТ ===\n" + summary_raw
+        if research is not None:
+            try:
+                research.capture_stage(
+                    stage_name="Итоговый отчёт",
+                    model="gpt-4o",
+                    prompt=final_prompt_for_call,
+                    raw_response=summary_raw,
+                    usage=getattr(final_resp, "usage", None),
+                )
+            except Exception as research_err:  # noqa: BLE001
+                logger.warning(f"Research capture (summary) failed: {research_err}")
 
         report_path = temp_dir / f"analysis_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.txt"
         report_path.write_text(combined + "\n\n" + summary, encoding="utf-8")
@@ -1066,7 +1189,7 @@ async def run_pipeline(user_id: int, conversation_id: int, audio_attachment_id: 
         # Извлечение структурированных параметров (Слой 2 — аналитика для РОПа)
         try:
             from services.parameter_extraction import extract_parameters
-            await extract_parameters(conversation_id, dialogue_json_str, db)
+            await extract_parameters(conversation_id, dialogue_json_str, db, research=research)
         except Exception as e:
             logger.error(f"Ошибка извлечения параметров: {e}", exc_info=True)
             try:
@@ -1078,7 +1201,7 @@ async def run_pipeline(user_id: int, conversation_id: int, audio_attachment_id: 
         try:
             from services.seller_passport_service import update_seller_passport
             analysis_text_full = combined + "\n\n" + summary
-            await update_seller_passport(db, user_id, conversation_id, dialogue_json_str, analysis_text_full)
+            await update_seller_passport(db, user_id, conversation_id, dialogue_json_str, analysis_text_full, research=research)
         except Exception as e:
             logger.error(f"Ошибка обновления паспорта продавца: {e}", exc_info=True)
         
@@ -1086,7 +1209,7 @@ async def run_pipeline(user_id: int, conversation_id: int, audio_attachment_id: 
         try:
             from services.manager_actions_service import process_manager_actions
             analysis_text_full = combined + "\n\n" + summary
-            await process_manager_actions(db, user_id, conversation_id, dialogue_json_str, analysis_text_full)
+            await process_manager_actions(db, user_id, conversation_id, dialogue_json_str, analysis_text_full, research=research)
         except Exception as e:
             logger.error(f"Ошибка сбора действий менеджера: {e}", exc_info=True)
         
@@ -1094,4 +1217,9 @@ async def run_pipeline(user_id: int, conversation_id: int, audio_attachment_id: 
         tracker.complete_operation(operation_id, "Готово ✅ Отчёт во вложении.")
 
     finally:
+        if research is not None:
+            try:
+                research.finalize(status="completed")
+            except Exception as research_err:  # noqa: BLE001
+                logger.warning(f"ResearchLogger finalize failed: {research_err}")
         db.close()
