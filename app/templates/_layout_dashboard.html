@@ -694,7 +694,7 @@
   </script>
 
   <!-- Google Ads-style баннер для бесплатных пользователей -->
-  {% if user and not user.is_premium %}
+  {% if user and not user.is_premium and user.role != 'admin' %}
   {% set remaining_analyses = user.free_analyses_limit - user.analyses_used %}
   {% if remaining_analyses <= 0 %}
   <div class="subscription-banner banner-danger" id="subscription-banner">

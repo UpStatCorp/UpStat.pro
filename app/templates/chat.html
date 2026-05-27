@@ -10,7 +10,15 @@
       <p>✨ Загружайте аудиофайлы или скриншоты переписок и получайте детальный анализ</p>
     </div>
     <div style="display:flex; align-items:center; gap:16px;">
-      {% if user and not user.is_premium %}
+      {% if user and user.role == 'admin' %}
+      <div style="display:flex; align-items:center; gap:8px; padding:8px 14px; background:rgba(99,102,241,0.1); border:1px solid rgba(99,102,241,0.2); border-radius:10px;">
+        <span style="font-size:18px;">🛡️</span>
+        <div>
+          <div style="font-size:12px; color:#3730a3; font-weight:600;">Админ-доступ</div>
+          <div style="font-size:14px; font-weight:700; color:#4f46e5;">∞ Анализы без ограничений</div>
+        </div>
+      </div>
+      {% elif user and not user.is_premium %}
       <div style="display:flex; align-items:center; gap:8px; padding:8px 14px; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.2); border-radius:10px;">
         <span style="font-size:18px;">📊</span>
         <div>

@@ -268,7 +268,9 @@ async def send_message(
     if not audio_att_ids and not text_att_ids and not image_att_ids and text_clean and _looks_like_transcript(text_clean):
         total_analyses_requested = 1
 
-    if total_analyses_requested > 0 and not getattr(user, 'is_premium', False):
+    # Админы имеют безлимитный доступ к анализам
+    _is_unlimited = getattr(user, 'is_premium', False) or getattr(user, 'role', '') == 'admin'
+    if total_analyses_requested > 0 and not _is_unlimited:
         remaining = user.free_analyses_limit - user.analyses_used
         if remaining <= 0:
             limit_msg = Message(
