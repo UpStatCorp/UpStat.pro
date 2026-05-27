@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from admin import get_current_user, is_admin
 from database import get_db
 from models import Conversation, ResearchLog, User
+from services.research_service import parse_research_file
 
 logger = logging.getLogger(__name__)
 
@@ -174,8 +175,15 @@ def admin_research_view(
     log_id: int,
     request: Request,
     db: Session = Depends(get_db),
+    mode: str = Query("cards", regex="^(cards|raw)$"),
 ):
-    """Просмотр содержимого research-файла в браузере."""
+    """
+    Просмотр research-файла.
+
+    mode=cards (по умолчанию) — структурированный HTML с карточками этапов,
+                                раскрывающимися reasoning-блоками и фильтрами.
+    mode=raw                  — оригинальный .txt в <pre> для копирования.
+    """
     current_user = _ensure_admin(request, db)
 
     log = db.query(ResearchLog).filter(ResearchLog.id == log_id).first()
@@ -189,6 +197,7 @@ def admin_research_view(
     file_content: Optional[str] = None
     file_missing = False
     too_large = False
+    parsed: Optional[dict] = None
 
     if not abs_path or not os.path.isfile(abs_path):
         file_missing = True
@@ -200,6 +209,12 @@ def admin_research_view(
             else:
                 with open(abs_path, "r", encoding="utf-8", errors="replace") as f:
                     file_content = f.read()
+                if mode == "cards" and file_content:
+                    try:
+                        parsed = parse_research_file(file_content)
+                    except Exception as e:  # noqa: BLE001
+                        logger.warning(f"Failed to parse research file {abs_path}: {e}")
+                        parsed = None
         except OSError as e:
             logger.warning(f"Failed to read research file {abs_path}: {e}")
             file_missing = True
@@ -209,6 +224,7 @@ def admin_research_view(
         {
             "request": request,
             "current_user": current_user,
+            "mode": mode,
             "log": {
                 "id": log.id,
                 "conversation_id": log.conversation_id,
@@ -230,6 +246,7 @@ def admin_research_view(
             "file_content": file_content,
             "file_missing": file_missing,
             "too_large": too_large,
+            "parsed": parsed,
         },
     )
 

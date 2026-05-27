@@ -3,6 +3,50 @@
 {% block title %}Research #{{ log.id }} — Админ-панель — UpStat{% endblock %}
 
 {% block content %}
+<style>
+  .rs-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .rs-toolbar input[type="text"] { padding: 7px 10px; border: 1px solid #d1d5db; border-radius: 8px; font-size: 13px; min-width: 220px; }
+  .rs-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid var(--border); background: white; cursor: pointer; user-select: none; }
+  .rs-chip.active { background: var(--admin-primary); color: white; border-color: var(--admin-primary); }
+  .rs-stage { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 14px; overflow: hidden; box-shadow: var(--shadow); }
+  .rs-stage-head { padding: 14px 18px; background: #fafafa; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; cursor: pointer; }
+  .rs-stage-head:hover { background: #f1f5f9; }
+  .rs-stage-num { width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, #8b5cf6, #7c3aed); color: white; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex-shrink: 0; }
+  .rs-stage-title { font-size: 15px; font-weight: 600; color: var(--text); flex: 1; min-width: 200px; }
+  .rs-stage-meta { display: flex; gap: 10px; font-size: 11px; color: var(--muted); flex-wrap: wrap; }
+  .rs-stage-meta span { background: white; border: 1px solid var(--border); padding: 3px 8px; border-radius: 6px; font-family: ui-monospace, SFMono-Regular, monospace; }
+  .rs-stage-body { padding: 0 18px 18px 18px; display: none; }
+  .rs-stage.open .rs-stage-body { display: block; }
+  .rs-stage.open .rs-chevron { transform: rotate(90deg); }
+  .rs-chevron { transition: transform 0.2s ease; color: var(--muted); }
+  .rs-block { margin-top: 16px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .rs-block-title { padding: 10px 14px; background: #f8fafc; font-weight: 600; font-size: 12px; color: var(--text); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+  .rs-block-body { padding: 14px 16px; font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
+  .rs-block.reasoning .rs-block-title { background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(124, 58, 237, 0.08)); color: #6d28d9; }
+  .rs-block.reasoning .rs-block-body { background: #faf5ff; font-family: ui-sans-serif, system-ui; }
+  .rs-block.decisions .rs-block-title { background: rgba(16, 185, 129, 0.08); color: #047857; }
+  .rs-block.decisions .rs-block-body { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; background: #f0fdf4; }
+  .rs-block.response .rs-block-title { background: rgba(59, 130, 246, 0.08); color: #1d4ed8; }
+  .rs-block.response .rs-block-body { font-family: ui-sans-serif, system-ui; }
+  .rs-block.prompt .rs-block-title { background: rgba(107, 114, 128, 0.08); color: #374151; }
+  .rs-block.prompt .rs-block-body { font-family: ui-monospace, monospace; font-size: 12px; background: #f9fafb; color: #4b5563; max-height: 320px; overflow: auto; }
+  .rs-toggle { font-size: 11px; padding: 3px 8px; background: white; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+  .rs-tldr { background: linear-gradient(135deg, #fffbeb, #fef3c7); border: 1px solid #fcd34d; border-radius: var(--radius); padding: 16px 20px; margin-bottom: 16px; }
+  .rs-tldr h3 { margin: 0 0 10px 0; font-size: 14px; color: #92400e; }
+  .rs-tldr ul { margin: 0; padding-left: 18px; font-size: 13px; color: #78350f; line-height: 1.8; }
+  .rs-toc { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 20px; margin-bottom: 16px; }
+  .rs-toc h3 { margin: 0 0 10px 0; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+  .rs-toc-item { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px dashed #f1f5f9; font-size: 13px; }
+  .rs-toc-item:last-child { border-bottom: none; }
+  .rs-toc-item a { color: var(--admin-primary); text-decoration: none; font-weight: 500; }
+  .rs-toc-item a:hover { text-decoration: underline; }
+  .rs-toc-summary { color: var(--muted); font-size: 12px; font-family: ui-monospace, monospace; }
+  mark.rs-hl { background: #fde68a; color: #1f2937; padding: 1px 3px; border-radius: 2px; }
+  .rs-hidden { display: none !important; }
+  .rs-empty { padding: 24px; text-align: center; color: var(--muted); font-style: italic; }
+</style>
+
+<!-- Шапка -->
 <div style="margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
     <div>
         <a href="/admin/research" style="color: var(--admin-info); text-decoration: none; font-size: 13px;">
@@ -15,16 +59,26 @@
         <p style="color: var(--muted); margin: 0; font-size: 13px;">
             Conversation: <span style="font-family: monospace;">{{ log.conversation_id }}</span>
             {% if log.conv_title %} · «{{ log.conv_title }}»{% endif %}
-            · Файл: <span style="font-family: monospace;">{{ log.file_name }}</span>
+            · {{ log.user_email }}
         </p>
     </div>
-    <div style="display: flex; gap: 8px;">
+    <div style="display: flex; gap: 8px; align-items: center;">
+        <div style="display: flex; gap: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden;">
+            <a href="/admin/research/{{ log.id }}?mode=cards"
+               style="padding: 8px 14px; font-size: 13px; text-decoration: none; {% if mode == 'cards' %}background: var(--admin-primary); color: white;{% else %}background: white; color: var(--text);{% endif %}">
+               <i class="fas fa-layer-group"></i> Карточки
+            </a>
+            <a href="/admin/research/{{ log.id }}?mode=raw"
+               style="padding: 8px 14px; font-size: 13px; text-decoration: none; {% if mode == 'raw' %}background: var(--admin-primary); color: white;{% else %}background: white; color: var(--text);{% endif %}">
+               <i class="fas fa-file-code"></i> Raw .txt
+            </a>
+        </div>
         <a href="/admin/research/{{ log.id }}/download" class="btn" style="background: var(--admin-info); color: white; border-color: var(--admin-info);">
-            <i class="fas fa-download"></i> Скачать .txt
+            <i class="fas fa-download"></i> Скачать
         </a>
         <form method="post" action="/admin/research/{{ log.id }}/delete" style="margin: 0;">
             <button type="submit" class="btn" style="background: var(--admin-primary); color: white; border-color: var(--admin-primary);"
-                    onclick="return confirm('Удалить research-лог #{{ log.id }}? Файл будет удалён безвозвратно.')">
+                    onclick="return confirm('Удалить research-лог #{{ log.id }}?')">
                 <i class="fas fa-trash"></i> Удалить
             </button>
         </form>
@@ -32,7 +86,7 @@
 </div>
 
 <!-- Метаинформация -->
-<div class="admin-cards" style="margin-bottom: 20px;">
+<div class="admin-cards" style="margin-bottom: 16px;">
     <div class="admin-card">
         <div class="admin-card-header">
             <div class="admin-card-title">Этапов</div>
@@ -41,12 +95,8 @@
             </div>
         </div>
         <div class="admin-metric">{{ log.stages_count }}</div>
-        <div class="admin-metric-change">
-            <i class="fas fa-cubes"></i>
-            <span>AI-вызовов в pipeline</span>
-        </div>
+        <div class="admin-metric-change"><i class="fas fa-cubes"></i><span>AI-вызовов в pipeline</span></div>
     </div>
-
     <div class="admin-card">
         <div class="admin-card-header">
             <div class="admin-card-title">Токены</div>
@@ -55,12 +105,8 @@
             </div>
         </div>
         <div class="admin-metric">{{ log.total_input_tokens + log.total_output_tokens }}</div>
-        <div class="admin-metric-change">
-            <i class="fas fa-arrows-left-right"></i>
-            <span>in {{ log.total_input_tokens }} / out {{ log.total_output_tokens }}</span>
-        </div>
+        <div class="admin-metric-change"><i class="fas fa-arrows-left-right"></i><span>in {{ log.total_input_tokens }} / out {{ log.total_output_tokens }}</span></div>
     </div>
-
     <div class="admin-card">
         <div class="admin-card-header">
             <div class="admin-card-title">Модели</div>
@@ -68,13 +114,9 @@
                 <i class="fas fa-microchip"></i>
             </div>
         </div>
-        <div class="admin-metric" style="font-size: 16px; font-weight: 600; line-height: 1.4;">{{ log.models_summary }}</div>
-        <div class="admin-metric-change">
-            <i class="fas fa-robot"></i>
-            <span>OpenAI</span>
-        </div>
+        <div class="admin-metric" style="font-size: 15px; font-weight: 600; line-height: 1.4;">{{ log.models_summary }}</div>
+        <div class="admin-metric-change"><i class="fas fa-robot"></i><span>OpenAI</span></div>
     </div>
-
     <div class="admin-card">
         <div class="admin-card-header">
             <div class="admin-card-title">Статус</div>
@@ -84,15 +126,7 @@
             </div>
         </div>
         <div class="admin-metric" style="font-size: 18px; font-weight: 700;">{{ log.status }}</div>
-        <div class="admin-metric-change">
-            <i class="fas fa-clock"></i>
-            <span>
-                {{ log.created_at.strftime('%d.%m.%Y %H:%M') if log.created_at else '—' }}
-                {% if log.completed_at %}
-                    → {{ log.completed_at.strftime('%H:%M:%S') }}
-                {% endif %}
-            </span>
-        </div>
+        <div class="admin-metric-change"><i class="fas fa-clock"></i><span>{{ log.created_at.strftime('%d.%m.%Y %H:%M') if log.created_at else '—' }}{% if log.completed_at %} → {{ log.completed_at.strftime('%H:%M:%S') }}{% endif %}</span></div>
     </div>
 </div>
 
@@ -105,81 +139,305 @@
 </div>
 {% endif %}
 
-<!-- Содержимое файла -->
+{% if file_missing %}
 <div class="admin-table-container">
-    <div class="admin-table-header" style="display: flex; align-items: center; justify-content: space-between;">
-        <h3 class="admin-table-title">
-            <i class="fas fa-file-lines" style="color: var(--admin-info); margin-right: 8px;"></i>
-            Содержимое research-файла · {{ log.file_size_human }}
-        </h3>
-        <div style="display: flex; gap: 6px; align-items: center;">
-            <input type="text" id="research-search" placeholder="Поиск в логе…"
-                   style="padding: 6px 10px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 12px; width: 220px;"/>
-            <button type="button" onclick="copyResearchContent()" class="btn" style="padding: 6px 10px; font-size: 12px;">
-                <i class="fas fa-copy"></i> Скопировать
-            </button>
-        </div>
-    </div>
-
-    {% if file_missing %}
-    <div style="padding: 36px 24px; text-align: center; color: var(--muted);">
-        <i class="fas fa-file-excel" style="font-size: 32px; color: #d1d5db; margin-bottom: 12px;"></i>
+    <div class="rs-empty">
+        <i class="fas fa-file-excel" style="font-size: 32px; color: #d1d5db; display: block; margin-bottom: 12px;"></i>
         <h3 style="margin: 0 0 6px 0;">Файл не найден на диске</h3>
-        <p style="margin: 0; font-size: 13px;">Запись в БД есть, но физический файл отсутствует. Возможно, был удалён вручную.</p>
+        <p style="margin: 0; font-size: 13px;">Запись в БД есть, но физический файл отсутствует.</p>
     </div>
-    {% elif too_large %}
-    <div style="padding: 36px 24px; text-align: center; color: var(--muted);">
-        <i class="fas fa-weight-hanging" style="font-size: 32px; color: #d1d5db; margin-bottom: 12px;"></i>
+</div>
+{% elif too_large %}
+<div class="admin-table-container">
+    <div class="rs-empty">
+        <i class="fas fa-weight-hanging" style="font-size: 32px; color: #d1d5db; display: block; margin-bottom: 12px;"></i>
         <h3 style="margin: 0 0 6px 0;">Файл слишком большой для просмотра в браузере</h3>
         <p style="margin: 0 0 12px 0; font-size: 13px;">Размер: {{ log.file_size_human }}. Скачайте, чтобы открыть локально.</p>
         <a href="/admin/research/{{ log.id }}/download" class="btn" style="background: var(--admin-info); color: white; border-color: var(--admin-info);">
             <i class="fas fa-download"></i> Скачать .txt
         </a>
     </div>
-    {% else %}
-    <pre id="research-content" style="margin: 0; padding: 16px 20px; background: #0f172a; color: #e2e8f0; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; line-height: 1.55; max-height: 80vh; overflow: auto; white-space: pre-wrap; word-break: break-word; border-radius: 0 0 var(--radius) var(--radius);">{{ file_content }}</pre>
-    {% endif %}
 </div>
 
+{% elif mode == 'raw' %}
+<!-- RAW режим — оригинальный текст -->
+<div class="admin-table-container">
+    <div class="admin-table-header" style="display: flex; align-items: center; justify-content: space-between;">
+        <h3 class="admin-table-title"><i class="fas fa-file-code" style="color: var(--admin-info); margin-right: 8px;"></i>Сырой .txt</h3>
+        <button type="button" onclick="copyResearchContent()" class="btn" style="padding: 6px 10px; font-size: 12px;">
+            <i class="fas fa-copy"></i> Скопировать
+        </button>
+    </div>
+    <pre id="research-content" style="margin: 0; padding: 16px 20px; background: #0f172a; color: #e2e8f0; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; line-height: 1.55; max-height: 80vh; overflow: auto; white-space: pre-wrap; word-break: break-word; border-radius: 0 0 var(--radius) var(--radius);">{{ file_content }}</pre>
+</div>
+
+{% elif parsed %}
+<!-- CARDS режим — структурированный просмотр -->
+
+{% if parsed.tldr %}
+<div class="rs-tldr">
+    <h3><i class="fas fa-thumbtack"></i> TL;DR — главное</h3>
+    <ul>
+        {% for line in parsed.tldr %}<li>{{ line }}</li>{% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+<!-- Тулбар -->
+<div class="admin-table-container" style="padding: 14px 18px; margin-bottom: 16px;">
+    <div class="rs-toolbar">
+        <input type="text" id="rs-search" placeholder="🔍 Поиск по reasoning, оценкам, цитатам..." autocomplete="off"/>
+        <span class="rs-chip active" data-filter="all">Все этапы ({{ parsed.stages|length }})</span>
+        <span class="rs-chip" data-filter="failed">⚠️ Только провалы</span>
+        <span class="rs-chip" data-filter="lowconf">🤔 Низкая уверенность</span>
+        <span class="rs-chip" data-filter="hasreasoning">🧠 С reasoning</span>
+        <button type="button" id="rs-expand-all" class="btn" style="padding: 6px 12px; font-size: 12px; margin-left: auto;">
+            <i class="fas fa-expand-arrows-alt"></i> Раскрыть все
+        </button>
+        <button type="button" id="rs-collapse-all" class="btn" style="padding: 6px 12px; font-size: 12px;">
+            <i class="fas fa-compress-arrows-alt"></i> Свернуть
+        </button>
+    </div>
+</div>
+
+<!-- Оглавление -->
+{% if parsed.stages|length > 1 %}
+<div class="rs-toc">
+    <h3><i class="fas fa-list-ol"></i> Оглавление</h3>
+    {% for stage in parsed.stages %}
+    <div class="rs-toc-item">
+        <span style="font-weight: 600; color: var(--muted); width: 28px;">#{{ stage.idx }}</span>
+        <a href="#stage-{{ stage.idx }}" onclick="openStage({{ stage.idx }})">{{ stage.name }}</a>
+        {% if stage.decisions_summary %}
+        <span class="rs-toc-summary">{{ stage.decisions_summary }}</span>
+        {% endif %}
+        <span style="margin-left: auto; font-size: 11px; color: var(--muted); font-family: ui-monospace, monospace;">
+            {{ stage.model }} · {{ stage.tokens_total }} tok
+            {% if stage.reasoning %}· 🧠{% else %}· ⚠️{% endif %}
+        </span>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Этапы -->
+{% for stage in parsed.stages %}
+<div class="rs-stage"
+     id="stage-{{ stage.idx }}"
+     data-idx="{{ stage.idx }}"
+     data-summary="{{ stage.decisions_summary|lower }}"
+     data-hasreasoning="{{ '1' if stage.reasoning else '0' }}">
+    <div class="rs-stage-head" onclick="toggleStage(this.parentElement)">
+        <span class="rs-chevron"><i class="fas fa-chevron-right"></i></span>
+        <span class="rs-stage-num">{{ stage.idx }}</span>
+        <span class="rs-stage-title">{{ stage.name }}</span>
+        <div class="rs-stage-meta">
+            <span><i class="fas fa-microchip"></i> {{ stage.model }}</span>
+            <span>in {{ stage.tokens_in }} / out {{ stage.tokens_out }}</span>
+            {% if stage.decisions_summary %}
+            <span style="background: #fef3c7; color: #92400e; border-color: #fcd34d;">{{ stage.decisions_summary }}</span>
+            {% endif %}
+            {% if stage.reasoning %}
+            <span style="background: #faf5ff; color: #6d28d9; border-color: #d8b4fe;">🧠 reasoning</span>
+            {% else %}
+            <span style="background: #fee2e2; color: #b91c1c; border-color: #fca5a5;">⚠️ no reasoning</span>
+            {% endif %}
+        </div>
+    </div>
+    <div class="rs-stage-body">
+
+        {% if stage.reasoning %}
+        <div class="rs-block reasoning">
+            <div class="rs-block-title">
+                <i class="fas fa-brain"></i> Мысли модели — почему так оценила
+            </div>
+            <div class="rs-block-body">{{ stage.reasoning }}</div>
+        </div>
+        {% else %}
+        <div class="rs-block reasoning">
+            <div class="rs-block-title">
+                <i class="fas fa-triangle-exclamation"></i> Reasoning отсутствует
+            </div>
+            <div class="rs-block-body" style="color: #b91c1c;">
+                Модель не вернула блок <code>=== REASONING ===</code>. Возможные причины:
+                модель проигнорировала инструкцию, ответ обрезан по лимиту токенов, или сбой парсинга.
+                Полный ответ — в блоке «Остальной ответ» ниже.
+            </div>
+        </div>
+        {% endif %}
+
+        {% if stage.parsed_decisions %}
+        <div class="rs-block decisions">
+            <div class="rs-block-title">
+                <i class="fas fa-check-double"></i> Финальные решения (что попало в БД)
+                <button type="button" class="rs-toggle" style="margin-left: auto;" onclick="toggleSibling(this)">скрыть</button>
+            </div>
+            <div class="rs-block-body">{{ stage.parsed_decisions }}</div>
+        </div>
+        {% endif %}
+
+        {% if stage.rest_of_response %}
+        <div class="rs-block response">
+            <div class="rs-block-title">
+                <i class="fas fa-file-lines"></i> Остальной ответ модели (role mapping, оценки)
+                <button type="button" class="rs-toggle" style="margin-left: auto;" onclick="toggleSibling(this)">скрыть</button>
+            </div>
+            <div class="rs-block-body">{{ stage.rest_of_response }}</div>
+        </div>
+        {% endif %}
+
+        {% if stage.extra %}
+        <div class="rs-block">
+            <div class="rs-block-title">
+                <i class="fas fa-circle-info"></i> Доп. контекст
+                <button type="button" class="rs-toggle" style="margin-left: auto;" onclick="toggleSibling(this)">скрыть</button>
+            </div>
+            <div class="rs-block-body" style="font-family: ui-monospace, monospace; font-size: 12px;">{{ stage.extra }}</div>
+        </div>
+        {% endif %}
+
+        {% if stage.prompt %}
+        <div class="rs-block prompt">
+            <div class="rs-block-title">
+                <i class="fas fa-wrench"></i> Промпт, отправленный в модель
+                <button type="button" class="rs-toggle" style="margin-left: auto;" onclick="toggleSibling(this)">показать</button>
+            </div>
+            <div class="rs-block-body" style="display: none;">{{ stage.prompt }}</div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endfor %}
+
+{% else %}
+<!-- parsed is None, но есть file_content — fallback на raw -->
+<div class="admin-table-container">
+    <div class="admin-table-header">
+        <h3 class="admin-table-title">Сырой .txt (не удалось распарсить структуру)</h3>
+    </div>
+    <pre id="research-content" style="margin: 0; padding: 16px 20px; background: #0f172a; color: #e2e8f0; font-family: ui-monospace, monospace; font-size: 12px; line-height: 1.55; max-height: 80vh; overflow: auto; white-space: pre-wrap; word-break: break-word; border-radius: 0 0 var(--radius) var(--radius);">{{ file_content }}</pre>
+</div>
+{% endif %}
+
 <script>
+function toggleStage(stageEl) {
+    stageEl.classList.toggle('open');
+}
+function openStage(idx) {
+    const el = document.getElementById('stage-' + idx);
+    if (el) { el.classList.add('open'); el.scrollIntoView({behavior: 'smooth', block: 'start'}); }
+}
+function toggleSibling(btn) {
+    const body = btn.parentElement.nextElementSibling;
+    if (!body) return;
+    const isHidden = body.style.display === 'none';
+    body.style.display = isHidden ? '' : 'none';
+    btn.textContent = isHidden ? 'скрыть' : 'показать';
+}
 function copyResearchContent() {
     const el = document.getElementById('research-content');
     if (!el) return;
-    const text = el.innerText;
-    navigator.clipboard.writeText(text).then(function() {
+    navigator.clipboard.writeText(el.innerText).then(() => {
         const btn = event.target.closest('button');
         if (btn) {
             const original = btn.innerHTML;
             btn.innerHTML = '<i class="fas fa-check"></i> Скопировано';
-            setTimeout(function(){ btn.innerHTML = original; }, 1800);
+            setTimeout(() => { btn.innerHTML = original; }, 1800);
         }
-    }).catch(function() {
-        alert('Не удалось скопировать');
     });
 }
 
-// Простой поиск с подсветкой
+// Кнопки «Раскрыть все» / «Свернуть»
 (function(){
-    const input = document.getElementById('research-search');
-    const pre = document.getElementById('research-content');
-    if (!input || !pre) return;
-    const original = pre.textContent;
-    input.addEventListener('input', function() {
-        const q = input.value.trim();
-        if (!q) {
-            pre.textContent = original;
-            return;
-        }
-        const escaped = q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const re = new RegExp(escaped, 'gi');
-        const escapedHtml = original
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;');
-        const highlighted = escapedHtml.replace(re, function(m) {
-            return '<mark style="background:#fde68a;color:#1f2937;padding:1px 2px;border-radius:2px;">' + m + '</mark>';
+    const expandBtn = document.getElementById('rs-expand-all');
+    const collapseBtn = document.getElementById('rs-collapse-all');
+    if (expandBtn) expandBtn.addEventListener('click', () => {
+        document.querySelectorAll('.rs-stage').forEach(s => s.classList.add('open'));
+    });
+    if (collapseBtn) collapseBtn.addEventListener('click', () => {
+        document.querySelectorAll('.rs-stage').forEach(s => s.classList.remove('open'));
+    });
+})();
+
+// Фильтры (чипы)
+(function(){
+    const chips = document.querySelectorAll('.rs-chip[data-filter]');
+    chips.forEach(chip => {
+        chip.addEventListener('click', () => {
+            chips.forEach(c => c.classList.remove('active'));
+            chip.classList.add('active');
+            const filter = chip.dataset.filter;
+            document.querySelectorAll('.rs-stage').forEach(stage => {
+                const summary = (stage.dataset.summary || '').toLowerCase();
+                const hasReasoning = stage.dataset.hasreasoning === '1';
+                let show = true;
+                if (filter === 'failed') {
+                    // "failed" присутствует, и число failed > 0
+                    const m = summary.match(/(\d+)\s+failed/);
+                    show = m && parseInt(m[1]) > 0;
+                } else if (filter === 'lowconf') {
+                    const m = summary.match(/avg conf=([\d.]+)/);
+                    show = m && parseFloat(m[1]) < 0.75;
+                } else if (filter === 'hasreasoning') {
+                    show = hasReasoning;
+                }
+                stage.classList.toggle('rs-hidden', !show);
+            });
         });
-        pre.innerHTML = highlighted;
+    });
+})();
+
+// Поиск с подсветкой
+(function(){
+    const input = document.getElementById('rs-search');
+    if (!input) return;
+    const stages = Array.from(document.querySelectorAll('.rs-stage'));
+    const bodies = stages.map(s => s.querySelectorAll('.rs-block-body'));
+
+    // Сохраняем исходный HTML
+    const original = [];
+    bodies.forEach(group => {
+        const arr = [];
+        group.forEach(b => arr.push(b.innerHTML));
+        original.push(arr);
+    });
+
+    function escapeHtml(s) {
+        return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+    function escapeRegex(s) {
+        return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    let timer = null;
+    input.addEventListener('input', () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+            const q = input.value.trim();
+            stages.forEach((stage, i) => {
+                let stageMatches = !q;
+                bodies[i].forEach((b, j) => {
+                    const orig = original[i][j];
+                    if (!q) {
+                        b.innerHTML = orig;
+                        return;
+                    }
+                    const re = new RegExp(escapeRegex(q), 'gi');
+                    const plain = b.textContent;
+                    if (re.test(plain)) {
+                        stageMatches = true;
+                        b.innerHTML = escapeHtml(plain).replace(
+                            new RegExp(escapeRegex(q), 'gi'),
+                            m => '<mark class="rs-hl">' + m + '</mark>'
+                        );
+                    } else {
+                        b.innerHTML = orig;
+                    }
+                });
+                stage.classList.toggle('rs-hidden', q && !stageMatches);
+                if (q && stageMatches) stage.classList.add('open');
+            });
+        }, 200);
     });
 })();
 </script>

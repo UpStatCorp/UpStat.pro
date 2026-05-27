@@ -68,9 +68,13 @@ def _build_extraction_prompt(
     example_str = json.dumps(example_json, ensure_ascii=False, indent=2)
 
     research_rule = (
-        '- Добавь поле "reasoning" для каждого параметра — '
-        'короткое объяснение (до 250 символов), почему ты выбрал такое value '
-        'и такое значение confidence. Это нужно админу для отладки модели.\n'
+        '- Добавь поле "reasoning" для КАЖДОГО параметра — '
+        'РАЗВЁРНУТОЕ объяснение (3–5 предложений, 300–600 символов) по схеме: '
+        '[1] какой кусок диалога ты использовал (краткая цитата или таймкод); '
+        '[2] какие альтернативные значения ты рассматривал; '
+        '[3] почему выбрал именно это value; '
+        '[4] что обосновывает уровень confidence (что повышало/снижало). '
+        'Если значение null — объясни, ЧТО ИМЕННО ты искал и почему не нашёл.\n'
         if research_mode else ""
     )
     
@@ -138,13 +142,17 @@ async def extract_parameters(
         # Извлекаем ВСЕ параметры через GPT
         prompt = _build_extraction_prompt(param_defs, research_mode=research is not None) + dialogue_json_str
 
+        # В research-режиме reasoning по каждому параметру → больше токенов
+        param_call_kwargs = {
+            "model": "gpt-4o",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.1,
+            "response_format": {"type": "json_object"},
+        }
+        if research is not None:
+            param_call_kwargs["max_tokens"] = 16000
         response = await asyncio.to_thread(
-            lambda: _client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.1,
-                response_format={"type": "json_object"},
-            )
+            lambda: _client.chat.completions.create(**param_call_kwargs)
         )
 
         raw = response.choices[0].message.content.strip()

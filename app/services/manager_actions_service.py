@@ -41,13 +41,24 @@ async def extract_manager_actions(
     client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
     reasoning_field = (
-        ',\n      "reasoning": "Почему ты считаешь это действие именно positive/negative — '
-        'что увидел в диалоге, какие были альтернативы интерпретации (до 400 символов)"'
+        ',\n      "reasoning": "РАЗВЁРНУТОЕ обоснование на 6–10 предложений: '
+        '[1] точная цитата действия менеджера с таймкодом; '
+        '[2] реакция клиента на это действие (цитата/поведение); '
+        '[3] почему именно positive/negative — конкретные сигналы; '
+        '[4] какие альтернативные интерпретации ты рассматривал и почему отверг; '
+        '[5] почему именно этот этап (contact/needs/...) — а не другой; '
+        '[6] что повышало/снижало confidence"'
         if research is not None else ""
     )
     research_note = (
-        "\nДОПОЛНИТЕЛЬНО (РЕЖИМ ИССЛЕДОВАНИЯ): для каждого действия объясни в поле "
-        "reasoning, почему ты так классифицировал его outcome, и почему именно эта реакция клиента важна.\n"
+        "\n══════════════════════════════════════════════════════════════════\n"
+        "РЕЖИМ ИССЛЕДОВАНИЯ — МАКСИМАЛЬНО РАЗВЁРНУТЫЙ REASONING\n"
+        "══════════════════════════════════════════════════════════════════\n"
+        "Для КАЖДОГО действия в поле reasoning напиши МИНИМУМ 6–10 предложений\n"
+        "по схеме: [1] цитата с таймкодом; [2] реакция клиента; [3] почему\n"
+        "именно этот outcome; [4] какие альтернативы рассмотрел; [5] почему\n"
+        "этот stage; [6] confidence breakdown. НЕ экономь слова — это нужно\n"
+        "коучу для калибровки промпта.\n"
         if research is not None else ""
     )
 
@@ -92,13 +103,17 @@ async def extract_manager_actions(
 Выдели от 2 до 6 самых заметных действий. Только те, которые реально повлияли на ход разговора."""
 
     try:
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-            temperature=0.3,
-            timeout=30.0,
-        )
+        # В research-режиме reasoning длиннее → больше токенов и таймаут
+        call_kwargs = {
+            "model": "gpt-4o-mini",
+            "messages": [{"role": "user", "content": prompt}],
+            "response_format": {"type": "json_object"},
+            "temperature": 0.4 if research is not None else 0.3,
+            "timeout": 90.0 if research is not None else 30.0,
+        }
+        if research is not None:
+            call_kwargs["max_tokens"] = 8000
+        response = await client.chat.completions.create(**call_kwargs)
         raw_content = response.choices[0].message.content
         result = json.loads(raw_content)
         actions = result.get("actions", [])

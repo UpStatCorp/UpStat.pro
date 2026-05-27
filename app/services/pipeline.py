@@ -269,12 +269,24 @@ async def _analyze_checklist(
 
     try:
         logger.info(f"📤 Отправляю запрос к GPT для анализа: {title}")
+        # В research-режиме разрешаем больше токенов и чуть выше temperature
+        # для детальных размышлений. Финальные оценки остаются стабильны,
+        # т.к. модель всё равно следует scoring instruction.
+        if research is not None:
+            call_kwargs = {
+                "model": "gpt-4o",
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.4,
+                "max_tokens": 12000,
+            }
+        else:
+            call_kwargs = {
+                "model": "gpt-4o",
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.2,
+            }
         resp = await asyncio.to_thread(
-            lambda: client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.2,
-            )
+            lambda: client.chat.completions.create(**call_kwargs)
         )
         logger.info(f"✅ Получен ответ от GPT для: {title}")
         full_response = resp.choices[0].message.content.strip()
@@ -519,14 +531,21 @@ async def run_pipeline_from_text(user_id: int, conversation_id: int, text_attach
             )
         if research is not None:
             final_prompt_for_call = final_prompt + REASONING_INSTRUCTION_SUMMARY
+            final_call_kwargs = {
+                "model": "gpt-4o",
+                "messages": [{"role": "user", "content": final_prompt_for_call}],
+                "temperature": 0.4,
+                "max_tokens": 8000,
+            }
         else:
             final_prompt_for_call = final_prompt
+            final_call_kwargs = {
+                "model": "gpt-4o",
+                "messages": [{"role": "user", "content": final_prompt_for_call}],
+                "temperature": 0.2,
+            }
         final_resp = await asyncio.to_thread(
-            lambda: client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": final_prompt_for_call}],
-                temperature=0.2,
-            )
+            lambda: client.chat.completions.create(**final_call_kwargs)
         )
         summary_raw = final_resp.choices[0].message.content.strip()
         summary = "=== ИТОГОВЫЙ ОТЧЁТ ===\n" + summary_raw
@@ -770,14 +789,21 @@ async def run_pipeline_from_raw_text(user_id: int, conversation_id: int, raw_tex
             )
         if research is not None:
             final_prompt_for_call = final_prompt + REASONING_INSTRUCTION_SUMMARY
+            final_call_kwargs = {
+                "model": "gpt-4o",
+                "messages": [{"role": "user", "content": final_prompt_for_call}],
+                "temperature": 0.4,
+                "max_tokens": 8000,
+            }
         else:
             final_prompt_for_call = final_prompt
+            final_call_kwargs = {
+                "model": "gpt-4o",
+                "messages": [{"role": "user", "content": final_prompt_for_call}],
+                "temperature": 0.2,
+            }
         final_resp = await asyncio.to_thread(
-            lambda: client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": final_prompt_for_call}],
-                temperature=0.2,
-            )
+            lambda: client.chat.completions.create(**final_call_kwargs)
         )
         summary_raw = final_resp.choices[0].message.content.strip()
         summary = "=== ИТОГОВЫЙ ОТЧЁТ ===\n" + summary_raw
@@ -1109,14 +1135,21 @@ async def run_pipeline(user_id: int, conversation_id: int, audio_attachment_id: 
             )
         if research is not None:
             final_prompt_for_call = final_prompt + REASONING_INSTRUCTION_SUMMARY
+            final_call_kwargs = {
+                "model": "gpt-4o",
+                "messages": [{"role": "user", "content": final_prompt_for_call}],
+                "temperature": 0.4,
+                "max_tokens": 8000,
+            }
         else:
             final_prompt_for_call = final_prompt
+            final_call_kwargs = {
+                "model": "gpt-4o",
+                "messages": [{"role": "user", "content": final_prompt_for_call}],
+                "temperature": 0.2,
+            }
         final_resp = await asyncio.to_thread(
-            lambda: client.chat.completions.create(
-                model="gpt-4o",
-                messages=[{"role": "user", "content": final_prompt_for_call}],
-                temperature=0.2,
-            )
+            lambda: client.chat.completions.create(**final_call_kwargs)
         )
         summary_raw = final_resp.choices[0].message.content.strip()
         summary = "=== ИТОГОВЫЙ ОТЧЁТ ===\n" + summary_raw
