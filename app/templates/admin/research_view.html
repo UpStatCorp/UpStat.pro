@@ -171,7 +171,7 @@
     <pre id="research-content" style="margin: 0; padding: 16px 20px; background: #0f172a; color: #e2e8f0; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; line-height: 1.55; max-height: 80vh; overflow: auto; white-space: pre-wrap; word-break: break-word; border-radius: 0 0 var(--radius) var(--radius);">{{ file_content }}</pre>
 </div>
 
-{% elif parsed %}
+{% elif parsed and parsed.stages %}
 <!-- CARDS режим — структурированный просмотр -->
 
 {% if parsed.tldr %}

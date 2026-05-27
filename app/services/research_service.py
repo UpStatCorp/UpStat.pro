@@ -297,33 +297,41 @@ def parse_research_file(content: str) -> Dict[str, Any]:
                 cleaned.append(ln)
         return "\n".join(cleaned).strip()
 
-    # Заголовочные поля
-    m = re.search(r"📅\s*Начало:\s*([\d\-: ]+)", content)
+    # Заголовочные поля (новый формат с эмодзи + старый формат без эмодзи)
+    m = (re.search(r"📅\s*Начало:\s*([\d\-: ]+)", content)
+         or re.search(r"^\s*Начало:\s+([\d\-: ]+)", content, re.MULTILINE))
     if m:
         result["header"]["start"] = m.group(1).strip()
-    m = re.search(r"⏱\s*Длит-сть:\s*([\d.]+)\s*с", content)
+    m = (re.search(r"⏱\s*Длит-сть:\s*([\d.]+)\s*с", content)
+         or re.search(r"^\s*Длит-сть:\s+([\d.]+)\s*с", content, re.MULTILINE))
     if m:
         result["header"]["duration_sec"] = float(m.group(1))
-    m = re.search(r"👤\s*User:\s*(\S+?)(?:\s+\(id=(\d+)\))?\s*$", content, re.MULTILINE)
+    m = (re.search(r"👤\s*User:\s*(\S+?)(?:\s+\(id=(\d+)\))?\s*$", content, re.MULTILINE)
+         or re.search(r"^\s*User:\s+(\S+?)(?:\s+\(id=(\d+)\))?\s*$", content, re.MULTILINE))
     if m:
         result["header"]["user"] = m.group(1)
         if m.group(2):
             result["header"]["user_id"] = int(m.group(2))
-    m = re.search(r"🎙\s*Source:\s*(.+)", content)
+    m = (re.search(r"🎙\s*Source:\s*(.+)", content)
+         or re.search(r"^\s*Source:\s+(.+)", content, re.MULTILINE))
     if m:
         result["header"]["source"] = m.group(1).strip()
-    m = re.search(r"🧩\s*Этапов:\s*(\d+)", content)
+    m = (re.search(r"🧩\s*Этапов:\s*(\d+)", content)
+         or re.search(r"^\s*Этапов:\s+(\d+)", content, re.MULTILINE))
     if m:
         result["header"]["stages_count"] = int(m.group(1))
-    m = re.search(r"🤖\s*Модели:\s*(.+)", content)
+    m = (re.search(r"🤖\s*Модели:\s*(.+)", content)
+         or re.search(r"^\s*Модели:\s+(.+)", content, re.MULTILINE))
     if m:
         result["header"]["models"] = m.group(1).strip()
-    m = re.search(r"🔢\s*Токены:\s*in=(\d+)\s+out=(\d+)\s+total=(\d+)", content)
+    m = (re.search(r"🔢\s*Токены:\s*in=(\d+)\s+out=(\d+)\s+total=(\d+)", content)
+         or re.search(r"^\s*Токены:\s+in=(\d+)\s+out=(\d+)\s+total=(\d+)", content, re.MULTILINE))
     if m:
         result["header"]["tokens_in"] = int(m.group(1))
         result["header"]["tokens_out"] = int(m.group(2))
         result["header"]["tokens_total"] = int(m.group(3))
-    m = re.search(r"📊\s*Статус:\s*(\S+)", content)
+    m = (re.search(r"📊\s*Статус:\s*(\S+)", content)
+         or re.search(r"^\s*Статус:\s+(\S+)", content, re.MULTILINE))
     if m:
         result["header"]["status"] = m.group(1)
 
@@ -338,19 +346,120 @@ def parse_research_file(content: str) -> Dict[str, Any]:
             ln.strip() for ln in tldr_match.group(1).splitlines() if ln.strip()
         ]
 
-    # Разрезаем на этапы по якорю-заголовку «══════ \n  ❯❯❯  ЭТАП N  ·  …»
-    # Якорь должен начинать чанк, а не быть случайной строкой в тексте оглавления.
-    stage_anchor_re = re.compile(r"\n(?=═+\n\s+❯❯❯\s+ЭТАП\s+\d+\s+·)")
-    stage_chunks = stage_anchor_re.split(content)
-    for chunk in stage_chunks:
-        # Первый чанк — это шапка+TLDR+оглавление, в нём нет якоря в начале
-        if not re.match(r"═+\n\s+❯❯❯\s+ЭТАП\s+\d+\s+·", chunk):
-            continue
-        stage = _parse_stage_chunk(chunk, _strip_prefix)
-        if stage and stage.get("idx", 0) > 0:
-            result["stages"].append(stage)
+    # Поддерживаем ДВА формата:
+    # (новый) «══════ \n  ❯❯❯  ЭТАП N  ·  …»
+    # (старый) «══════ \n ЭТАП N · … \n Токены: prompt=... \n ══════»
+    new_anchor_re = re.compile(r"\n(?=═+\n\s+❯❯❯\s+ЭТАП\s+\d+\s+·)")
+    if new_anchor_re.search(content):
+        # Новый формат
+        stage_chunks = new_anchor_re.split(content)
+        for chunk in stage_chunks:
+            if not re.match(r"═+\n\s+❯❯❯\s+ЭТАП\s+\d+\s+·", chunk):
+                continue
+            stage = _parse_stage_chunk(chunk, _strip_prefix)
+            if stage and stage.get("idx", 0) > 0:
+                result["stages"].append(stage)
+    else:
+        # Старый формат — этапы помечены «ЭТАП N · …» сразу после ═══
+        old_anchor_re = re.compile(r"\n(?=═{20,}\nЭТАП\s+\d+\s+·)")
+        stage_chunks = old_anchor_re.split(content)
+        for chunk in stage_chunks:
+            if not re.match(r"═{20,}\nЭТАП\s+\d+\s+·", chunk):
+                continue
+            stage = _parse_stage_chunk_old(chunk)
+            if stage and stage.get("idx", 0) > 0:
+                result["stages"].append(stage)
 
     return result
+
+
+def _parse_stage_chunk_old(chunk: str) -> Optional[Dict[str, Any]]:
+    """
+    Парсит этап в СТАРОМ формате (без эмодзи-блоков и якорей ❯❯❯).
+    Поддерживает файлы, созданные ДО введения нового формата.
+    """
+    try:
+        stage: Dict[str, Any] = {
+            "idx": 0, "name": "", "model": "",
+            "tokens_in": 0, "tokens_out": 0, "tokens_total": 0,
+            "decisions_summary": "",
+            "reasoning": None, "rest_of_response": None,
+            "parsed_decisions": None, "extra": None, "prompt": None,
+        }
+
+        m = re.search(r"ЭТАП\s+(\d+)\s+·\s+(.+?)\s+·\s+модель:\s*(\S+)", chunk)
+        if m:
+            stage["idx"] = int(m.group(1))
+            stage["name"] = m.group(2).strip()
+            stage["model"] = m.group(3)
+        else:
+            # Без указания модели в той же строке
+            m = re.search(r"ЭТАП\s+(\d+)\s+·\s+(.+)", chunk)
+            if m:
+                stage["idx"] = int(m.group(1))
+                stage["name"] = m.group(2).strip()
+
+        m = re.search(
+            r"Токены:\s*prompt=(\d+)\s+completion=(\d+)\s+total=(\d+)",
+            chunk,
+        )
+        if m:
+            stage["tokens_in"] = int(m.group(1))
+            stage["tokens_out"] = int(m.group(2))
+            stage["tokens_total"] = int(m.group(3))
+
+        # Извлекаем блоки [REASONING модели], [ФИНАЛЬНЫЙ ОТВЕТ МОДЕЛИ (raw)],
+        # [РАСПАРСЕННЫЕ РЕШЕНИЯ], [ДОП. КОНТЕКСТ], [ПРОМПТ, ...]
+        section_order = [
+            ("reasoning", r"\[REASONING модели\]"),
+            ("rest_of_response", r"\[ФИНАЛЬНЫЙ ОТВЕТ МОДЕЛИ \(raw\)\]"),
+            ("parsed_decisions", r"\[РАСПАРСЕННЫЕ РЕШЕНИЯ\]"),
+            ("extra", r"\[ДОП\. КОНТЕКСТ\]"),
+            ("prompt", r"\[ПРОМПТ"),
+        ]
+
+        # Находим позиции всех маркеров
+        positions: List[tuple] = []
+        for key, pat in section_order:
+            m = re.search(pat, chunk)
+            if m:
+                positions.append((m.start(), m.end(), key))
+        positions.sort(key=lambda x: x[0])
+
+        for i, (start, header_end, key) in enumerate(positions):
+            next_start = positions[i + 1][0] if i + 1 < len(positions) else len(chunk)
+            body = chunk[header_end:next_start].strip()
+            # У маркера [ПРОМПТ, КОТОРЫЙ БЫЛ ОТПРАВЛЕН] хвост скобки `]` остался
+            if key == "prompt" and body.startswith(", КОТОРЫЙ БЫЛ ОТПРАВЛЕН]"):
+                body = body[len(", КОТОРЫЙ БЫЛ ОТПРАВЛЕН]"):].strip()
+            elif body.startswith("]"):
+                body = body[1:].strip()
+            if body:
+                stage[key] = body
+
+        # Убираем дублирование: в [ФИНАЛЬНЫЙ ОТВЕТ МОДЕЛИ (raw)] есть весь
+        # ответ включая === REASONING === — отрежем reasoning-блок.
+        if stage["rest_of_response"]:
+            stripped = _strip_reasoning_from_response(stage["rest_of_response"])
+            stage["rest_of_response"] = stripped.strip() or None
+
+        # Игнорируем placeholder про отсутствующий маркер
+        if stage["reasoning"] and stage["reasoning"].startswith(
+            "(маркер === REASONING ==="
+        ):
+            stage["reasoning"] = None
+
+        # Если parsed_decisions выглядит как JSON, попробуем извлечь summary
+        if stage["parsed_decisions"]:
+            try:
+                parsed_obj = json.loads(stage["parsed_decisions"])
+                stage["decisions_summary"] = _summarize_decisions(parsed_obj)
+            except (json.JSONDecodeError, ValueError):
+                pass
+
+        return stage
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _parse_stage_chunk(chunk: str, strip_prefix) -> Optional[Dict[str, Any]]:
