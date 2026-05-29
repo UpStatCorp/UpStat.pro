@@ -130,6 +130,38 @@ async def extract_manager_actions(
 
         if research is not None:
             try:
+                # Собираем человекочитаемый reasoning: почему ИИ выбрал
+                # именно эти действия и счёл их успешными/неуспешными.
+                reasoning_lines: List[str] = []
+                if valid:
+                    reasoning_lines.append(
+                        f"ИИ выделил {len(valid)} значимых действий менеджера, "
+                        f"повлиявших на ход разговора. Ниже — почему по каждому:"
+                    )
+                    reasoning_lines.append("")
+                    for i, a in enumerate(valid, start=1):
+                        mark = "✅ УСПЕШНОЕ" if a.get("outcome") == "positive" else "❌ НЕУСПЕШНОЕ"
+                        stage_label = STAGE_LABELS.get(a.get("stage", ""), a.get("stage", ""))
+                        reasoning_lines.append(
+                            f"━━━ Действие {i}: {mark} · этап «{stage_label}» · "
+                            f"тип {a.get('action_type', 'phrase')} · confidence {a.get('confidence', 0):.2f} ━━━"
+                        )
+                        reasoning_lines.append(f"Что сделал/сказал: {a.get('action_text', '')}")
+                        if a.get("client_reaction"):
+                            reasoning_lines.append(f"Реакция клиента: {a.get('client_reaction')}")
+                        if a.get("reasoning"):
+                            reasoning_lines.append(f"Почему ИИ так решил: {a.get('reasoning')}")
+                        else:
+                            reasoning_lines.append(
+                                "Почему ИИ так решил: (модель не вернула развёрнутое обоснование)"
+                            )
+                        reasoning_lines.append("")
+                else:
+                    reasoning_lines.append(
+                        "ИИ не выделил значимых действий, повлиявших на ход разговора."
+                    )
+                reasoning_text = "\n".join(reasoning_lines)
+
                 research.capture_stage(
                     stage_name="Действия менеджера (positive/negative)",
                     model="gpt-4o-mini",
@@ -137,6 +169,7 @@ async def extract_manager_actions(
                     raw_response=raw_content or "",
                     parsed_decisions={"actions_total": len(actions), "valid_actions": valid},
                     usage=getattr(response, "usage", None),
+                    reasoning_override=reasoning_text,
                 )
             except Exception as research_err:  # noqa: BLE001
                 logger.warning(f"Research capture (manager_actions) failed: {research_err}")
@@ -179,7 +212,9 @@ def _save_actions(
     return saved
 
 
-def check_and_update_patterns(db: Session, team_id: int) -> List[ActionPattern]:
+def check_and_update_patterns(
+    db: Session, team_id: int, research: Optional[object] = None
+) -> List[ActionPattern]:
     """
     Агрегирует действия команды, обновляет паттерны.
     Возвращает список новых confirmed-паттернов (>= 60%).
@@ -191,6 +226,19 @@ def check_and_update_patterns(db: Session, team_id: int) -> List[ActionPattern]:
     ) or 0
 
     if total_conversations < MIN_CALLS_FOR_PATTERN:
+        if research is not None:
+            try:
+                research.capture_event(
+                    stage_name="Учёт действий — паттерны команды",
+                    summary=f"недостаточно данных ({total_conversations}/{MIN_CALLS_FOR_PATTERN} звонков)",
+                    body_text=(
+                        f"Для выявления паттернов команды нужно минимум {MIN_CALLS_FOR_PATTERN} звонков.\n"
+                        f"Сейчас проанализировано: {total_conversations}.\n"
+                        f"Паттерны начнут подтверждаться, когда наберётся достаточно данных."
+                    ),
+                )
+            except Exception:
+                pass
         return []
 
     newly_confirmed = []
@@ -252,6 +300,75 @@ def check_and_update_patterns(db: Session, team_id: int) -> List[ActionPattern]:
                         newly_confirmed.append(pattern)
 
     db.commit()
+
+    # Research: фиксируем актуальное состояние паттернов команды
+    if research is not None:
+        try:
+            all_patterns = (
+                db.query(ActionPattern)
+                .filter(ActionPattern.team_id == team_id)
+                .order_by(ActionPattern.percentage.desc())
+                .all()
+            )
+            confirmed = [p for p in all_patterns if p.status in ("confirmed", "reported")]
+            collecting = [p for p in all_patterns if p.status == "collecting"]
+
+            body_lines: List[str] = [
+                f"Проанализировано звонков команды: {total_conversations}",
+                f"Порог подтверждения паттерна: {int(CONFIRMATION_THRESHOLD * 100)}% звонков",
+                f"Новых подтверждённых в этом прогоне: {len(newly_confirmed)}",
+                "",
+                f"━━━ ПОДТВЕРЖДЁННЫЕ ПАТТЕРНЫ ({len(confirmed)}) ━━━",
+            ]
+            if confirmed:
+                for p in confirmed:
+                    mark = "✅" if p.outcome == "positive" else "❌"
+                    stage_label = STAGE_LABELS.get(p.stage, p.stage)
+                    body_lines.append(
+                        f"{mark} [{stage_label}] {p.percentage}% звонков ({p.occurrence_count}/{p.total_calls})"
+                    )
+                    body_lines.append(f"   {p.pattern_text}")
+            else:
+                body_lines.append("(пока нет)")
+
+            body_lines.append("")
+            body_lines.append(f"━━━ СОБИРАЮТСЯ (ещё не подтверждены) ({len(collecting)}) ━━━")
+            if collecting:
+                for p in collecting[:15]:
+                    mark = "✅" if p.outcome == "positive" else "❌"
+                    stage_label = STAGE_LABELS.get(p.stage, p.stage)
+                    body_lines.append(
+                        f"{mark} [{stage_label}] {p.percentage}% — {p.pattern_text}"
+                    )
+                if len(collecting) > 15:
+                    body_lines.append(f"... и ещё {len(collecting) - 15}")
+            else:
+                body_lines.append("(пока нет)")
+
+            research.capture_event(
+                stage_name="Учёт действий — паттерны команды",
+                summary=f"{len(confirmed)} подтверждено, {len(collecting)} собирается",
+                body_text="\n".join(body_lines),
+                parsed_data={
+                    "total_conversations": total_conversations,
+                    "newly_confirmed": len(newly_confirmed),
+                    "confirmed_patterns": [
+                        {
+                            "stage": p.stage,
+                            "outcome": p.outcome,
+                            "pattern_text": p.pattern_text,
+                            "percentage": p.percentage,
+                            "occurrence_count": p.occurrence_count,
+                            "total_calls": p.total_calls,
+                            "status": p.status,
+                        }
+                        for p in confirmed
+                    ],
+                },
+            )
+        except Exception as research_err:  # noqa: BLE001
+            logger.warning(f"Research capture (patterns) failed: {research_err}")
+
     return newly_confirmed
 
 
@@ -435,17 +552,105 @@ async def process_manager_actions(
     actions = await extract_manager_actions(dialogue_json_str, analysis_text, research=research)
     if not actions:
         logger.info(f"Действия менеджера не извлечены: user={user_id}, conv={conversation_id}")
+        if research is not None:
+            try:
+                research.capture_event(
+                    stage_name="Учёт действий менеджера — запись в БД",
+                    summary="действий не извлечено (0 сохранено)",
+                    body_text="Модель не выделила значимых действий в этом звонке — в БД ничего не записано.",
+                )
+            except Exception:
+                pass
         return
 
     saved = _save_actions(db, user_id, conversation_id, team_id, actions)
     logger.info(f"Сохранено {saved} действий менеджера: user={user_id}, conv={conversation_id}")
 
+    # Research: фиксируем, что РЕАЛЬНО записано в БД (учёт успешных/неуспешных действий)
+    if research is not None:
+        try:
+            positive = [a for a in actions if a.get("outcome") == "positive"]
+            negative = [a for a in actions if a.get("outcome") == "negative"]
+            body_lines: List[str] = [
+                f"Сохранено в таблицу manager_actions: {saved} действий",
+                f"  • успешных (positive): {len(positive)}",
+                f"  • неуспешных (negative): {len(negative)}",
+                f"  • team_id: {team_id if team_id else '— (вне команды)'}",
+                "",
+                "СПИСОК ЗАПИСАННЫХ ДЕЙСТВИЙ:",
+            ]
+            for i, a in enumerate(actions, start=1):
+                mark = "✅" if a.get("outcome") == "positive" else "❌"
+                stage_label = STAGE_LABELS.get(a.get("stage", ""), a.get("stage", ""))
+                body_lines.append(
+                    f"{i}. {mark} [{stage_label}] ({a.get('action_type', 'phrase')}, conf={a.get('confidence', 0):.2f})"
+                )
+                body_lines.append(f"   Действие: {a.get('action_text', '')}")
+                if a.get("client_reaction"):
+                    body_lines.append(f"   Реакция клиента: {a.get('client_reaction')}")
+                if a.get("reasoning"):
+                    body_lines.append(f"   Обоснование: {a.get('reasoning')}")
+                body_lines.append("")
+            research.capture_event(
+                stage_name="Учёт действий менеджера — запись в БД",
+                summary=f"{saved} сохранено ({len(positive)} positive, {len(negative)} negative)",
+                body_text="\n".join(body_lines),
+                parsed_data={
+                    "saved_count": saved,
+                    "positive_count": len(positive),
+                    "negative_count": len(negative),
+                    "team_id": team_id,
+                    "actions": actions,
+                },
+            )
+        except Exception as research_err:  # noqa: BLE001
+            logger.warning(f"Research capture (save actions) failed: {research_err}")
+
     if not team_id:
         return
 
-    newly_confirmed = check_and_update_patterns(db, team_id)
+    newly_confirmed = check_and_update_patterns(db, team_id, research=research)
     if newly_confirmed:
         logger.info(f"Обнаружено {len(newly_confirmed)} новых паттернов для team={team_id}")
+
+        # Research: фиксируем факт отправки уведомления руководителю
+        if research is not None:
+            try:
+                team = db.query(Team).filter(Team.id == team_id).first()
+                owner = db.query(User).filter(User.id == team.manager_id).first() if team else None
+                pos = [p for p in newly_confirmed if p.outcome == "positive"]
+                neg = [p for p in newly_confirmed if p.outcome == "negative"]
+                body_lines: List[str] = [
+                    "Достигнут порог подтверждения паттернов — отправляется уведомление руководителю.",
+                    f"  • Команда: {team.name if team else team_id}",
+                    f"  • Получатель: {owner.email if owner and owner.email else '— (email не задан)'}",
+                    f"  • Новых подтверждённых паттернов: {len(newly_confirmed)}",
+                    f"     - успешных приёмов (positive): {len(pos)}",
+                    f"     - вредных приёмов (negative): {len(neg)}",
+                    "",
+                    "ПАТТЕРНЫ В УВЕДОМЛЕНИИ:",
+                ]
+                for p in newly_confirmed:
+                    mark = "✅" if p.outcome == "positive" else "❌"
+                    stage_label = STAGE_LABELS.get(p.stage, p.stage)
+                    body_lines.append(
+                        f"{mark} [{stage_label}] {p.percentage}% звонков — {p.pattern_text}"
+                    )
+                research.capture_event(
+                    stage_name="Учёт действий — уведомление руководителю",
+                    summary=f"отправка отчёта: {len(newly_confirmed)} паттернов ({len(pos)} ✅ / {len(neg)} ❌)",
+                    body_text="\n".join(body_lines),
+                    parsed_data={
+                        "team_id": team_id,
+                        "owner_email": owner.email if owner else None,
+                        "newly_confirmed_count": len(newly_confirmed),
+                        "positive": len(pos),
+                        "negative": len(neg),
+                    },
+                )
+            except Exception as research_err:  # noqa: BLE001
+                logger.warning(f"Research capture (notify owner) failed: {research_err}")
+
         try:
             send_patterns_report(db, team_id, newly_confirmed)
         except Exception as e:

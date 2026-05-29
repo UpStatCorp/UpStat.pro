@@ -160,6 +160,34 @@ async def extract_parameters(
 
         if research is not None:
             try:
+                # Собираем человекочитаемый reasoning по каждому параметру:
+                # почему ИИ выбрал такое значение и такую уверенность.
+                reasoning_lines: List[str] = [
+                    f"ИИ извлёк значения для {len(data)} параметров из транскрипта. "
+                    f"Ниже — обоснование по каждому (где модель его вернула):",
+                    "",
+                ]
+                shown = 0
+                for code, entry in data.items():
+                    pdef = code_to_def.get(code)
+                    title = pdef.title if pdef else code
+                    if isinstance(entry, dict):
+                        val = entry.get("value")
+                        conf = entry.get("confidence")
+                        rsn = entry.get("reasoning")
+                    else:
+                        val, conf, rsn = entry, None, None
+                    line = f"━━━ {title} ({code}) ━━━"
+                    reasoning_lines.append(line)
+                    reasoning_lines.append(
+                        f"Значение: {val}" + (f" · confidence {conf}" if conf is not None else "")
+                    )
+                    if rsn:
+                        reasoning_lines.append(f"Почему: {rsn}")
+                    reasoning_lines.append("")
+                    shown += 1
+                reasoning_text = "\n".join(reasoning_lines)
+
                 research.capture_stage(
                     stage_name="Извлечение параметров (динамический справочник)",
                     model="gpt-4o",
@@ -167,6 +195,7 @@ async def extract_parameters(
                     raw_response=raw,
                     parsed_decisions=data,
                     usage=getattr(response, "usage", None),
+                    reasoning_override=reasoning_text,
                 )
             except Exception as research_err:  # noqa: BLE001
                 logger.warning(f"Research capture (parameter_extraction) failed: {research_err}")

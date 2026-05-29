@@ -1,7 +1,7 @@
 import json
 import os
 import logging
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 from datetime import datetime
 from sqlalchemy.orm import Session
 from models import (
@@ -138,6 +138,32 @@ async def evaluate_stage_scores(
 
         if research is not None:
             try:
+                # Собираем человекочитаемый reasoning по каждому из 5 этапов:
+                # почему ИИ поставил именно такой балл.
+                stage_reasoning = result.get("stage_reasoning", {}) or {}
+                reasoning_lines: List[str] = [
+                    f"ИИ оценил работу менеджера по 5 этапам продаж. "
+                    f"Общий балл: {result.get('overall_score', '?')}%.",
+                    "",
+                ]
+                for stage in STAGES:
+                    label = STAGE_LABELS.get(stage, stage)
+                    score = scores.get(stage, 0)
+                    reasoning_lines.append(
+                        f"━━━ {label}: {int(score)}% ━━━"
+                    )
+                    sr = stage_reasoning.get(stage)
+                    if sr:
+                        reasoning_lines.append(f"Почему такой балл: {sr}")
+                    else:
+                        reasoning_lines.append(
+                            "Почему такой балл: (модель не вернула развёрнутое обоснование)"
+                        )
+                    reasoning_lines.append("")
+                if result.get("comment"):
+                    reasoning_lines.append(f"Итоговый комментарий ИИ: {result.get('comment')}")
+                reasoning_text = "\n".join(reasoning_lines)
+
                 research.capture_stage(
                     stage_name="Паспорт продавца (5 этапов)",
                     model="gpt-4o-mini",
@@ -145,6 +171,7 @@ async def evaluate_stage_scores(
                     raw_response=raw_content or "",
                     parsed_decisions=result,
                     usage=getattr(response, "usage", None),
+                    reasoning_override=reasoning_text,
                 )
             except Exception as research_err:  # noqa: BLE001
                 logger.warning(f"Research capture (seller_passport) failed: {research_err}")

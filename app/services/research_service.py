@@ -649,6 +649,7 @@ class ResearchLogger:
         parsed_decisions: Optional[Any] = None,
         usage: Any = None,
         extra: Optional[Dict[str, Any]] = None,
+        reasoning_override: Optional[str] = None,
     ) -> None:
         """
         Добавляет секцию для одного AI-вызова.
@@ -663,6 +664,10 @@ class ResearchLogger:
         parsed_decisions — структурированный JSON финальных решений (scores, actions, parameters).
         usage — объект usage OpenAI (или dict с ключами prompt_tokens/completion_tokens).
         extra — произвольный dict с доп. полями (отрендерится как JSON).
+        reasoning_override — если задан, используется как reasoning-блок вместо
+            автоизвлечения из raw_response. Нужно для JSON-ответов (action/passport/
+            parameters), где нет маркера === REASONING ===, но reasoning лежит
+            в полях JSON и собирается в человекочитаемый текст вызывающим кодом.
         """
         if self._disabled:
             return
@@ -674,8 +679,13 @@ class ResearchLogger:
             self._total_input_tokens += usage_d["prompt_tokens"]
             self._total_output_tokens += usage_d["completion_tokens"]
 
-            reasoning = extract_reasoning_block(raw_response or "")
-            rest_of_response = _strip_reasoning_from_response(raw_response or "")
+            if reasoning_override and reasoning_override.strip():
+                reasoning = reasoning_override.strip()
+                # raw_response для JSON-ответов целиком идёт в «остальной ответ»
+                rest_of_response = raw_response or ""
+            else:
+                reasoning = extract_reasoning_block(raw_response or "")
+                rest_of_response = _strip_reasoning_from_response(raw_response or "")
 
             # Считаем passed/failed для TL;DR (если parsed_decisions — список scores)
             decisions_summary = _summarize_decisions(parsed_decisions)
@@ -775,6 +785,73 @@ class ResearchLogger:
             self.stages.append(block)
         except Exception as e:  # noqa: BLE001
             logger.warning(f"ResearchLogger capture_note failed: {e}")
+
+    def capture_event(
+        self,
+        stage_name: str,
+        summary: str = "",
+        body_text: Optional[str] = None,
+        parsed_data: Optional[Any] = None,
+    ) -> None:
+        """
+        Добавляет полноценный ЭТАП-карточку для НЕ-LLM события
+        (запись в БД, агрегация паттернов команды и т.п.).
+
+        В отличие от capture_stage здесь нет промпта/reasoning/токенов —
+        модель помечается как «система». Этап парсится и отображается
+        в HTML-вьюере так же, как обычные этапы.
+
+        summary       — короткая строка для оглавления и TL;DR.
+        body_text     — основной читаемый текст события.
+        parsed_data   — структурированные данные (отрендерятся как JSON).
+        """
+        if self._disabled:
+            return
+        try:
+            self._stage_idx += 1
+            model_label = "система"
+            self._models_counter[model_label] += 1
+
+            self._stage_meta.append({
+                "idx": self._stage_idx,
+                "name": stage_name,
+                "model": model_label,
+                "tokens_in": 0,
+                "tokens_out": 0,
+                "has_reasoning": False,
+                "decisions_summary": summary,
+            })
+
+            lines: List[str] = []
+            lines.append("")
+            lines.append(_SEPARATOR)
+            lines.append(f"  ❯❯❯  ЭТАП {self._stage_idx}  ·  {stage_name}")
+            lines.append("       модель: система  ·  токены: in=0  out=0  total=0")
+            if summary:
+                lines.append(f"       итог: {summary}")
+            lines.append(_SEPARATOR)
+
+            if body_text:
+                lines.append("")
+                lines.append("┌─ 📋 ОСТАЛЬНОЙ ОТВЕТ МОДЕЛИ (role mapping, оценки, JSON) ──────────────")
+                for ln in body_text.splitlines():
+                    lines.append("│ " + ln if ln else "│")
+                lines.append("└──────────────────────────────────────────────────────────────────────")
+
+            if parsed_data is not None:
+                lines.append("")
+                lines.append("┌─ ✅ РАСПАРСЕННЫЕ РЕШЕНИЯ (что попало в БД) ──────────────────────────")
+                try:
+                    j = json.dumps(parsed_data, ensure_ascii=False, indent=2)
+                except (TypeError, ValueError):
+                    j = str(parsed_data)
+                for ln in j.splitlines():
+                    lines.append("│ " + ln if ln else "│")
+                lines.append("└──────────────────────────────────────────────────────────────────────")
+
+            self.stages.append("\n".join(lines))
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"ResearchLogger capture_event failed: {e}")
 
     def _build_header_and_toc(self, finished_at: datetime, status: str, error: Optional[str]) -> str:
         """Собирает шапку: метаинформация → TL;DR → оглавление."""
