@@ -1,0 +1,1136 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UpStat Owner Command Center</title>
+  <style>
+    :root {
+      --bg-1: #f6fcff;
+      --bg-2: #eaf8ff;
+      --bg-3: #d8efff;
+      --panel: rgba(255,255,255,0.84);
+      --panel-strong: rgba(255,255,255,0.94);
+      --line: rgba(11, 95, 169, 0.12);
+      --line-strong: rgba(11, 95, 169, 0.18);
+      --text: #0a2340;
+      --muted: #4b6f92;
+      --blue: #149dff;
+      --blue-deep: #0a5ea8;
+      --blue-soft: #84d7ff;
+      --cyan: #57dcff;
+      --gold: #d8a83a;
+      --gold-deep: #b88414;
+      --gold-soft: #f6d97b;
+      --mint: #17a87a;
+      --danger: #d95d73;
+      --danger-soft: #ffe8ed;
+      --warn: #f2aa3d;
+      --warn-soft: #fff3df;
+      --success-soft: #e9fff5;
+      --shadow-xl: 0 28px 80px rgba(10,95,168,0.14);
+      --shadow-lg: 0 18px 46px rgba(10,95,168,0.10);
+      --radius-2xl: 34px;
+      --radius-xl: 26px;
+      --radius-lg: 20px;
+      --radius-md: 16px;
+      --max: 1480px;
+      --font: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; font-family: var(--font); color: var(--text); }
+    body {
+      background:
+        radial-gradient(circle at 0% 0%, rgba(87,220,255,0.30), transparent 32%),
+        radial-gradient(circle at 100% 18%, rgba(246,217,123,0.30), transparent 30%),
+        linear-gradient(180deg, var(--bg-1) 0%, var(--bg-2) 54%, var(--bg-3) 100%);
+      min-height: 100vh;
+    }
+
+
+    .page {
+      position: relative;
+      overflow: hidden;
+      padding: 20px 12px 40px;
+    }
+
+
+    .page::before,
+    .page::after {
+      content: "";
+      position: absolute;
+      border-radius: 999px;
+      filter: blur(24px);
+      pointer-events: none;
+    }
+
+
+    .page::before {
+      width: 400px; height: 400px; right: -80px; top: 50px;
+      background: radial-gradient(circle, rgba(216,168,58,0.22) 0%, rgba(216,168,58,0.05) 58%, transparent 76%);
+    }
+
+
+    .page::after {
+      width: 440px; height: 440px; left: -110px; bottom: -130px;
+      background: radial-gradient(circle, rgba(20,157,255,0.18) 0%, rgba(20,157,255,0.05) 58%, transparent 76%);
+    }
+
+
+    .wrap {
+      max-width: var(--max);
+      margin: 0 auto;
+      position: relative;
+      z-index: 1;
+      display: grid;
+      gap: 18px;
+    }
+
+
+    .glass {
+      background: linear-gradient(180deg, rgba(255,255,255,0.94), rgba(255,255,255,0.80));
+      border: 1px solid var(--line);
+      box-shadow: var(--shadow-lg);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border-radius: var(--radius-2xl);
+    }
+
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.18fr) minmax(330px, 0.82fr);
+      gap: 18px;
+    }
+
+
+    .hero-main {
+      padding: 28px 28px 24px;
+      position: relative;
+      overflow: hidden;
+    }
+
+
+    .hero-main::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(130deg, rgba(20,157,255,0.10) 0%, rgba(20,157,255,0.01) 38%, rgba(216,168,58,0.09) 100%);
+      pointer-events: none;
+    }
+
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      border-radius: 999px;
+      background: linear-gradient(90deg, rgba(20,157,255,0.12), rgba(216,168,58,0.16));
+      border: 1px solid rgba(20,157,255,0.14);
+      color: var(--blue-deep);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.24em;
+      font-weight: 800;
+      position: relative;
+      z-index: 1;
+      width: fit-content;
+    }
+
+
+    .eyebrow .dot {
+      width: 10px; height: 10px; border-radius: 999px;
+      background: linear-gradient(180deg, var(--blue), var(--gold));
+      box-shadow: 0 0 0 5px rgba(20,157,255,0.10);
+    }
+
+
+    .hero-title {
+      position: relative;
+      z-index: 1;
+      margin: 18px 0 0;
+      font-size: clamp(34px, 5vw, 66px);
+      line-height: 0.95;
+      letter-spacing: -0.055em;
+      font-weight: 900;
+      max-width: 900px;
+      color: #08284d;
+    }
+
+
+    .hero-title .gold {
+      background: linear-gradient(180deg, var(--gold-deep), #ebbf57);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+
+    .hero-text {
+      position: relative;
+      z-index: 1;
+      margin-top: 18px;
+      max-width: 860px;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.85;
+    }
+
+
+    .hero-badges {
+      position: relative;
+      z-index: 1;
+      display: flex; flex-wrap: wrap; gap: 10px;
+      margin-top: 18px;
+    }
+
+
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 11px 14px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.78);
+      border: 1px solid rgba(20,157,255,0.10);
+      color: #205786;
+      font-size: 13px; font-weight: 700;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.68);
+    }
+
+
+    .hero-badge::before {
+      content: ""; width: 9px; height: 9px; border-radius: 999px;
+      background: linear-gradient(180deg, var(--blue), var(--gold));
+      flex: 0 0 auto;
+    }
+
+
+    .hero-side {
+      padding: 24px;
+      display: grid;
+      gap: 14px;
+      align-content: start;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,0.84)),
+        linear-gradient(145deg, rgba(20,157,255,0.08), rgba(216,168,58,0.10));
+    }
+
+
+    .hero-kpi .label,
+    .mini-kpi .label,
+    .section-label,
+    .panel-label,
+    .switch-label,
+    .ai-box .t {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.22em;
+      color: var(--muted);
+      font-weight: 800;
+    }
+
+
+    .hero-kpi .value {
+      margin-top: 10px;
+      font-size: clamp(42px, 5vw, 74px);
+      line-height: 0.92;
+      font-weight: 900;
+      letter-spacing: -0.05em;
+      color: #0a5fa8;
+    }
+    .hero-kpi .value span { color: var(--gold-deep); }
+    .hero-kpi .sub { margin-top: 10px; color: var(--muted); font-size: 14px; line-height: 1.8; }
+
+
+    .hero-kpi-bar {
+      margin-top: 14px; height: 10px; border-radius: 999px; background: rgba(20,157,255,0.08); overflow: hidden;
+    }
+    .hero-kpi-fill {
+      height: 100%; width: 78%; border-radius: 999px;
+      background: linear-gradient(90deg, var(--blue), var(--cyan), var(--gold-soft));
+    }
+
+
+    .side-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+
+    .mini-kpi {
+      padding: 16px;
+      border-radius: 18px;
+      background: rgba(255,255,255,0.80);
+      border: 1px solid var(--line);
+    }
+
+
+    .mini-kpi .value {
+      margin-top: 8px;
+      font-size: 28px;
+      line-height: 1;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      color: #0b2f58;
+    }
+
+
+    .mini-kpi .sub { margin-top: 8px; color: var(--muted); font-size: 13px; line-height: 1.68; }
+
+
+    .mode-strip {
+      padding: 16px 18px;
+      display: grid;
+      gap: 12px;
+    }
+
+
+    .switch-top {
+      display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+    }
+
+
+    .mode-title {
+      margin-top: 8px; font-size: 24px; font-weight: 900; letter-spacing: -0.04em; color: #0a294d;
+    }
+
+
+    .mode-buttons { display: flex; flex-wrap: wrap; gap: 10px; }
+
+
+    .mode-btn {
+      border: 1px solid rgba(20,157,255,0.12);
+      background: rgba(255,255,255,0.82);
+      color: #235b8f;
+      border-radius: 999px;
+      padding: 12px 16px;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: all .22s ease;
+    }
+
+
+    .mode-btn:hover { transform: translateY(-1px); box-shadow: 0 10px 20px rgba(20,157,255,0.08); }
+    .mode-btn.active {
+      color: white;
+      background: linear-gradient(90deg, var(--blue) 0%, #31b4ff 50%, var(--gold) 100%);
+      border-color: transparent;
+      box-shadow: 0 14px 28px rgba(20,157,255,0.18);
+    }
+
+
+    .filters { display: flex; flex-wrap: wrap; gap: 10px; }
+    .filter {
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.82);
+      color: #285b8d;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 10px 12px;
+    }
+
+
+    .dashboard {
+      display: grid;
+      grid-template-columns: minmax(0, 1.16fr) minmax(360px, 0.84fr);
+      gap: 18px;
+    }
+
+
+    .left-stack, .right-stack { display: grid; gap: 18px; }
+
+
+    .panel {
+      padding: 22px;
+      position: relative;
+      overflow: hidden;
+    }
+
+
+    .panel::before {
+      content: "";
+      position: absolute; inset: 0; pointer-events: none;
+      background: linear-gradient(160deg, rgba(20,157,255,0.04), rgba(216,168,58,0.04));
+    }
+    .panel > * { position: relative; z-index: 1; }
+
+
+    .panel-head {
+      display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+
+
+    .panel-title {
+      margin-top: 8px;
+      font-size: clamp(24px, 3vw, 36px);
+      line-height: 1.04;
+      letter-spacing: -0.04em;
+      font-weight: 900;
+      color: #08284d;
+    }
+
+
+    .panel-copy { color: var(--muted); font-size: 14px; line-height: 1.82; max-width: 760px; }
+
+
+    .rank-list { display: grid; gap: 12px; margin-top: 14px; }
+    .rank-item {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 14px;
+      align-items: center;
+      padding: 16px;
+      background: rgba(255,255,255,0.82);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      transition: transform .2s ease, box-shadow .2s ease;
+    }
+    .rank-item:hover { transform: translateY(-1px); box-shadow: 0 12px 28px rgba(20,157,255,0.08); }
+
+
+    .rank-num {
+      width: 36px; height: 36px; border-radius: 12px; display: grid; place-items: center;
+      background: linear-gradient(180deg, var(--blue), var(--gold)); color: white; font-weight: 900; font-size: 14px;
+      box-shadow: 0 10px 18px rgba(20,157,255,0.14);
+    }
+
+
+    .rank-item .name { font-size: 17px; font-weight: 800; color: #0b2c52; }
+    .rank-item .reason { margin-top: 4px; font-size: 13px; line-height: 1.68; color: var(--muted); }
+    .rank-loss { text-align: right; }
+    .rank-loss .value { font-size: 26px; line-height: 1; font-weight: 900; letter-spacing: -0.04em; color: #0a5fa8; }
+    .rank-loss .tag { margin-top: 8px; font-size: 12px; font-weight: 800; color: #8f6120; background: rgba(216,168,58,0.14); padding: 8px 10px; border-radius: 999px; display: inline-block; }
+
+
+    .viz-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 14px;
+    }
+
+
+    .viz-card {
+      padding: 18px;
+      border-radius: 22px;
+      background: rgba(255,255,255,0.82);
+      border: 1px solid var(--line);
+      display: grid;
+      gap: 12px;
+    }
+
+
+    .viz-title { font-size: 13px; font-weight: 800; color: #24598c; text-transform: uppercase; letter-spacing: 0.16em; }
+    .viz-value { font-size: 34px; line-height: 1; font-weight: 900; letter-spacing: -0.04em; color: #0d2d54; }
+    .viz-sub { font-size: 13px; line-height: 1.7; color: var(--muted); }
+
+
+    .ring-wrap { display: grid; grid-template-columns: auto 1fr; gap: 16px; align-items: center; }
+    .ring {
+      width: 86px; height: 86px; border-radius: 50%;
+      background: conic-gradient(var(--blue) 0deg 220deg, var(--gold-soft) 220deg 300deg, rgba(20,157,255,0.10) 300deg 360deg);
+      display: grid; place-items: center;
+      box-shadow: inset 0 0 0 1px rgba(20,157,255,0.08);
+    }
+    .ring::after {
+      content: attr(data-value);
+      width: 60px; height: 60px; border-radius: 50%;
+      background: rgba(255,255,255,0.96);
+      display: grid; place-items: center;
+      font-size: 18px; font-weight: 900; color: #0a5ea8;
+    }
+
+
+    .cause-grid { display: grid; gap: 12px; margin-top: 14px; }
+    .cause-card {
+      padding: 16px 16px 14px;
+      border-radius: 20px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.82);
+      position: relative;
+      overflow: hidden;
+    }
+    .cause-card::before {
+      content: "";
+      position: absolute; left: 0; top: 0; bottom: 0; width: 5px;
+      background: linear-gradient(180deg, var(--blue), var(--gold));
+      border-radius: 10px;
+    }
+
+
+    .cause-head { display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; }
+    .cause-title { padding-left: 10px; font-size: 16px; font-weight: 800; color: #0a2b52; }
+    .cause-desc { padding-left: 10px; margin-top: 8px; font-size: 13px; line-height: 1.72; color: var(--muted); }
+    .cause-impact { font-size: 12px; font-weight: 800; color: #946313; background: rgba(216,168,58,0.14); padding: 8px 10px; border-radius: 999px; white-space: nowrap; }
+
+
+    .ai-panel {
+      padding: 22px;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,0.84)),
+        linear-gradient(150deg, rgba(20,157,255,0.08), rgba(216,168,58,0.10));
+      display: grid; gap: 16px;
+      align-content: start;
+    }
+
+
+    .ai-title {
+      margin-top: 8px;
+      font-size: clamp(22px, 3vw, 32px);
+      line-height: 1.04;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      color: #0a2b53;
+    }
+
+
+    .ai-box {
+      border-radius: 20px;
+      padding: 16px;
+      background: rgba(255,255,255,0.82);
+      border: 1px solid var(--line);
+    }
+
+
+    .ai-box .v { margin-top: 10px; font-size: 15px; line-height: 1.75; color: #11365f; font-weight: 700; }
+    .recommendation-list { display: grid; gap: 10px; }
+    .recommendation {
+      padding: 14px; border-radius: 18px; background: rgba(255,255,255,0.84); border: 1px solid var(--line);
+      display: grid; gap: 6px;
+    }
+    .recommendation .title { font-size: 14px; font-weight: 800; color: #0d3159; }
+    .recommendation .desc { font-size: 13px; line-height: 1.7; color: var(--muted); }
+    .recommendation .roi { font-size: 12px; font-weight: 800; color: #946313; }
+
+
+    .cta-stack { display: grid; gap: 10px; }
+    .cta-btn {
+      appearance: none; border: 0; cursor: pointer; width: 100%;
+      padding: 16px 18px; border-radius: 18px; font-size: 15px; font-weight: 900;
+      transition: transform .2s ease, box-shadow .2s ease, opacity .2s ease;
+    }
+    .cta-btn:hover { transform: translateY(-1px); }
+    .cta-primary {
+      color: white;
+      background: linear-gradient(90deg, var(--blue) 0%, #31b4ff 48%, var(--gold) 100%);
+      box-shadow: 0 16px 30px rgba(20,157,255,0.22);
+    }
+    .cta-secondary {
+      color: #123f6a;
+      background: rgba(255,255,255,0.84);
+      border: 1px solid var(--line);
+    }
+
+
+    .social-card {
+      padding: 18px;
+      border-radius: 22px;
+      background: linear-gradient(135deg, rgba(20,157,255,0.10), rgba(216,168,58,0.12));
+      border: 1px solid rgba(20,157,255,0.12);
+    }
+    .social-card .title { font-size: 15px; font-weight: 900; color: #0d2f57; }
+    .social-card .desc { margin-top: 8px; font-size: 13px; line-height: 1.75; color: #456b90; }
+    .share-preview {
+      margin-top: 12px; padding: 14px; border-radius: 18px; background: rgba(255,255,255,0.84); border: 1px solid var(--line);
+      font-size: 13px; line-height: 1.72; color: #1d4775;
+    }
+
+
+    .footer-line {
+      padding: 16px 18px;
+      border-radius: 18px;
+      background: linear-gradient(90deg, rgba(20,157,255,0.10), rgba(216,168,58,0.10));
+      border: 1px solid rgba(20,157,255,0.10);
+      color: #2b5d8f;
+      font-size: 13px; line-height: 1.82;
+    }
+
+
+    .toast {
+      position: fixed;
+      right: 16px;
+      bottom: 16px;
+      max-width: 380px;
+      padding: 16px 18px;
+      border-radius: 18px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,0.88));
+      border: 1px solid var(--line-strong);
+      box-shadow: var(--shadow-xl);
+      color: #0f345c;
+      font-size: 14px;
+      line-height: 1.65;
+      transform: translateY(20px);
+      opacity: 0;
+      pointer-events: none;
+      transition: all .25s ease;
+      z-index: 20;
+    }
+
+
+    .toast.show {
+      transform: translateY(0);
+      opacity: 1;
+    }
+
+
+    .toast strong { display: block; margin-bottom: 6px; font-size: 15px; }
+
+
+    @media (max-width: 1180px) {
+      .hero, .dashboard { grid-template-columns: 1fr; }
+    }
+
+
+    @media (max-width: 900px) {
+      .viz-grid, .side-grid { grid-template-columns: 1fr; }
+      .hero-main, .hero-side, .panel, .ai-panel { padding: 18px; }
+      .hero-title { font-size: 40px; }
+      .rank-item { grid-template-columns: auto 1fr; }
+      .rank-loss { grid-column: 2; text-align: left; }
+    }
+
+
+    @media (max-width: 640px) {
+      .page { padding: 10px 8px 26px; }
+      .hero-title { font-size: 34px; line-height: 0.98; }
+      .hero-text, .panel-copy { font-size: 14px; }
+      .hero-badges, .filters, .mode-buttons { gap: 8px; }
+      .mode-btn, .filter, .hero-badge { width: 100%; justify-content: center; }
+      .switch-top { align-items: stretch; }
+      .panel-title, .ai-title, .mode-title { font-size: 26px; }
+      .mini-kpi .value, .rank-loss .value, .viz-value { font-size: 26px; }
+      .toast { left: 8px; right: 8px; max-width: none; }
+    }
+  </style>
+</head>
+<body>
+  <section class="page">
+    <div class="wrap">
+      <div class="hero">
+        <div class="glass hero-main">
+          <div class="eyebrow"><span class="dot"></span>UPSTAT · OWNER COMMAND CENTER</div>
+          <h1 class="hero-title">
+            Где именно <span class="gold">текут деньги</span><br />
+            в продажах — и что даст<br />
+            максимум возврата <span class="gold">быстрее всего</span>
+          </h1>
+          <div class="hero-text">
+            Это не отчёт и не “ещё один дашборд”. Это центр управления выручкой для владельца: где компания теряет деньги,
+            почему это происходит, кто именно создаёт риск, что нужно сделать сейчас и какой возврат это даст. Он должен давать чувство:
+            “деньги за платформу окупились в первую минуту, потому что я впервые вижу продажи как инженерную систему, а не как хаос”.
+          </div>
+          <div class="hero-badges">
+            <div class="hero-badge">Показывает утечки денег по реальным звонкам</div>
+            <div class="hero-badge">Объясняет причины, а не только цифры</div>
+            <div class="hero-badge">Предлагает действия и просит разрешение действовать</div>
+          </div>
+        </div>
+
+
+        <div class="glass hero-side">
+          <div class="hero-kpi">
+            <div class="label">Потенциально спасаемая выручка · 30 дней</div>
+            <div class="value">₸ 18.4 <span>млн</span></div>
+            <div class="sub">Оценка на основе текущих утечек: возражения, отсутствие next step, слабая квалификация, обесценивание цены и провалы в диагностике.</div>
+            <div class="hero-kpi-bar"><div class="hero-kpi-fill"></div></div>
+          </div>
+          <div class="side-grid">
+            <div class="mini-kpi">
+              <div class="label">Индекс управляемости дохода</div>
+              <div class="value">78 / 100</div>
+              <div class="sub">Система рабочая, но деньги текут в трёх узких местах.</div>
+            </div>
+            <div class="mini-kpi">
+              <div class="label">Потенциал роста конверсии</div>
+              <div class="value">+11–17%</div>
+              <div class="sub">Если добить три слабые зоны до сильного рабочего стандарта.</div>
+            </div>
+            <div class="mini-kpi">
+              <div class="label">Менеджеры в зоне риска</div>
+              <div class="value">2 из 5</div>
+              <div class="sub">Именно они создают непропорционально высокий риск потерь.</div>
+            </div>
+            <div class="mini-kpi">
+              <div class="label">Новый шанс за неделю</div>
+              <div class="value">₸ 4.8 млн</div>
+              <div class="sub">Можно вернуть, если исправить следующий шаг и цену.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+
+      <div class="glass mode-strip">
+        <div class="switch-top">
+          <div>
+            <div class="switch-label">Режим владельца</div>
+            <div class="mode-title">Переключайся между метриками как между режимами управления бизнесом</div>
+          </div>
+          <div class="filters">
+            <div class="filter">30 дней</div>
+            <div class="filter">Вся команда</div>
+            <div class="filter">Все каналы</div>
+            <div class="filter">Все продукты</div>
+          </div>
+        </div>
+        <div class="mode-buttons" id="modeButtons">
+          <button class="mode-btn active" data-mode="money">Деньги</button>
+          <button class="mode-btn" data-mode="conversion">Конверсия</button>
+          <button class="mode-btn" data-mode="risk">Риск плана</button>
+          <button class="mode-btn" data-mode="speed">Скорость сделки</button>
+          <button class="mode-btn" data-mode="team">Команда</button>
+          <button class="mode-btn" data-mode="forecast">Прогноз</button>
+        </div>
+      </div>
+
+
+      <div class="dashboard">
+        <div class="left-stack">
+          <div class="glass panel">
+            <div class="panel-head">
+              <div>
+                <div class="panel-label" id="mainLabel">Money Leak Map</div>
+                <div class="panel-title" id="mainTitle">Карта утечек денег: где именно выручка сейчас распадается</div>
+              </div>
+              <div class="filter" id="mainContext">Режим: Деньги</div>
+            </div>
+            <div class="panel-copy" id="mainCopy">
+              Ниже — не абстрактные проблемы отдела продаж, а ранжированные утечки денег по реальным паттернам звонков. Нажми на любой блок,
+              чтобы увидеть причину, масштаб потерь и действие с максимальным возвратом.
+            </div>
+            <div class="rank-list" id="rankList"></div>
+            <div class="viz-grid" id="vizGrid"></div>
+          </div>
+
+
+          <div class="glass panel">
+            <div class="panel-head">
+              <div>
+                <div class="panel-label">Причины → действия → почему именно это</div>
+                <div class="panel-title">Что провалено, почему это опасно и во что надо бить первым</div>
+              </div>
+            </div>
+            <div class="cause-grid" id="causeGrid"></div>
+          </div>
+        </div>
+
+
+        <div class="right-stack">
+          <div class="glass ai-panel">
+            <div>
+              <div class="section-label">AI-штаб владельца</div>
+              <div class="ai-title">Я вижу, где вы теряете деньги. Разрешите действовать, БОСС?</div>
+            </div>
+
+
+            <div class="ai-box">
+              <div class="t">Что я вижу</div>
+              <div class="v" id="aiSee"></div>
+            </div>
+
+
+            <div class="ai-box">
+              <div class="t">Почему это важно</div>
+              <div class="v" id="aiWhy"></div>
+            </div>
+
+
+            <div class="ai-box">
+              <div class="t">Что я предлагаю сделать</div>
+              <div class="recommendation-list" id="aiRecommendations"></div>
+            </div>
+
+
+            <div class="ai-box">
+              <div class="t">Почему именно это</div>
+              <div class="v" id="aiBecause"></div>
+            </div>
+
+
+            <div class="cta-stack">
+              <button class="cta-btn cta-primary" id="primaryAction">Запустить исправление</button>
+              <button class="cta-btn cta-secondary" id="secondaryAction">Сначала показать прогноз эффекта</button>
+            </div>
+
+
+            <div class="social-card">
+              <div class="title">Вау-режим для шеринга</div>
+              <div class="desc">
+                Собственник должен хотеть делиться не “плохими показателями”, а новым статусом управления бизнесом: “мы теперь видим, где реально течёт выручка”.
+              </div>
+              <div class="share-preview" id="sharePreview"></div>
+            </div>
+          </div>
+
+
+          <div class="glass panel">
+            <div class="panel-head">
+              <div>
+                <div class="panel-label">Самое цепляющее сегодня</div>
+                <div class="panel-title" style="font-size:28px;">Самая дорогая ошибка недели</div>
+              </div>
+            </div>
+            <div class="cause-card" style="margin-top:4px;">
+              <div class="cause-head">
+                <div>
+                  <div class="cause-title">Менеджер закончил сильный разговор без next step</div>
+                  <div class="cause-desc">
+                    Клиент задавал уточняющие вопросы, проявлял интерес к внедрению, но не получил конкретной даты, формата и подтверждения следующего шага. Сделка ушла в «подумаем».
+                  </div>
+                </div>
+                <div class="cause-impact">₸ 1.2 млн риска</div>
+              </div>
+            </div>
+            <div class="footer-line" style="margin-top:14px;">
+              Это не просто “неидеальный звонок”. Это визуализация самой дорогой ошибки недели. Именно такие блоки делают дашборд живым, вызывают азарт и заставляют владельца возвращаться ежедневно.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <div class="toast" id="toast"></div>
+
+
+  <script>
+    const dashboardData = {
+      money: {
+        label: 'Money Leak Map',
+        title: 'Карта утечек денег: где именно выручка сейчас распадается',
+        copy: 'Ниже — не абстрактные проблемы отдела продаж, а ранжированные утечки денег по реальным паттернам звонков. Нажми на любой блок, чтобы увидеть причину, масштаб потерь и действие с максимальным возвратом.',
+        context: 'Режим: Деньги',
+        items: [
+          { name: 'Возражения', reason: 'Чаще всего деньги умирают на «дорого», «подумаю», «не сейчас». Менеджеры слишком быстро слабеют или отвечают не на ту причину.', value: '₸ 7.2 млн', tag: 'Самая большая утечка' },
+          { name: 'Нет следующего шага', reason: 'После сильных разговоров не фиксируется конкретная дата, формат и обязательство клиента. Импульс остывает, pipeline распадается.', value: '₸ 5.9 млн', tag: 'Скрытый убийца pipeline' },
+          { name: 'Слабая квалификация', reason: 'Отдел тратит энергию на псевдосделки и переоценивает вероятную выручку. Иллюзия активности подменяет реальное движение.', value: '₸ 3.8 млн', tag: 'Искажает прогноз' }
+        ],
+        viz: [
+          { title: 'Доля потерь после цены', value: '31%', sub: 'Самый тяжёлый контур утечек — срывы после ценового сопротивления.', ring: '31%' },
+          { title: 'Звонки без next step', value: '44', sub: 'Именно здесь быстрее всего можно вернуть движение в сделку.', ring: '44' },
+          { title: 'Обесценивание цены', value: '33%', sub: 'Часто менеджер сам делает цену слабой вместо защиты через ценность.' },
+          { title: 'Возражения обработаны', value: '51%', sub: 'Почти половина сопротивлений не превращается в движение вперёд.' }
+        ],
+        causes: [
+          { title: 'Что провалено', desc: 'objection_handled = 51%, next_step_defined = 42%, price_devaluation = 33%, needs_identified = 48%', impact: 'Фактическая причина потерь' },
+          { title: 'Что это вызывает', desc: 'Сделки остывают после сильных разговоров, маржа проседает, клиент уходит «подумать», а план кажется более реальным, чем он есть на самом деле.', impact: 'Удар по выручке и прогнозу' },
+          { title: 'Во что бить первым', desc: 'Стандарт next step, тренировка по распаковке ценового возражения, разбор 10 самых дорогих звонков недели.', impact: 'Самый быстрый возврат' }
+        ],
+        aiSee: 'Я вижу, что 3 зоны формируют основную долю текущих потерь: возражения, отсутствие следующего шага и слабая квалификация. Это не “много мелких проблем”, а несколько крупных дыр в выручке.',
+        aiWhy: 'Потому что именно эти зоны чаще всего отличают успешные звонки от провальных. Пока они не исправлены, отдел будет одновременно терять деньги, искажать прогноз и тратить ресурс на слабые сделки.',
+        aiBecause: 'Я предлагаю именно это, потому что эти дефекты дают наибольшую долю текущих потерь и при этом исправляются быстрее, чем полная перестройка скриптов, структуры отдела или CRM-процессов.',
+        recommendations: [
+          { title: 'Запустить командную тренировку по возражениям', desc: 'Убрать быстрый уход в скидку и научить распаковывать реальную причину сопротивления.', roi: 'Потенциальный возврат: до ₸ 3.9 млн / 30 дней' },
+          { title: 'Ввести жёсткий стандарт next step', desc: 'После каждого сильного разговора фиксировать дату, формат и цель следующего касания.', roi: 'Потенциальный возврат: до ₸ 4.8 млн / 30 дней' },
+          { title: 'Разобрать 10 самых дорогих звонков недели', desc: 'Показать команде, какие разговоры стоили бизнесу дороже всего и как именно их надо было вести.', roi: 'Самый быстрый эффект по качеству управленческих решений' }
+        ],
+        share: 'Мы впервые видим не просто отчёты по звонкам, а карту реальных утечек выручки: где деньги теряются, почему это происходит и что даст максимальный возврат прямо сейчас.',
+        primaryText: 'Запустить исправление',
+        secondaryText: 'Сначала показать прогноз эффекта'
+      },
+      conversion: {
+        label: 'Winning Pattern Engine',
+        title: 'Что именно отличает успешные звонки от провальных в вашем бизнесе',
+        copy: 'Этот режим показывает не общую конверсию, а формулу успеха именно внутри вашей компании: какие параметры сильнее всего отделяют выигранные разговоры от проигранных.',
+        context: 'Режим: Конверсия',
+        items: [
+          { name: 'Выявление потребностей', reason: 'В успешных звонках needs_identified и needs_clarity заметно выше. Менеджеры глубже раскрывают реальность клиента.', value: '+18%', tag: 'Сильнейший фактор' },
+          { name: 'Связка ценность → потребность', reason: 'Когда решение жёстко привязано к ранее вскрытой потребности, вероятность движения вверх резко возрастает.', value: '+14%', tag: 'Делает решение своим' },
+          { name: 'Подтверждённый next step', reason: 'Успешные звонки почти всегда завершаются движением, а не “подумайте и вернитесь”.', value: '+12%', tag: 'Закрепляет momentum' }
+        ],
+        viz: [
+          { title: 'Needs identified', value: '66% vs 48%', sub: 'Разница успешных и неуспешных звонков.', ring: '66%' },
+          { title: 'Value linked to needs', value: '72% vs 51%', sub: 'Успешные менеджеры сильнее связывают ценность с задачей клиента.', ring: '72%' },
+          { title: 'Подтверждение ценности', value: '59%', sub: 'Клиент сам подтверждает полезность решения чаще в выигранных разговорах.' },
+          { title: 'Открытые вопросы', value: '2.1×', sub: 'Топ-20% менеджеров задают содержательных открытых вопросов заметно больше.' }
+        ],
+        causes: [
+          { title: 'Что провалено', desc: 'Слабая глубина вопросов, средний listening_quality, низкий value_linked_to_needs и неполная needs_clarity.', impact: 'Размывает ценность' },
+          { title: 'Что это вызывает', desc: 'Презентация становится “про продукт”, а не про клиента. Разговор вроде идёт, но решение не присваивается клиентом как своё.', impact: 'Конверсия проседает' },
+          { title: 'Во что бить первым', desc: 'Усилить диагностическую дугу, глубину вопросов и перевод характеристик в полезный для клиента эффект.', impact: 'Формирует формулу победы' }
+        ],
+        aiSee: 'Я вижу, что ваши лучшие звонки выигрывают не за счёт харизмы, а за счёт глубже раскрытых потребностей и более точной связки ценности с задачей клиента.',
+        aiWhy: 'Потому что в вашем бизнесе решение покупают тогда, когда клиент ясно понимает: это не просто продукт, а прямой ответ на его текущую реальность и потери.',
+        aiBecause: 'Я предлагаю усиливать именно диагностику и связку ценности с потребностью, потому что эти параметры сильнее всего отличают успех от провала именно в ваших собственных звонках.',
+        recommendations: [
+          { title: 'Усилить выявление потребностей', desc: 'Развить глубину вопросов и качество слушания в начале и середине разговора.', roi: 'Повышает шанс сильной презентации и закрытия' },
+          { title: 'Пересобрать подачу выгод', desc: 'Убрать “функции ради функций” и жёстче привязывать решение к боли и результату клиента.', roi: 'Даёт прямой прирост конверсии' },
+          { title: 'Сравнить топ-20% с остальными', desc: 'Сделать из лучших менеджеров внутренний эталон и масштабировать их паттерн.', roi: 'Самый быстрый путь к росту без внешних консультантов' }
+        ],
+        share: 'Теперь мы видим не просто общую конверсию, а формулу успеха внутри нашего бизнеса: какие именно элементы разговора дают выигрыш, а какие ведут к провалу.',
+        primaryText: 'Запустить усиление конверсии',
+        secondaryText: 'Показать прогноз роста'
+      },
+      risk: {
+        label: 'Plan Risk Radar',
+        title: 'Сколько вашей ожидаемой выручки может оказаться миражом',
+        copy: 'Этот режим показывает, насколько pipeline опирается на реальные признаки сделки, а насколько — на вежливый интерес, слабую квалификацию и звонки без подтверждённого движения.',
+        context: 'Режим: Риск плана',
+        items: [
+          { name: 'Нет понимания ЛПР', reason: 'Сделки обсуждаются с людьми, которые не принимают решения или не контролируют бюджет.', value: '27%', tag: 'Скрытый риск' },
+          { name: 'Нет понимания процесса решения', reason: 'Менеджер не знает, как решение реально двигается внутри клиента и кто его блокирует.', value: '22%', tag: 'Зависает внутри клиента' },
+          { name: 'Финал “подумаю/пришлите”', reason: 'Часть сделок маскируется под перспективные, хотя на деле они не получили никакого реального обязательства.', value: '19 звонков', tag: 'Надутый pipeline' }
+        ],
+        viz: [
+          { title: 'Сделки без ЛПР', value: '38%', sub: 'Без выхода на реальный центр решения прогноз завышается.', ring: '38%' },
+          { title: 'Без следующего шага', value: '44', sub: 'Критический фактор ложной надежды в pipeline.', ring: '44' },
+          { title: 'Без сроков решения', value: '41%', sub: 'Сделки без времени редко закрываются предсказуемо.' },
+          { title: 'Риск плана месяца', value: '18%', sub: 'Оценка вероятного недовыполнения из-за слабой сделочной архитектуры.' }
+        ],
+        causes: [
+          { title: 'Что провалено', desc: 'decision_process_understood, next_step_confirmed, decision_timing, identified_decision_maker — все ниже безопасного уровня.', impact: 'Подрывает доверие к forecast' },
+          { title: 'Что это вызывает', desc: 'Пайплайн выглядит большим, но часть сделок по факту не имеет носителя решения, реального срока или следующего действия.', impact: 'Ложное чувство контроля' },
+          { title: 'Во что бить первым', desc: 'Подтянуть квалификацию по ЛПР, процессу решения и обязательным признакам живой сделки.', impact: 'Укрепляет прогноз' }
+        ],
+        aiSee: 'Я вижу, что часть вашего pipeline надут не потому, что менеджеры плохо работают вообще, а потому, что сделки недостаточно квалифицированы и не имеют подтверждённого движения.',
+        aiWhy: 'Это важно, потому что собственник принимает решения не только по факту денег, но и по ожиданию будущих денег. Слабый pipeline искажает всё управление.',
+        aiBecause: 'Я предлагаю сначала усиливать признаки живой сделки: ЛПР, процесс решения, сроки и следующий шаг. Без этого прогноз останется красивым, но менее правдивым.',
+        recommendations: [
+          { title: 'Ввести обязательные признаки живой сделки', desc: 'Нельзя считать сделку сильной без ЛПР, next step и понимания процесса решения.', roi: 'Снижает риск ошибки в прогнозе' },
+          { title: 'Разобрать зависшие сделки недели', desc: 'Понять, какие из них ещё можно оживить, а какие надо снять из активного прогноза.', roi: 'Очищает и укрепляет pipeline' },
+          { title: 'Тренировка по qualification discipline', desc: 'Научить менеджеров не путать вежливый интерес с реальной сделкой.', roi: 'Экономит время и возвращает правду в forecast' }
+        ],
+        share: 'Мы теперь видим не только объём pipeline, но и его реальную прочность: сколько там живых сделок, а сколько — красивых, но опасно слабых иллюзий.',
+        primaryText: 'Запустить укрепление прогноза',
+        secondaryText: 'Показать скрытые риски плана'
+      },
+      speed: {
+        label: 'Momentum & Velocity Control',
+        title: 'Где бизнес теряет скорость сделки и почему деньги застревают в разговорах',
+        copy: 'Этот режим нужен, чтобы видеть не просто факт потери сделки, а места, где она замедляется: поздняя цена, слабая срочность, отсутствие движения, провал тайминга закрытия.',
+        context: 'Режим: Скорость сделки',
+        items: [
+          { name: 'Нет срочности', reason: 'Разговор полезный, но клиент не получает ощущение, почему действовать нужно сейчас, а не когда-нибудь потом.', value: '46%', tag: 'Убивает momentum' },
+          { name: 'Слабый closing timing', reason: 'Закрытие происходит слишком рано или слишком поздно, и момент внутренней готовности клиента упускается.', value: '2.8 / 5', tag: 'Ломает темп' },
+          { name: 'Цена поднимается не вовремя', reason: 'Обсуждение цены идёт до сборки достаточной ценности или, наоборот, слишком поздно и неловко.', value: '3.7 мин', tag: 'Смещает фокус' }
+        ],
+        viz: [
+          { title: 'Создана срочность', value: '37%', sub: 'В большинстве звонков нет ясного импульса действовать сейчас.', ring: '37%' },
+          { title: 'Deal momentum', value: '2.9 / 5', sub: 'Сделки часто не набирают достаточного хода.', ring: '2.9' },
+          { title: 'Без конкретной даты', value: '32', sub: 'Даже хороший интерес не переводится в календарное действие.' },
+          { title: 'Обсуждений цены', value: '2.7', sub: 'Когда цена возвращается в разговор слишком часто, это сигнал слабой ценности.' }
+        ],
+        causes: [
+          { title: 'Что провалено', desc: 'urgency_created, next_step_confirmed, closing_timing и связка цена-эффект не держат сделку в движении.', impact: 'Скорость денег падает' },
+          { title: 'Что это вызывает', desc: 'Даже нормальные разговоры не дают быстрого движения. Клиент уходит в размышление, а сделка зависает в мягкой неопределённости.', impact: 'Удлиняет цикл' },
+          { title: 'Во что бить первым', desc: 'Вернуть дисциплину next step, корректный тайминг закрытия и создание срочности без давления.', impact: 'Ускоряет сделки' }
+        ],
+        aiSee: 'Я вижу, что сейчас часть сделок умирает не в конфликте и не в отказе, а в мягком распаде импульса: интерес был, движения нет.',
+        aiWhy: 'Это важно, потому что скорость сделки — это не только скорость денег, но и защита от остывания клиента, появления конкурента и размывания приоритета.',
+        aiBecause: 'Я предлагаю бить по next step, срочности и closing timing, потому что именно они дают самый быстрый прирост deal momentum без полной перестройки всей команды.',
+        recommendations: [
+          { title: 'Стандарт следующего шага после каждого сильного разговора', desc: 'Ни один разговор с интересом не должен заканчиваться без даты и цели.', roi: 'Сокращает распад импульса' },
+          { title: 'Тренировка по созданию срочности без давления', desc: 'Помочь менеджерам не ждать, пока клиент сам решится “когда-нибудь”.', roi: 'Ускоряет цикл сделки' },
+          { title: 'Разбор тайминга закрытия на лучших и худших звонках', desc: 'Показать, где команда закрывает слишком рано и где — слишком поздно.', roi: 'Улучшает conversion-to-action' }
+        ],
+        share: 'Мы видим не только, где сделки теряются, но и где они замедляются. Это уже не просто аналитика продаж — это контроль скорости денег.',
+        primaryText: 'Запустить ускорение сделки',
+        secondaryText: 'Показать точки торможения'
+      },
+      team: {
+        label: 'Team Performance Map',
+        title: 'Кто в команде тянет бизнес вверх, а кто создаёт скрытую утечку денег',
+        copy: 'Владельцу нужен не просто рейтинг ради рейтинга, а карта команды через деньги: кто даёт лучший паттерн, кто в зоне риска и что общего у лучших и худших менеджеров.',
+        context: 'Режим: Команда',
+        items: [
+          { name: 'Топ-20% менеджеров', reason: 'У лучших стабильно выше needs_identified, objection_handled, value_linked_to_needs и next_step_defined.', value: '+21%', tag: 'Ваш внутренний эталон' },
+          { name: 'Bottom-20% менеджеров', reason: 'Именно у них чаще провалы в диагностике, слабая защита цены и отсутствие управляемого завершения.', value: '₸ 6.3 млн', tag: 'Зона скрытой утечки' },
+          { name: 'Самая большая разница в команде', reason: 'Разрыв между лучшим и худшим менеджером уже достаточно велик, чтобы быть отдельным источником потерь для бизнеса.', value: '1.8×', tag: 'Резерв масштабирования' }
+        ],
+        viz: [
+          { title: 'Лучший менеджер', value: '4.6 / 5', sub: 'Почти готовый эталон для масштабирования.', ring: '4.6' },
+          { title: 'Худший менеджер', value: '2.4 / 5', sub: 'Именно здесь утечка денег чаще всего концентрируется.', ring: '2.4' },
+          { title: 'Talk ratio команды', value: '63 / 37', sub: 'Есть признаки over-talking у части менеджеров.' },
+          { title: 'Сильные моменты', value: '28%', sub: 'Доля звонков, где команда создаёт реально сильный импульс у клиента.' }
+        ],
+        causes: [
+          { title: 'Что провалено', desc: 'У слабых менеджеров ниже listening_quality, empathy, structure_followed, objection_handled и next_step_defined.', impact: 'Порождает неравномерность' },
+          { title: 'Что это вызывает', desc: 'Бизнес живёт на отдельных сильных людях вместо системного уровня команды. Потолок роста становится зависим от нескольких человек.', impact: 'Риск для масштаба' },
+          { title: 'Во что бить первым', desc: 'Масштабировать паттерн top-20%, отдельно выравнивать bottom-20% и убрать самые дорогие слабые привычки.', impact: 'Даёт системный рост' }
+        ],
+        aiSee: 'Я вижу, что часть вашей силы уже существует внутри команды. У лучших менеджеров есть живой эталон, который можно масштабировать быстрее, чем искать внешнюю магию.',
+        aiWhy: 'Это важно, потому что собственный внутренний эталон всегда убедительнее и дешевле, чем абстрактное внешнее “надо продавать лучше”.',
+        aiBecause: 'Я предлагаю одновременно использовать лучших как образец и точечно дотягивать слабых, потому что именно такой двойной ход быстрее всего повышает общий уровень отдела.',
+        recommendations: [
+          { title: 'Сделать паттерн топ-20% видимым', desc: 'Выделить, какие параметры лучших реально отличают их от остальных.', roi: 'Самый быстрый путь к масштабируемому росту' },
+          { title: 'Индивидуальная коррекция bottom-20%', desc: 'Бить не по всему, а по 2–3 параметрам, которые дороже всего стоят бизнесу.', roi: 'Снижает утечку денег уже в ближайшем цикле' },
+          { title: 'Запустить внутрикомандный benchmark', desc: 'Показывать владельцу и РОПу не только рейтинг, но и скрытый резерв команды.', roi: 'Создаёт постоянный двигатель улучшения' }
+        ],
+        share: 'Мы теперь видим команду не через субъективные впечатления, а через карту сильных и слабых паттернов, которые прямо влияют на деньги.',
+        primaryText: 'Запустить выравнивание команды',
+        secondaryText: 'Показать разницу лучших и худших'
+      },
+      forecast: {
+        label: 'What If Forecast Engine',
+        title: 'Если исправить 2–3 узких места, что это даст по деньгам и прогнозу',
+        copy: 'Это самый addictive режим: он даёт владельцу не просто диагноз, а чувство власти. Что будет с выручкой, если исправить конкретный параметр до уровня лучших практик внутри компании?',
+        context: 'Режим: Прогноз',
+        items: [
+          { name: 'Дотянуть next step до стандарта', reason: 'Если поднять next_step_defined и next_step_confirmed до уровня топ-20%, это сразу уменьшит распад pipeline.', value: '+₸ 4.8 млн', tag: 'Самый быстрый ROI' },
+          { name: 'Убрать ранний уход в скидку', reason: 'Снижение price_devaluation и усиление защиты цены через ценность возвращают маржу и удерживают сделки.', value: '+₸ 3.2 млн', tag: 'Возврат маржи' },
+          { name: 'Усилить диагностику', reason: 'Рост needs_identified, listening_quality и value_linked_to_needs повышает силу всей дальнейшей продажи каскадом.', value: '+11–17% конверсии', tag: 'Каскадный эффект' }
+        ],
+        viz: [
+          { title: 'Сценарий: next step', value: '+₸ 4.8 млн', sub: 'При доведении next step до уровня лучших менеджеров.', ring: '+4.8' },
+          { title: 'Сценарий: цена', value: '+₸ 3.2 млн', sub: 'Если убрать часть ценового самоослабления.', ring: '+3.2' },
+          { title: 'Сценарий: диагностика', value: '+14%', sub: 'Прирост качества сделок через усиление потребностей и вопросов.' },
+          { title: 'Риск без действий', value: '₸ 26.7 млн', sub: 'Потенциальная потеря до конца месяца, если ничего не менять.' }
+        ],
+        causes: [
+          { title: 'Что провалено', desc: 'Есть несколько параметров, которые одновременно часто встречаются в провале и сравнительно быстро исправляются.', impact: 'Идеальная точка приложения силы' },
+          { title: 'Почему именно эти действия', desc: 'Они дают наибольшую долю текущих потерь и при этом не требуют долгой перестройки всего отдела.', impact: 'Максимум ROI на коротком цикле' },
+          { title: 'Что получится', desc: 'Сильнее конверсия, надёжнее forecast, меньше псевдосделок, выше маржа, быстрее движение к деньгам.', impact: 'Эффект на уровне бизнеса' }
+        ],
+        aiSee: 'Я вижу, что у вас есть редкая возможность: вернуть заметную долю денег не через “большую реформу”, а через несколько точных вмешательств в поведение команды.',
+        aiWhy: 'Это важно, потому что владельцу нужен не образовательный проект ради образования, а короткий путь к управляемому возврату денег и качества прогноза.',
+        aiBecause: 'Я предлагаю именно такие шаги, потому что они одновременно дают высокий ожидаемый эффект и обладают самой короткой дистанцией до результата в вашей текущей системе.',
+        recommendations: [
+          { title: 'Сначала добить next step', desc: 'Самый быстрый и самый оцифровываемый рычаг.', roi: 'До ₸ 4.8 млн / 30 дней' },
+          { title: 'Потом убрать обесценивание цены', desc: 'Вернуть маржу и защитить сделки без лишних уступок.', roi: 'До ₸ 3.2 млн / 30 дней' },
+          { title: 'Затем усилить диагностику', desc: 'Сделать всю систему продаж сильнее, а не только отдельный этап.', roi: 'Каскадный рост по нескольким метрикам сразу' }
+        ],
+        share: 'Мы теперь видим не просто отчёт о том, что происходит, а прогноз: что именно изменится в деньгах, если поправить конкретные элементы работы отдела продаж.',
+        primaryText: 'Запустить выполнение',
+        secondaryText: 'Сначала показать сценарий эффекта'
+      }
+    };
+
+
+    const modeButtons = document.querySelectorAll('.mode-btn');
+    const rankList = document.getElementById('rankList');
+    const vizGrid = document.getElementById('vizGrid');
+    const causeGrid = document.getElementById('causeGrid');
+    const mainLabel = document.getElementById('mainLabel');
+    const mainTitle = document.getElementById('mainTitle');
+    const mainCopy = document.getElementById('mainCopy');
+    const mainContext = document.getElementById('mainContext');
+    const aiSee = document.getElementById('aiSee');
+    const aiWhy = document.getElementById('aiWhy');
+    const aiBecause = document.getElementById('aiBecause');
+    const aiRecommendations = document.getElementById('aiRecommendations');
+    const sharePreview = document.getElementById('sharePreview');
+    const primaryAction = document.getElementById('primaryAction');
+    const secondaryAction = document.getElementById('secondaryAction');
+    const toast = document.getElementById('toast');
+
+
+    let currentMode = 'money';
+
+
+    function renderMode(mode) {
+      currentMode = mode;
+      const data = dashboardData[mode];
+      mainLabel.textContent = data.label;
+      mainTitle.textContent = data.title;
+      mainCopy.textContent = data.copy;
+      mainContext.textContent = data.context;
+      aiSee.textContent = data.aiSee;
+      aiWhy.textContent = data.aiWhy;
+      aiBecause.textContent = data.aiBecause;
+      sharePreview.textContent = data.share;
+      primaryAction.textContent = data.primaryText;
+      secondaryAction.textContent = data.secondaryText;
+
+
+      rankList.innerHTML = data.items.map((item, index) => `
+        <div class="rank-item">
+          <div class="rank-num">${index + 1}</div>
+          <div>
+            <div class="name">${item.name}</div>
+            <div class="reason">${item.reason}</div>
+          </div>
+          <div class="rank-loss">
+            <div class="value">${item.value}</div>
+            <div class="tag">${item.tag}</div>
+          </div>
+        </div>
+      `).join('');
+
+
+      vizGrid.innerHTML = data.viz.map(card => `
+        <div class="viz-card">
+          <div class="viz-title">${card.title}</div>
+          ${card.ring ? `
+            <div class="ring-wrap">
+              <div class="ring" data-value="${card.ring}"></div>
+              <div>
+                <div class="viz-value">${card.value}</div>
+                <div class="viz-sub">${card.sub}</div>
+              </div>
+            </div>
+          ` : `
+            <div class="viz-value">${card.value}</div>
+            <div class="viz-sub">${card.sub}</div>
+          `}
+        </div>
+      `).join('');
+
+
+      causeGrid.innerHTML = data.causes.map(cause => `
+        <div class="cause-card">
+          <div class="cause-head">
+            <div>
+              <div class="cause-title">${cause.title}</div>
+              <div class="cause-desc">${cause.desc}</div>
+            </div>
+            <div class="cause-impact">${cause.impact}</div>
+          </div>
+        </div>
+      `).join('');
+
+
+      aiRecommendations.innerHTML = data.recommendations.map(item => `
+        <div class="recommendation">
+          <div class="title">${item.title}</div>
+          <div class="desc">${item.desc}</div>
+          <div class="roi">${item.roi}</div>
+        </div>
+      `).join('');
+
+
+      modeButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.mode === mode));
+    }
+
+
+    function showToast(title, body) {
+      toast.innerHTML = `<strong>${title}</strong>${body}`;
+      toast.classList.add('show');
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(() => toast.classList.remove('show'), 3200);
+    }
+
+
+    modeButtons.forEach(btn => {
+      btn.addEventListener('click', () => renderMode(btn.dataset.mode));
+    });
+
+
+    primaryAction.addEventListener('click', () => {
+      const modeTitles = {
+        money: 'Запускаю контур возврата денег',
+        conversion: 'Запускаю усиление конверсии',
+        risk: 'Запускаю укрепление прогноза',
+        speed: 'Запускаю ускорение сделки',
+        team: 'Запускаю выравнивание команды',
+        forecast: 'Запускаю выполнение приоритетного плана'
+      };
+      showToast(modeTitles[currentMode], 'Поставлены задачи на коррекцию, сформирован пакет действий для команды и создан ориентир ожидаемого эффекта.');
+    });
+
+
+    secondaryAction.addEventListener('click', () => {
+      showToast('Показываю прогноз эффекта', 'Открывается сценарий “что будет, если исправить именно эти 2–3 зоны”. Здесь владелец должен чувствовать власть, а не просто видеть диагноз.');
+    });
+
+
+    renderMode('money');
+  </script>
+</body>
+</html>

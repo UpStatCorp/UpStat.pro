@@ -26,6 +26,9 @@ class User(Base):
     analyses_used: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     premium_granted_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
     premium_granted_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    # Product mode (источник истины для enforcement): NULL = full (обратная совместимость)
+    product_mode: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)  # full, train
+    organization_id: Mapped[Optional[int]] = mapped_column(ForeignKey("organizations.id"), nullable=True, index=True)
 
     conversations = relationship("Conversation", back_populates="user")
     zoom_meetings = relationship("ZoomMeeting", back_populates="user")
@@ -36,6 +39,8 @@ class User(Base):
     # Команды
     managed_teams = relationship("Team", foreign_keys="Team.manager_id", back_populates="manager")
     team_memberships = relationship("TeamMember", back_populates="user")
+    # Organization / product mode
+    organization = relationship("Organization", back_populates="users", foreign_keys="User.organization_id")
 
 
 class Conversation(Base):
@@ -184,6 +189,8 @@ class AnalysisTrainingPlan(Base):
     total_trainings: Mapped[int] = mapped_column(Integer, default=0)
     completed_trainings: Mapped[int] = mapped_column(Integer, default=0)
     status: Mapped[str] = mapped_column(String(20), default="active")  # active, completed, archived
+    # Источник плана: analysis (из анализа звонка), catalog (каталог), program (программа)
+    plan_source: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, default="analysis")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     
     # Связи
@@ -417,12 +424,14 @@ class Team(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     manager_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    organization_id: Mapped[Optional[int]] = mapped_column(ForeignKey("organizations.id"), nullable=True, index=True)
     
     # Связи
     manager = relationship("User", foreign_keys=[manager_id], back_populates="managed_teams")
     members = relationship("TeamMember", back_populates="team", cascade="all, delete-orphan")
     invitations = relationship("TeamInvitation", back_populates="team", cascade="all, delete-orphan")
     script = relationship("TeamScript", back_populates="team", uselist=False, cascade="all, delete-orphan")
+    organization = relationship("Organization", back_populates="teams", foreign_keys=[organization_id])
 
 
 class TeamMember(Base):
@@ -1056,3 +1065,69 @@ class ResearchLog(Base):
 
     conversation = relationship("Conversation")
     user = relationship("User")
+
+
+class TrainingProgram(Base):
+    """
+    Программа тренировок для команды (Train-режим).
+    РОП назначает последовательность этапов и цикл повторения.
+    """
+    __tablename__ = "training_programs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"), index=True, nullable=False)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, default="Программа тренировок")
+    # Дата начала цикла
+    start_date: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # Через сколько дней цикл повторяется (0 = не повторяется)
+    cycle_days: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    # Связи
+    team = relationship("Team")
+    days = relationship("TrainingProgramDay", back_populates="program", cascade="all, delete-orphan",
+                        order_by="TrainingProgramDay.day_index")
+
+
+class TrainingProgramDay(Base):
+    """Один день программы тренировок: порядковый номер и тренировка."""
+    __tablename__ = "training_program_days"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    program_id: Mapped[int] = mapped_column(ForeignKey("training_programs.id"), index=True, nullable=False)
+    day_index: Mapped[int] = mapped_column(Integer, nullable=False)  # 0-based
+    # Этап из каталога (stage_key) или ID тренировки
+    stage_key: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    training_id: Mapped[Optional[int]] = mapped_column(ForeignKey("trainings.id"), nullable=True)
+
+    # Связи
+    program = relationship("TrainingProgram", back_populates="days")
+
+
+class Organization(Base):
+    """
+    Организация (клиент) — источник SKU и capabilities для команды/пользователей.
+    Sale Manager создаёт организацию и назначает ей SKU при онбординге клиента.
+    """
+    __tablename__ = "organizations"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # SKU определяет набор capabilities: FULL, TRAIN_RU, TRAIN_GLOBAL
+    sku: Mapped[str] = mapped_column(String(50), default="FULL", nullable=False)
+    # Рынок: RU, GLOBAL — для отчётности и будущего data residency
+    market: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    # Зарезервировано для будущего 152-ФЗ размещения данных
+    data_residency: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    # Опциональное переопределение capabilities в JSON ({"call_analysis": true, ...})
+    capabilities_override: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    # Аудит: кто и когда назначил
+    assigned_by: Mapped[Optional[int]] = mapped_column(ForeignKey("users.id"), nullable=True)
+    assigned_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    # Связи
+    teams = relationship("Team", back_populates="organization", foreign_keys="Team.organization_id")
+    users = relationship("User", back_populates="organization", foreign_keys="User.organization_id")

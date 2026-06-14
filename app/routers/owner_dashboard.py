@@ -5,11 +5,11 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session, joinedload
 
 from database import get_db
-from deps import require_user
+from deps import require_user, require_capability
 from models import Team, TeamMember, User
 from services.owner_analytics_service import OwnerAnalyticsService
 
-router = APIRouter(tags=["owner_dashboard"])
+router = APIRouter(tags=["owner_dashboard"], dependencies=[Depends(require_capability("owner_dashboard"))])
 
 
 def _get_owner_teams(db: Session, user_id: int):

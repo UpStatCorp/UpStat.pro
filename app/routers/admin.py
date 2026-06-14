@@ -250,7 +250,7 @@ def delete_user(
         logger.error(f"Failed to delete user {user_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Ошибка при удалении пользователя: {str(e)}"
+            detail="Ошибка при удалении пользователя"
         )
     
     return RedirectResponse(url="/admin/users", status_code=status.HTTP_302_FOUND)

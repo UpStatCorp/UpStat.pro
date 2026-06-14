@@ -1,0 +1,68 @@
+{% extends "train/_layout.html" %}
+
+{% block title %}Каталог тренировок — UpStat Train{% endblock %}
+{% block page_title %}Каталог тренировок{% endblock %}
+
+{% block styles %}
+.catalog-grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px;
+}
+.stage-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:24px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:12px;
+  transition:transform .15s,box-shadow .15s;
+}
+.stage-card:hover{transform:translateY(-2px);box-shadow:0 6px 24px rgba(14,165,233,.12);}
+.stage-icon{font-size:36px;line-height:1;}
+.stage-name{font-size:17px;font-weight:700;}
+.stage-desc{font-size:13px;color:var(--muted);flex:1;}
+.level-btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;}
+.btn-level{
+  padding:8px 16px;background:var(--primary);color:#fff;border:none;
+  border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;
+  text-decoration:none;display:inline-flex;align-items:center;gap:6px;
+  transition:background .2s;
+}
+.btn-level:hover{background:var(--primary-hover);}
+.btn-level.secondary{background:transparent;border:1px solid var(--primary);color:var(--primary);}
+.btn-level.secondary:hover{background:var(--primary);color:#fff;}
+.badge-soon{
+  display:inline-block;padding:3px 8px;background:#e5e7eb;color:#6b7280;
+  border-radius:6px;font-size:11px;font-weight:600;
+}
+{% endblock %}
+
+{% block content %}
+<p style="color:var(--muted);font-size:14px;margin:0 0 24px;">
+  Выберите этап продаж и уровень сложности. Тренировка запустится немедленно.
+</p>
+
+<div class="catalog-grid">
+  {% for stage in stages %}
+  <div class="stage-card">
+    <div class="stage-icon">{{ stage.icon }}</div>
+    <div class="stage-name">{{ stage.label }}</div>
+    <div class="stage-desc">{{ stage.description }}</div>
+
+    <div class="level-btns">
+      {% for lvl in range(1, stage.levels + 1) %}
+        {% if lvl in stage.available_levels %}
+        <form method="post" action="/trainings/catalog/start" style="margin:0;">
+          <input type="hidden" name="stage_key" value="{{ stage.key }}"/>
+          <input type="hidden" name="level" value="{{ lvl }}"/>
+          <button type="submit" class="btn-level {% if lvl > 1 %}secondary{% endif %}">
+            <i class="fas fa-microphone"></i>
+            {% if stage.levels > 1 %}Уровень {{ lvl }}{% else %}Начать{% endif %}
+          </button>
+        </form>
+        {% else %}
+        <span class="badge-soon">
+          {% if stage.levels > 1 %}Ур. {{ lvl }}{% else %}Скоро{% endif %}
+        </span>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endblock %}

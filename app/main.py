@@ -4,6 +4,7 @@ from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import RedirectResponse, JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.requests import Request
@@ -11,6 +12,7 @@ import logging
 
 from database import Base, engine, SessionLocal
 from routers import auth, chat, chat_trener, dashboard, public, settings, zoom_meetings, webrtc_meetings, admin, admin_prompts, admin_research, tts_proxy, training_plans, crm_integration, teams, team_analytics, sales, analytics, owner_dashboard
+from routers import training_catalog, training_program, train_report
 import sqlite3
 
 
@@ -360,6 +362,174 @@ def update_premium_schema():
         print(f"⚠️ Ошибка при обновлении схемы подписок: {e}")
 
 
+def create_org_capability_schema():
+    """
+    Идемпотентная миграция: создаёт таблицу organizations,
+    добавляет organization_id и product_mode в teams/users.
+    Поддерживает SQLite и PostgreSQL.
+    """
+    try:
+        from sqlalchemy import inspect, text
+        inspector = inspect(engine)
+        database_url = os.getenv("DATABASE_URL", "sqlite:///./app.db")
+        is_postgres = database_url.startswith("postgresql://") or database_url.startswith("postgres://")
+
+        with engine.begin() as conn:
+            # 1. Создаём таблицу organizations (если нет)
+            if "organizations" not in inspector.get_table_names():
+                conn.execute(text("""
+                    CREATE TABLE organizations (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name VARCHAR(255) NOT NULL,
+                        sku VARCHAR(50) NOT NULL DEFAULT 'FULL',
+                        market VARCHAR(20),
+                        data_residency VARCHAR(20),
+                        capabilities_override TEXT,
+                        assigned_by INTEGER REFERENCES users(id),
+                        assigned_at TIMESTAMP,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """) if not is_postgres else text("""
+                    CREATE TABLE IF NOT EXISTS organizations (
+                        id SERIAL PRIMARY KEY,
+                        name VARCHAR(255) NOT NULL,
+                        sku VARCHAR(50) NOT NULL DEFAULT 'FULL',
+                        market VARCHAR(20),
+                        data_residency VARCHAR(20),
+                        capabilities_override TEXT,
+                        assigned_by INTEGER REFERENCES users(id),
+                        assigned_at TIMESTAMP,
+                        created_at TIMESTAMP DEFAULT NOW()
+                    )
+                """))
+                print("✅ Создана таблица organizations")
+
+        # Перечитываем инспектор после возможного создания таблицы
+        inspector = inspect(engine)
+
+        with engine.begin() as conn:
+            # 2. teams.organization_id
+            team_cols = [c["name"] for c in inspector.get_columns("teams")]
+            if "organization_id" not in team_cols:
+                conn.execute(text(
+                    "ALTER TABLE teams ADD COLUMN organization_id INTEGER REFERENCES organizations(id)"
+                ))
+                print("✅ Добавлено поле teams.organization_id")
+
+            # 3. users.organization_id
+            user_cols = [c["name"] for c in inspector.get_columns("users")]
+            if "organization_id" not in user_cols:
+                conn.execute(text(
+                    "ALTER TABLE users ADD COLUMN organization_id INTEGER REFERENCES organizations(id)"
+                ))
+                print("✅ Добавлено поле users.organization_id")
+
+            # 4. users.product_mode (nullable, NULL = full — обратная совместимость)
+            if "product_mode" not in user_cols:
+                conn.execute(text(
+                    "ALTER TABLE users ADD COLUMN product_mode VARCHAR(20)"
+                ))
+                print("✅ Добавлено поле users.product_mode")
+
+            # 5. analysis_training_plans.plan_source (nullable — безопасный ALTER)
+            plan_cols = [c["name"] for c in inspector.get_columns("analysis_training_plans")] \
+                if "analysis_training_plans" in inspector.get_table_names() else []
+            if plan_cols and "plan_source" not in plan_cols:
+                conn.execute(text(
+                    "ALTER TABLE analysis_training_plans ADD COLUMN plan_source VARCHAR(20) DEFAULT 'analysis'"
+                ))
+                print("✅ Добавлено поле analysis_training_plans.plan_source")
+
+        # 6. Таблицы программы тренировок (train-режим)
+        # Перечитываем список таблиц после предыдущих DDL
+        table_names = inspector.get_table_names()
+
+        with engine.begin() as conn2:
+            if "training_programs" not in table_names:
+                if is_postgres:
+                    conn2.execute(text("""
+                        CREATE TABLE IF NOT EXISTS training_programs (
+                            id SERIAL PRIMARY KEY,
+                            team_id INTEGER NOT NULL REFERENCES teams(id),
+                            created_by INTEGER NOT NULL REFERENCES users(id),
+                            name VARCHAR(255) NOT NULL DEFAULT 'Программа тренировок',
+                            start_date TIMESTAMP,
+                            cycle_days INTEGER NOT NULL DEFAULT 0,
+                            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                            created_at TIMESTAMP DEFAULT NOW()
+                        )
+                    """))
+                else:
+                    conn2.execute(text("""
+                        CREATE TABLE IF NOT EXISTS training_programs (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            team_id INTEGER NOT NULL REFERENCES teams(id),
+                            created_by INTEGER NOT NULL REFERENCES users(id),
+                            name VARCHAR(255) NOT NULL DEFAULT 'Программа тренировок',
+                            start_date TIMESTAMP,
+                            cycle_days INTEGER NOT NULL DEFAULT 0,
+                            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        )
+                    """))
+                print("✅ Создана таблица training_programs")
+
+            if "training_program_days" not in table_names:
+                if is_postgres:
+                    conn2.execute(text("""
+                        CREATE TABLE IF NOT EXISTS training_program_days (
+                            id SERIAL PRIMARY KEY,
+                            program_id INTEGER NOT NULL REFERENCES training_programs(id),
+                            day_index INTEGER NOT NULL,
+                            stage_key VARCHAR(50),
+                            training_id INTEGER REFERENCES trainings(id)
+                        )
+                    """))
+                else:
+                    conn2.execute(text("""
+                        CREATE TABLE IF NOT EXISTS training_program_days (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            program_id INTEGER NOT NULL REFERENCES training_programs(id),
+                            day_index INTEGER NOT NULL,
+                            stage_key VARCHAR(50),
+                            training_id INTEGER REFERENCES trainings(id)
+                        )
+                    """))
+                print("✅ Создана таблица training_program_days")
+
+        print("✅ Схема Organization/capabilities обновлена")
+    except Exception as e:
+        print(f"⚠️ Ошибка при обновлении схемы Organization/capabilities: {e}")
+
+
+class BrandMiddleware(BaseHTTPMiddleware):
+    """
+    Определяет бренд по hostname запроса и кладёт в request.state.brand.
+    'train' — train.upstat.pro (и любой из TRAIN_HOSTS).
+    Локально: ?brand=train переключает бренд для разработки.
+    """
+    TRAIN_HOSTS: set[str] = set(
+        h.strip() for h in os.getenv("TRAIN_HOSTS", "train.upstat.pro").split(",") if h.strip()
+    )
+
+    async def dispatch(self, request: Request, call_next):
+        hostname = request.url.hostname or ""
+        brand = "full"
+
+        if any(hostname == h or hostname.startswith("train.") for h in self.TRAIN_HOSTS):
+            brand = "train"
+
+        # Локальный переключатель для разработки (query или cookie)
+        if os.getenv("ALLOW_BRAND_OVERRIDE", "true").lower() == "true":
+            q_brand = request.query_params.get("brand")
+            if q_brand in ("train", "full"):
+                brand = q_brand
+
+        request.state.brand = brand
+        response = await call_next(request)
+        return response
+
+
 def create_app() -> FastAPI:
     """Create and configure a FastAPI application."""
     load_dotenv()
@@ -368,7 +538,16 @@ def create_app() -> FastAPI:
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
 
-    secret_key = os.getenv("SECRET_KEY", "dev_secret_change_me")
+    secret_key = os.getenv("SECRET_KEY")
+    if not secret_key:
+        raise RuntimeError(
+            "SECRET_KEY не задан. Укажите переменную окружения SECRET_KEY "
+            "(сгенерируйте: python -c \"import secrets; print(secrets.token_urlsafe(32))\")"
+        )
+    if len(secret_key) < 32:
+        raise RuntimeError(
+            f"SECRET_KEY слишком короткий ({len(secret_key)} байт). Минимум — 32 символа."
+        )
 
     # Миграции через Alembic лучше, но для MVP создадим таблицы автоматически
     Base.metadata.create_all(bind=engine)
@@ -382,6 +561,9 @@ def create_app() -> FastAPI:
     # Обновляем схему подписок/лимитов
     update_premium_schema()
 
+    # Создаём схему Organization/SKU/capabilities
+    create_org_capability_schema()
+
     # Синхронизируем справочник пунктов чеклистов для Win Probability
     try:
         from services.checklist_registry_service import sync_checklist_definitions
@@ -394,15 +576,38 @@ def create_app() -> FastAPI:
         logger.warning(f"Ошибка синхронизации справочника чеклистов: {e}")
 
     app = FastAPI(title="SaaS MVP (FastAPI)")
+
+    # Порядок add_middleware: последний добавленный = первый на входящий запрос.
+    # SessionMiddleware должен быть самым внешним, чтобы request.session доступен ниже.
+    https_only = os.getenv("HTTPS_ONLY", "false").lower() == "true"
+
+    from security import SecurityHeaders as _SH
+
+    class _SecurityHeadersMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            response = await call_next(request)
+            for header, value in _SH.get_security_headers().items():
+                response.headers.setdefault(header, value)
+            return response
+
+    app.add_middleware(_SecurityHeadersMiddleware)
+
+    from middleware.rate_limit import RateLimitMiddleware
+    app.add_middleware(RateLimitMiddleware)
+
+    app.add_middleware(BrandMiddleware)
+
     app.add_middleware(
         SessionMiddleware,
         secret_key=secret_key,
-        https_only=False,  # Изменено для локальной разработки
+        https_only=https_only,
         same_site="lax",
     )
 
     # templates + partials
     templates = Jinja2Templates(directory="templates")
+    # Удобная глобальная функция: в шаблонах {{ brand }} = request.state.brand
+    templates.env.globals["get_brand"] = lambda req: getattr(req.state, "brand", "full")
     app.state.templates = templates
 
     app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -426,6 +631,9 @@ def create_app() -> FastAPI:
     app.include_router(sales.router)  # Роутер панели продаж (Sale Manager)
     app.include_router(analytics.router)  # Роутер аналитики звонков (ИИ-ассистент для РОПа)
     app.include_router(owner_dashboard.router)  # Роутер экрана владельца (Owner Command Center)
+    app.include_router(training_catalog.router)  # Каталог тренировок (train-режим)
+    app.include_router(training_program.router)  # Программы тренировок для РОПа
+    app.include_router(train_report.router)       # Отчёт РОПу по тренировкам (train-режим)
     
     # Добавляем роутер уведомлений, прогресса и производительности
     from routers import notifications, progress, performance

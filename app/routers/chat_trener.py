@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models import Conversation, Message, Attachment
-from deps import require_user
+from deps import require_user, require_capability
 from services.pipeline_trener import run_pipeline_trener, run_pipeline_from_text_trener, run_pipeline_from_raw_text_trener
 from services.image_pipeline import run_pipeline_from_images_trener
 from services.error_handler import ErrorHandler, ValidationError, FileProcessingError
@@ -20,7 +20,7 @@ from datetime import datetime
 from fastapi.responses import StreamingResponse
 
 
-router = APIRouter(tags=["chat_trener"])
+router = APIRouter(tags=["chat_trener"], dependencies=[Depends(require_capability("call_analysis"))])
 UPLOAD_DIR = os.path.abspath("uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 

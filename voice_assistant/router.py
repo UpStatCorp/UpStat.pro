@@ -42,7 +42,12 @@ except ImportError as e:
 logger = logging.getLogger(__name__)
 
 # Создаем роутер (вместо app)
-router = APIRouter(prefix="/voice-assistant", tags=["Voice Assistant"])
+from deps import require_capability
+router = APIRouter(
+    prefix="/voice-assistant",
+    tags=["Voice Assistant"],
+    dependencies=[Depends(require_capability("voice_training"))],
+)
 
 # Инициализируем компоненты для старого endpoint (для обратной совместимости)
 if VAD and STTEngine and GPTDialogue and TTSEngine:

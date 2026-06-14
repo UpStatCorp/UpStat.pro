@@ -1,0 +1,20 @@
+flowchart TB
+    subgraph INPUT["📞 ВХОД"]
+        A1[Запись звонка / текст]
+    end
+    subgraph ANALYSIS["📋 АНАЛИЗ"]
+        B1[Транскрибация]
+        B2[Чек-листы 5 этапов]
+        B3[Отчёт]
+    end
+    subgraph PASSPORT["📊 ПАСПОРТ"]
+        C1[GPT: 5 баллов]
+        C2[contact needs presentation objections closing]
+    end
+    subgraph TRAINING["🎯 ТРЕНИРОВКА"]
+        D1[Слабый этап]
+        D2[1 тренировка]
+        D3[Голос с ИИ]
+        D4{≥70?}
+    end
+    A1 --> B1 --> B2 --> B3 --> C1 --> C2 --> D1 --> D2 --> D3 --> D4

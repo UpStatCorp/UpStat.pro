@@ -144,7 +144,9 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     def _get_client_identifier(self, request: Request) -> str:
         """Получить уникальный идентификатор клиента"""
         # Для авторизованных пользователей используем user_id
-        user_id = request.session.get("user_id")
+        user_id = None
+        if "session" in request.scope:
+            user_id = request.session.get("user_id")
         if user_id:
             return f"user_{user_id}"
         
@@ -181,7 +183,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 return "api", max_requests, window
         
         # Для авторизованных пользователей - более мягкий лимит
-        if request.session.get("user_id"):
+        if "session" in request.scope and request.session.get("user_id"):
             max_requests, window = self.rules["authenticated"]
             return "authenticated", max_requests, window
         

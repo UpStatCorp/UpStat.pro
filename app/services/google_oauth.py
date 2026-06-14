@@ -84,7 +84,14 @@ class GoogleOAuthService:
         email = google_user_info.get("email", "").lower().strip()
         name = google_user_info.get("name", "").strip()
         avatar = google_user_info.get("picture")
-        
+
+        # Блокируем аккаунты с неподтверждённым email — защита от угона
+        if not google_user_info.get("verified_email", False):
+            raise HTTPException(
+                status_code=400,
+                detail="Google аккаунт с неподтверждённым email не поддерживается"
+            )
+
         if not google_id or not email:
             raise HTTPException(
                 status_code=400,
@@ -116,14 +123,16 @@ class GoogleOAuthService:
             db.commit()
             return user, False
         
-        # Создаем нового пользователя
+        # Новый пользователь через Google OAuth → стартует с FREE (требует активации)
+        # product_mode="free" означает «нет платных функций до назначения Sale Manager»
         user = User(
             email=email,
             name=name,
             google_id=google_id,
             is_oauth_user=True,
             avatar=avatar,
-            role="user"
+            role="user",
+            product_mode="free",
         )
         
         db.add(user)

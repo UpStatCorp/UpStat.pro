@@ -1,0 +1,109 @@
+{% extends "train/_layout.html" %}
+
+{% block title %}Программа тренировок — {{ team.name }}{% endblock %}
+{% block page_title %}Программа тренировок: {{ team.name }}{% endblock %}
+
+{% block styles %}
+.program-form{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:28px;box-shadow:var(--shadow);}
+.day-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);}
+.day-row:last-child{border-bottom:none;}
+.day-num{width:32px;height:32px;border-radius:50%;background:var(--primary);color:#fff;font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.day-row select{flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg);}
+.add-day-btn{
+  display:inline-flex;align-items:center;gap:6px;padding:10px 18px;
+  background:transparent;border:1px dashed var(--border);color:var(--muted);
+  border-radius:10px;font-size:14px;cursor:pointer;margin-top:12px;
+  transition:all .2s;
+}
+.add-day-btn:hover{border-color:var(--primary);color:var(--primary);}
+.save-btn{
+  padding:12px 28px;background:var(--primary);color:#fff;border:none;
+  border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;margin-top:20px;
+}
+.save-btn:hover{background:var(--primary-hover);}
+{% endblock %}
+
+{% block content %}
+<p style="color:var(--muted);font-size:14px;margin:0 0 20px;">
+  Назначьте последовательность этапов. Менеджеры увидят «тренировку на сегодня» по расписанию.
+</p>
+
+<div class="program-form">
+  <form method="post" action="/teams/{{ team.id }}/program" id="program-form">
+    <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:20px;">
+      <div>
+        <label style="font-size:12px;color:var(--muted);font-weight:600;display:block;margin-bottom:4px;">НАЗВАНИЕ ПРОГРАММЫ</label>
+        <input type="text" name="name" value="{{ program.name if program else 'Программа тренировок' }}"
+               style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;min-width:240px;background:var(--bg);">
+      </div>
+      <div>
+        <label style="font-size:12px;color:var(--muted);font-weight:600;display:block;margin-bottom:4px;">ЦИКЛ (дней)</label>
+        <input type="number" name="cycle_days" min="1" max="30"
+               value="{{ program.cycle_days if program else 5 }}"
+               style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;width:80px;background:var(--bg);">
+      </div>
+    </div>
+
+    <div id="days-container">
+      {% if program and program.days %}
+        {% for day in program.days %}
+        <div class="day-row">
+          <div class="day-num">{{ loop.index }}</div>
+          <select name="stage_key_{{ loop.index }}">
+            {% for stage in stages %}
+            <option value="{{ stage.key }}" {% if day.stage_key == stage.key %}selected{% endif %}>
+              {{ stage.label }}
+            </option>
+            {% endfor %}
+          </select>
+          <button type="button" onclick="this.closest('.day-row').remove();reindexDays()"
+                  style="background:transparent;border:none;color:#ef4444;cursor:pointer;font-size:18px;" title="Удалить">×</button>
+        </div>
+        {% endfor %}
+      {% else %}
+        {% for stage in stages %}
+        <div class="day-row">
+          <div class="day-num">{{ loop.index }}</div>
+          <select name="stage_key_{{ loop.index }}">
+            {% for s in stages %}
+            <option value="{{ s.key }}" {% if s.key == stage.key %}selected{% endif %}>{{ s.label }}</option>
+            {% endfor %}
+          </select>
+          <button type="button" onclick="this.closest('.day-row').remove();reindexDays()"
+                  style="background:transparent;border:none;color:#ef4444;cursor:pointer;font-size:18px;" title="Удалить">×</button>
+        </div>
+        {% endfor %}
+      {% endif %}
+    </div>
+
+    <button type="button" class="add-day-btn" onclick="addDay()">
+      <i class="fas fa-plus"></i> Добавить день
+    </button>
+
+    <br/>
+    <button type="submit" class="save-btn"><i class="fas fa-save"></i> Сохранить программу</button>
+  </form>
+</div>
+
+<script>
+const STAGES = {{ stages | tojson }};
+function addDay(){
+  const container = document.getElementById('days-container');
+  const idx = container.querySelectorAll('.day-row').length + 1;
+  const options = STAGES.map(s=>`<option value="${s.key}">${s.label}</option>`).join('');
+  const row = document.createElement('div');
+  row.className = 'day-row';
+  row.innerHTML = `<div class="day-num">${idx}</div>
+    <select name="stage_key_${idx}">${options}</select>
+    <button type="button" onclick="this.closest('.day-row').remove();reindexDays()"
+      style="background:transparent;border:none;color:#ef4444;cursor:pointer;font-size:18px">×</button>`;
+  container.appendChild(row);
+}
+function reindexDays(){
+  document.querySelectorAll('#days-container .day-row').forEach((row,i)=>{
+    row.querySelector('.day-num').textContent = i+1;
+    row.querySelector('select').name = `stage_key_${i+1}`;
+  });
+}
+</script>
+{% endblock %}

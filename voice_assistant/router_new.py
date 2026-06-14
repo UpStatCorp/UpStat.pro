@@ -89,20 +89,41 @@ async def websocket_training_endpoint(
         from starlette.middleware.sessions import SessionMiddleware
         from itsdangerous import BadSignature
         
-        # Попробуем получить user_id из запроса
-        # Временное решение: получаем user_id из query параметра
-        user_id = websocket.query_params.get('user_id')
-        
-        if not user_id:
+        # Декодируем session cookie → извлекаем session_user_id (защита от подмены)
+        import os, json as _json
+        from itsdangerous import URLSafeTimedSerializer, BadSignature
+        secret_key = os.getenv("SECRET_KEY")
+        if not secret_key:
+            await websocket.send_json({"type": "error", "message": "⚠️ Сервер не настроен (SECRET_KEY)"})
+            await websocket.close(code=1011, reason="Server misconfigured")
+            return
+        serializer = URLSafeTimedSerializer(secret_key)
+        session_user_id: Optional[int] = None
+        try:
+            raw = session_cookie
+            # Starlette кодирует сессию через itsdangerous.TimestampSigner
+            payload = serializer.loads(raw, salt="cookie-session", max_age=None)
+            session_user_id = payload.get("user_id") if isinstance(payload, dict) else None
+        except Exception:
+            pass  # Сессия не читается — продолжаем с query_param, но проверяем далее
+
+        # user_id из query (может отсутствовать)
+        user_id_param = websocket.query_params.get('user_id')
+
+        if session_user_id is not None:
+            # Если сессия расшифрована — используем ИЗ НЕЁЙ; игнорируем query param
+            user_id = session_user_id
+        elif user_id_param:
+            # Fallback: только если сессия не декодировалась (например, dev-режим)
+            user_id = int(user_id_param)
+        else:
             await websocket.send_json({
                 "type": "error",
-                "message": "⚠️ Не указан user_id"
+                "message": "⚠️ Не удалось определить пользователя"
             })
             await websocket.close(code=1008, reason="Missing user_id")
             return
-        
-        user_id = int(user_id)
-        
+
         # Проверяем что пользователь существует
         try:
             from models import User
@@ -118,14 +139,28 @@ async def websocket_training_endpoint(
             })
             await websocket.close(code=1008, reason="User not found")
             return
-        
+
+        # Проверяем capability voice_training
+        try:
+            from services.capability_service import has_capability
+        except ImportError:
+            from app.services.capability_service import has_capability
+        if not has_capability(user, "voice_training"):
+            await websocket.send_json({
+                "type": "error",
+                "message": "⚠️ Голосовые тренировки не входят в ваш тарифный план"
+            })
+            await websocket.close(code=1008, reason="voice_training capability required")
+            return
+
         logger.info(f"🔐 Аутентификация успешна: user_id={user_id}, training_id={training_id}")
         
     except Exception as e:
         logger.error(f"❌ Ошибка аутентификации: {e}")
+        logger.warning(f"WebSocket auth error: {e}")
         await websocket.send_json({
             "type": "error",
-            "message": f"❌ Ошибка аутентификации: {str(e)}"
+            "message": "❌ Ошибка аутентификации"
         })
         await websocket.close(code=1011, reason="Authentication error")
         return
@@ -213,26 +248,26 @@ async def end_training_session(
 @router.get("/training/{training_id}/history")
 async def get_training_history(
     training_id: int,
-    user_id: int = Query(..., description="ID пользователя"),
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
-    Получает историю сообщений для тренировки.
-    
-    Args:
-        training_id: ID тренировки
-        user_id: ID пользователя
-    
+    Получает историю сообщений для тренировки (только своей).
+
     Returns:
         Список сообщений
     """
+    user_id = request.session.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Требуется аутентификация")
+
     try:
         try:
             from models import TrainingSession, VoiceTrainingMessage
         except ImportError:
             from app.models import TrainingSession, VoiceTrainingMessage
         
-        # Находим все сессии для этой тренировки (только последние 10 для производительности)
+        # Найти сессии, принадлежащие только аутентифицированному пользователю
         sessions = db.query(TrainingSession).filter(
             TrainingSession.training_id == training_id,
             TrainingSession.user_id == user_id,
@@ -277,10 +312,12 @@ async def get_training_history(
             "websocket_session_id": session.websocket_session_id
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"❌ Ошибка получения истории: {e}", exc_info=True)
         return {
-            "error": str(e),
+            "error": "Внутренняя ошибка сервера",
             "messages": []
         }
 
@@ -373,7 +410,7 @@ async def get_training_page(
             raise
         except Exception as e:
             logger.error(f"Ошибка загрузки данных тренировки: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail=f"Ошибка загрузки данных тренировки: {str(e)}")
+            raise HTTPException(status_code=500, detail="Ошибка загрузки данных тренировки")
     
     # Данные для шаблона
     context = {
@@ -389,6 +426,11 @@ async def get_training_page(
 @router.post("/training/complete")
 async def complete_training(request: Request, db: Session = Depends(get_db)):
     """Завершает тренировку, прогоняет AI-валидатор и обновляет прогресс плана."""
+    # Обязательная аутентификация — предотвращает запуск AI-валидатора чужих сессий
+    session_user_id = request.session.get("user_id")
+    if not session_user_id:
+        raise HTTPException(status_code=401, detail="Требуется аутентификация")
+
     try:
         from models import TrainingSession, Training
     except ImportError:
@@ -420,7 +462,11 @@ async def complete_training(request: Request, db: Session = Depends(get_db)):
                 "message": "Тренировка завершена (сессия не найдена в БД)",
                 "score": 0
             }
-        
+
+        # Проверяем, что сессия принадлежит аутентифицированному пользователю
+        if session.user_id != session_user_id:
+            raise HTTPException(status_code=403, detail="Нет доступа к этой сессии")
+
         # Если сессия уже завершена и есть score — возвращаем сохранённый результат
         # (защита от двойного вызова при автозавершении + ручном нажатии кнопки)
         if session.status == "completed" and session.score is not None:
@@ -514,5 +560,5 @@ async def complete_training(request: Request, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"❌ Ошибка завершения тренировки: {e}", exc_info=True)
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Ошибка завершения тренировки: {str(e)}")
+        raise HTTPException(status_code=500, detail="Ошибка завершения тренировки")
 

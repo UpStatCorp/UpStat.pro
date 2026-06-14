@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models import Conversation, Message, Attachment, CRMRecording, CRMIntegration
-from deps import require_user
+from deps import require_user, require_capability
 from services.pipeline import run_pipeline, run_pipeline_from_text, run_pipeline_from_raw_text
 from services.image_pipeline import run_pipeline_from_images
 from services.error_handler import ErrorHandler, ValidationError, FileProcessingError
@@ -23,7 +23,7 @@ from fastapi.responses import StreamingResponse
 logger = logging.getLogger(__name__)
 
 
-router = APIRouter(tags=["chat"])
+router = APIRouter(tags=["chat"], dependencies=[Depends(require_capability("call_analysis"))])
 UPLOAD_DIR = os.path.abspath("uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
@@ -231,7 +231,7 @@ async def send_message(
             raise
         except Exception as e:
             logger.error(f"Ошибка при определении целевого пользователя: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail=f"Ошибка обработки запроса: {str(e)}")
+            raise HTTPException(status_code=500, detail="Ошибка обработки запроса")
         
         # Если менеджер загружает для участника, нужны два диалога:
         # 1. Диалог менеджера - для отображения прогресса
@@ -263,7 +263,7 @@ async def send_message(
         except Exception as e:
             logger.error(f"Ошибка при создании/получении диалога: {e}", exc_info=True)
             db.rollback()
-            raise HTTPException(status_code=500, detail=f"Ошибка создания диалога: {str(e)}")
+            raise HTTPException(status_code=500, detail="Ошибка создания диалога")
 
         text_clean = (text or "").strip()
 

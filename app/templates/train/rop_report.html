@@ -1,0 +1,129 @@
+{% extends "train/_layout.html" %}
+
+{% block title %}Отчёт команды — {{ team.name }}{% endblock %}
+{% block page_title %}Отчёт команды: {{ team.name }}{% endblock %}
+
+{% block styles %}
+.report-table{width:100%;border-collapse:collapse;}
+.report-table th{
+  text-align:left;padding:10px 14px;font-size:11px;font-weight:700;
+  color:var(--muted);text-transform:uppercase;letter-spacing:.5px;
+  border-bottom:2px solid var(--border);background:var(--surface-hover);
+}
+.report-table td{
+  padding:12px 14px;border-bottom:1px solid var(--border);font-size:14px;
+  vertical-align:middle;
+}
+.report-table tr:hover td{background:var(--surface-hover);}
+.trained-badge{
+  display:inline-flex;align-items:center;gap:5px;padding:4px 10px;
+  border-radius:20px;font-size:12px;font-weight:600;
+}
+.trained-yes{background:#d1fae5;color:#059669;}
+.trained-no{background:#f1f5f9;color:#94a3b8;}
+.score-pill{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:40px;height:40px;border-radius:50%;font-weight:800;font-size:13px;
+}
+.score-high{background:#d1fae5;color:#059669;}
+.score-mid{background:#fef3c7;color:#d97706;}
+.score-low{background:#fee2e2;color:#dc2626;}
+.score-none{background:#f1f5f9;color:#94a3b8;}
+.streak-flame{color:#f59e0b;font-size:14px;}
+.summary-bar{
+  display:flex;gap:20px;flex-wrap:wrap;margin-bottom:24px;
+}
+.sum-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:10px;
+  padding:16px 20px;flex:1;min-width:130px;
+}
+.sum-card .val{font-size:24px;font-weight:800;color:var(--primary);}
+.sum-card .lbl{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;margin-top:2px;}
+{% endblock %}
+
+{% block content %}
+<p style="color:var(--muted);font-size:13px;margin:0 0 20px;">
+  Данные за <strong>{{ today.strftime('%d.%m.%Y') }}</strong> · Обновляется автоматически
+</p>
+
+<!-- Сводка -->
+{% set trained_today = report_rows | selectattr('trained_today') | list | length %}
+{% set avg_streak = (report_rows | map(attribute='streak') | sum) / (report_rows | length) if report_rows else 0 %}
+<div class="summary-bar">
+  <div class="sum-card">
+    <div class="val">{{ trained_today }}</div>
+    <div class="lbl">Тренировались сегодня</div>
+  </div>
+  <div class="sum-card">
+    <div class="val">{{ report_rows | length }}</div>
+    <div class="lbl">Всего в команде</div>
+  </div>
+  <div class="sum-card">
+    <div class="val">{{ "%.0f"|format(avg_streak) }}</div>
+    <div class="lbl">Средний стрик (дней)</div>
+  </div>
+</div>
+
+<!-- Таблица -->
+<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);">
+<table class="report-table">
+  <thead>
+    <tr>
+      <th>Менеджер</th>
+      <th>Сегодня</th>
+      <th>Оценка (сегодня)</th>
+      <th>Ср. оценка</th>
+      <th>Стрик</th>
+      <th>Всего сессий</th>
+      <th>Последний этап</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in report_rows %}
+    <tr>
+      <td>
+        <div style="font-weight:600;">{{ row.user.name }}</div>
+        <div style="font-size:12px;color:var(--muted);">{{ row.user.email }}</div>
+      </td>
+      <td>
+        {% if row.trained_today %}
+        <span class="trained-badge trained-yes">
+          <i class="fas fa-check-circle"></i>
+          Да ({{ row.today_sessions_count }}× )
+        </span>
+        {% else %}
+        <span class="trained-badge trained-no">
+          <i class="fas fa-clock"></i> Нет
+        </span>
+        {% endif %}
+      </td>
+      <td>
+        {% if row.today_score is not none %}
+        <span class="score-pill {% if row.today_score >= 75 %}score-high{% elif row.today_score >= 50 %}score-mid{% else %}score-low{% endif %}">
+          {{ "%.0f"|format(row.today_score) }}
+        </span>
+        {% else %}
+        <span class="score-pill score-none">—</span>
+        {% endif %}
+      </td>
+      <td>
+        {% if row.avg_score is not none %}
+        <strong>{{ "%.0f"|format(row.avg_score) }}</strong>
+        {% else %}—{% endif %}
+      </td>
+      <td>
+        {% if row.streak > 0 %}
+        <span class="streak-flame"><i class="fas fa-fire"></i></span>
+        <strong>{{ row.streak }}</strong>д
+        {% else %}
+        <span style="color:var(--muted);">0</span>
+        {% endif %}
+      </td>
+      <td>{{ row.total_sessions }}</td>
+      <td style="font-size:13px;color:var(--muted);">{{ row.last_stage }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

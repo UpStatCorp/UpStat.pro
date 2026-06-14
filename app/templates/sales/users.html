@@ -866,17 +866,42 @@
                   </div>
                 </td>
                 <td>
-                  <form method="post" action="/sales/toggle-premium/{{ u.id }}" style="margin: 0;">
-                    {% if u.is_premium %}
-                    <button type="submit" class="btn-action btn-revoke" onclick="return confirm('Убрать безлимит у {{ u.name }}?')">
-                      <i class="fas fa-times"></i> Убрать безлимит
-                    </button>
-                    {% else %}
-                    <button type="submit" class="btn-action btn-grant" onclick="return confirm('Дать безлимит для {{ u.name }}?')">
-                      <i class="fas fa-crown"></i> Дать безлимит
-                    </button>
+                  <div style="display:flex;flex-direction:column;gap:6px;">
+                    {# ── Назначить продукт (SKU) ── #}
+                    <form method="post" action="/sales/assign-product/{{ u.id }}" style="margin:0;display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
+                      <select name="sku" style="font-size:12px;padding:3px 6px;border-radius:6px;border:1px solid #ccc;">
+                        <option value="FULL" {% if u.product_mode == 'full' or not u.product_mode %}selected{% endif %}>Full</option>
+                        <option value="TRAIN_RU" {% if u.product_mode == 'train' and u.organization and u.organization.sku == 'TRAIN_RU' %}selected{% endif %}>Train RU</option>
+                        <option value="TRAIN_GLOBAL" {% if u.product_mode == 'train' and u.organization and u.organization.sku == 'TRAIN_GLOBAL' %}selected{% endif %}>Train Global</option>
+                      </select>
+                      <button type="submit" class="btn-action" style="font-size:11px;padding:4px 8px;background:#4f46e5;color:#fff;border:none;border-radius:6px;cursor:pointer;">
+                        <i class="fas fa-tag"></i> Назначить
+                      </button>
+                    </form>
+                    {# ── Текущий продукт ── #}
+                    {% if u.product_mode == 'train' %}
+                    <span style="font-size:11px;color:#059669;font-weight:600;">
+                      <i class="fas fa-dumbbell"></i>
+                      Train {% if u.organization %}({{ u.organization.sku }}){% endif %}
+                    </span>
+                    {% elif u.product_mode == 'full' or not u.product_mode %}
+                    <span style="font-size:11px;color:#6366f1;font-weight:600;">
+                      <i class="fas fa-chart-bar"></i> Full
+                    </span>
                     {% endif %}
-                  </form>
+                    {# ── Старый безлимит для Full ── #}
+                    <form method="post" action="/sales/toggle-premium/{{ u.id }}" style="margin:0;">
+                      {% if u.is_premium %}
+                      <button type="submit" class="btn-action btn-revoke" style="font-size:11px;" onclick="return confirm('Убрать безлимит у {{ u.name }}?')">
+                        <i class="fas fa-times"></i> Убрать безлимит
+                      </button>
+                      {% else %}
+                      <button type="submit" class="btn-action btn-grant" style="font-size:11px;" onclick="return confirm('Дать безлимит для {{ u.name }}?')">
+                        <i class="fas fa-crown"></i> Дать безлимит
+                      </button>
+                      {% endif %}
+                    </form>
+                  </div>
                 </td>
               </tr>
               {% endfor %}

@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Request, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy.orm import Session
 from database import get_db
-from deps import require_user
+from deps import require_user, require_capability
 from models import (
     Team, TeamMember, TrainingErrorCorrection,
     SellerPassport, PassportSnapshot, Training,
@@ -22,7 +22,7 @@ STAGE_LABELS = {
     "closing": "Завершение сделки",
 }
 
-router = APIRouter(tags=["team_analytics"])
+router = APIRouter(tags=["team_analytics"], dependencies=[Depends(require_capability("team_analytics"))])
 
 
 @router.get("/teams/{team_id}/analytics", response_class=HTMLResponse)

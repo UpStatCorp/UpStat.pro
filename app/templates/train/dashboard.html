@@ -1,0 +1,154 @@
+{% extends "train/_layout.html" %}
+
+{% block title %}Главная — UpStat Train{% endblock %}
+{% block page_title %}Тренировки{% endblock %}
+
+{% block styles %}
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:28px;}
+.stat-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:20px 24px;display:flex;flex-direction:column;gap:6px;
+  box-shadow:var(--shadow);
+}
+.stat-card .label{font-size:12px;color:var(--muted);font-weight:500;text-transform:uppercase;letter-spacing:.5px;}
+.stat-card .value{font-size:32px;font-weight:800;color:var(--primary);}
+.stat-card .sub{font-size:12px;color:var(--muted);}
+
+.streak-badge{
+  display:inline-flex;align-items:center;gap:6px;
+  background:linear-gradient(135deg,#f59e0b,#f97316);
+  color:#fff;padding:4px 12px;border-radius:20px;font-size:13px;font-weight:700;
+}
+
+.today-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:24px;box-shadow:var(--shadow);margin-bottom:24px;
+}
+.today-card h2{margin:0 0 16px;font-size:17px;font-weight:700;display:flex;align-items:center;gap:8px;}
+.today-card .empty{color:var(--muted);font-size:14px;}
+
+.training-item{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:14px 16px;border-radius:10px;background:var(--surface-hover);
+  border:1px solid var(--border);margin-bottom:10px;
+}
+.training-item .info{flex:1;}
+.training-item .stage-name{font-weight:600;font-size:14px;}
+.training-item .meta{font-size:12px;color:var(--muted);margin-top:2px;}
+.btn-start{
+  padding:8px 20px;background:var(--primary);color:#fff;border:none;
+  border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;
+  text-decoration:none;display:inline-flex;align-items:center;gap:6px;transition:background .2s;
+}
+.btn-start:hover{background:var(--primary-hover);}
+.btn-catalog{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:10px 20px;background:transparent;border:1px solid var(--primary);
+  color:var(--primary);border-radius:10px;font-size:14px;font-weight:600;
+  text-decoration:none;transition:all .2s;
+}
+.btn-catalog:hover{background:var(--primary);color:#fff;}
+
+.recent-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:24px;box-shadow:var(--shadow);
+}
+.recent-card h2{margin:0 0 16px;font-size:17px;font-weight:700;}
+.session-row{
+  display:flex;align-items:center;gap:12px;padding:10px 0;
+  border-bottom:1px solid var(--border);
+}
+.session-row:last-child{border-bottom:none;}
+.session-score{
+  width:42px;height:42px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-weight:800;font-size:14px;flex-shrink:0;
+}
+.score-high{background:#d1fae5;color:#059669;}
+.score-mid{background:#fef3c7;color:#d97706;}
+.score-low{background:#fee2e2;color:#dc2626;}
+.session-info{flex:1;}
+.session-info .sname{font-weight:600;font-size:13px;}
+.session-info .sdate{font-size:11px;color:var(--muted);}
+{% endblock %}
+
+{% block content %}
+<!-- Статистика -->
+<div class="stats-grid">
+  <div class="stat-card">
+    <span class="label">Стрик</span>
+    <span class="value">
+      {{ streak }}
+      {% if streak > 0 %}
+      <span class="streak-badge"><i class="fas fa-fire"></i> {{ streak }}д</span>
+      {% endif %}
+    </span>
+    <span class="sub">дней подряд</span>
+  </div>
+  <div class="stat-card">
+    <span class="label">Всего сессий</span>
+    <span class="value">{{ total_sessions }}</span>
+    <span class="sub">за всё время</span>
+  </div>
+  <div class="stat-card">
+    <span class="label">Ср. оценка</span>
+    <span class="value">{{ "%.0f"|format(avg_score) if avg_score else "—" }}</span>
+    <span class="sub">из 100</span>
+  </div>
+  <div class="stat-card">
+    <span class="label">Этапов пройдено</span>
+    <span class="value">{{ completed_stages }}</span>
+    <span class="sub">тренировок завершено</span>
+  </div>
+</div>
+
+<!-- Тренировка на сегодня / программа -->
+<div class="today-card">
+  <h2><i class="fas fa-calendar-day" style="color:var(--primary)"></i> Тренировка на сегодня</h2>
+  {% if today_training %}
+  <div class="training-item">
+    <div class="info">
+      <div class="stage-name">{{ today_training.stage_label }}</div>
+      <div class="meta">Этап {{ today_training.stage_num }} · По программе</div>
+    </div>
+    <a href="/voice-training/start/{{ today_training.training_id }}" class="btn-start">
+      <i class="fas fa-microphone"></i> Начать
+    </a>
+  </div>
+  {% else %}
+  <p class="empty">
+    Программа не назначена или сегодня выходной.
+    Можете выбрать тренировку из <a href="/trainings/catalog">каталога</a>.
+  </p>
+  {% endif %}
+</div>
+
+<!-- Каталог -->
+<div class="today-card" style="display:flex;align-items:center;justify-content:space-between;gap:16px;">
+  <div>
+    <h2 style="margin:0"><i class="fas fa-book-open" style="color:var(--accent)"></i> Каталог тренировок</h2>
+    <p style="margin:6px 0 0;font-size:14px;color:var(--muted);">Выберите этап продаж и начните тренировку в любое время</p>
+  </div>
+  <a href="/trainings/catalog" class="btn-catalog"><i class="fas fa-arrow-right"></i> Открыть каталог</a>
+</div>
+
+<!-- Последние сессии -->
+<div class="recent-card">
+  <h2><i class="fas fa-history" style="color:var(--muted)"></i> Последние тренировки</h2>
+  {% if recent_sessions %}
+  {% for sess in recent_sessions %}
+  <div class="session-row">
+    <div class="session-score {% if sess.score >= 75 %}score-high{% elif sess.score >= 50 %}score-mid{% else %}score-low{% endif %}">
+      {{ sess.score|int if sess.score else '?' }}
+    </div>
+    <div class="session-info">
+      <div class="sname">{{ sess.stage_label or 'Тренировка' }}</div>
+      <div class="sdate">{{ sess.completed_at.strftime('%d.%m.%Y %H:%M') if sess.completed_at else '' }}</div>
+    </div>
+  </div>
+  {% endfor %}
+  {% else %}
+  <p style="color:var(--muted);font-size:14px;">Пока нет завершённых тренировок. Начните прямо сейчас!</p>
+  {% endif %}
+</div>
+{% endblock %}

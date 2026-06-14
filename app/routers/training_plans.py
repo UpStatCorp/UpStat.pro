@@ -113,7 +113,7 @@ async def get_training_plan(
             )
         except Exception as e:
             logger.error(f"Ошибка создания плана: {e}", exc_info=True)
-            raise HTTPException(status_code=500, detail=f"Не удалось создать план тренировок: {str(e)}")
+            raise HTTPException(status_code=500, detail="Не удалось создать план тренировок")
     
     # Загружаем тренировки
     trainings = db.query(Training).filter_by(

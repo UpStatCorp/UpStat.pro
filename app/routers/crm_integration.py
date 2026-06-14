@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import desc, func, and_
 
 from database import get_db, SessionLocal
-from deps import require_user
+from deps import require_user, require_capability
 from models import (
     User, CRMIntegration, CRMRecording, Conversation, Message, Attachment,
     AnalysisTrainingPlan, CRMManagerMapping, TeamMember,
@@ -28,7 +28,7 @@ from services.training_plan_service import TrainingPlanService
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["crm"])
+router = APIRouter(tags=["crm"], dependencies=[Depends(require_capability("crm"))])
 
 AMOCRM_CLIENT_ID = os.getenv("AMOCRM_CLIENT_ID", "")
 AMOCRM_CLIENT_SECRET = os.getenv("AMOCRM_CLIENT_SECRET", "")
@@ -165,13 +165,23 @@ async def connect_bitrix24_webhook(request: Request, db: Session = Depends(get_d
 
     if not webhook_url:
         raise HTTPException(400, "URL вебхука обязателен")
-    if not webhook_url.startswith("http") or "bitrix24" not in webhook_url:
-        raise HTTPException(400, "Некорректный URL вебхука Bitrix24")
 
+    # SSRF-защита: проверяем схему и домен по строгому allowlist Bitrix24
+    import re as _re
+    from urllib.parse import urlparse as _urlparse
     try:
-        domain = webhook_url.split("//")[1].split("/")[0]
-    except Exception:
-        raise HTTPException(400, "Не удалось извлечь домен из URL")
+        _parsed = _urlparse(webhook_url)
+        if _parsed.scheme not in ("https", "http"):
+            raise ValueError("bad scheme")
+        _host = (_parsed.hostname or "").lower()
+        _b24_pattern = _re.compile(
+            r"^[a-z0-9][a-z0-9\-]*\.bitrix24\.(ru|com|eu|de|fr|es|pl|in|ua|by|kz|ltd|site)$"
+        )
+        if not _b24_pattern.match(_host):
+            raise ValueError("not a bitrix24 domain")
+        domain = _host
+    except ValueError as _ve:
+        raise HTTPException(400, "Некорректный URL вебхука Bitrix24: должен быть домен вида `*.bitrix24.ru/.com`")
 
     try:
         async with httpx.AsyncClient() as client:
@@ -260,7 +270,8 @@ async def oauth_callback(
         db.commit()
         return RedirectResponse("/crm?success=connected", status_code=302)
     except Exception as e:
-        return HTMLResponse(f'<html><body><h2>Ошибка подключения</h2><p>{e}</p><a href="/crm">Назад</a></body></html>')
+        logger.error(f"Ошибка OAuth CRM callback: {e}", exc_info=True)
+        return HTMLResponse('<html><body><h2>Ошибка подключения</h2><p>Попробуйте ещё раз или обратитесь в поддержку.</p><a href="/crm">Назад</a></body></html>')
 
 
 # ── Синхронизация ──────────────────────────────────────
@@ -710,7 +721,7 @@ async def batch_analyze_task(batch_id: str, user_id: int):
 
 # ── Webhook (Вариант Б — подготовка) ──────────────────
 
-@router.post("/crm/webhook/{integration_id}/{webhook_secret}")
+@router.post("/crm/webhook/{integration_id}/{webhook_secret}", dependencies=[])
 async def crm_webhook_receiver(integration_id: int, webhook_secret: str, request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """Принимает webhook от CRM (ONVOXIMPLANTCALLEND, ONCRMDEAL*, ONCRMLEAD*, ONCRMACTIVITY*)"""
     integration = db.query(CRMIntegration).filter(CRMIntegration.id == integration_id, CRMIntegration.is_active == True).first()
@@ -718,6 +729,13 @@ async def crm_webhook_receiver(integration_id: int, webhook_secret: str, request
         raise HTTPException(404, "Integration not found")
     if not integration.webhook_secret or integration.webhook_secret != webhook_secret:
         raise HTTPException(403, "Invalid webhook secret")
+
+    # Проверяем capability владельца интеграции (webhook не проходит через require_user)
+    owner = db.get(User, integration.user_id)
+    if owner:
+        from services.capability_service import has_capability
+        if not has_capability(owner, "crm"):
+            raise HTTPException(403, "CRM capability not enabled for integration owner")
 
     body = {}
     try:

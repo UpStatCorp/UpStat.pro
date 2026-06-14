@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import User
+from models import User, Organization
 from admin import get_current_user, is_sale_manager
 
 logger = logging.getLogger(__name__)
@@ -107,6 +107,90 @@ def reset_analyses(user_id: int, request: Request, db: Session = Depends(get_db)
 
     target_user.analyses_used = 0
     db.commit()
+
+
+# ─── SKU → product_mode mapping ──────────────────────────────────────────────
+_SKU_TO_MODE = {
+    "FULL": "full",
+    "TRAIN_RU": "train",
+    "TRAIN_GLOBAL": "train",
+}
+
+_VALID_SKUS = {"FULL", "TRAIN_RU", "TRAIN_GLOBAL"}
+
+
+@router.post("/assign-product/{user_id}")
+def assign_product(
+    user_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    sku: str = Form(...),
+    org_name: str = Form(""),
+    market: str = Form(""),
+):
+    """
+    Назначить продукт (SKU) пользователю.
+    Создаёт или обновляет Organization и явно ставит user.product_mode.
+    """
+    current_user = _require_sale_manager(request, db)
+
+    if sku not in _VALID_SKUS:
+        raise HTTPException(status_code=400, detail=f"Неизвестный SKU: {sku}")
+
+    target_user = db.get(User, user_id)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Пользователь не найден")
+    if target_user.role in ("admin", "sale_manager"):
+        raise HTTPException(status_code=400, detail="Нельзя назначать продукт этой роли")
+
+    # Создаём или обновляем Organization
+    org = None
+    if target_user.organization_id:
+        org = db.get(Organization, target_user.organization_id)
+
+    if org is None:
+        name = org_name.strip() or f"Org-{target_user.email}"
+        org = Organization(
+            name=name,
+            sku=sku,
+            market=market.strip() or None,
+            assigned_by=current_user.id,
+            assigned_at=datetime.utcnow(),
+        )
+        db.add(org)
+        db.flush()  # получаем org.id
+    else:
+        org.sku = sku
+        org.market = market.strip() or org.market
+        org.assigned_by = current_user.id
+        org.assigned_at = datetime.utcnow()
+
+    # Привязываем пользователя и ставим product_mode явно
+    target_user.organization_id = org.id
+    product_mode = _SKU_TO_MODE[sku]
+    target_user.product_mode = product_mode
+
+    # Для FULL SKU назначаем роль manager, для Train — оставляем текущую (или manager для РОПа)
+    if sku == "FULL":
+        target_user.is_premium = True
+        target_user.premium_granted_by = current_user.id
+        target_user.premium_granted_at = datetime.utcnow()
+        target_user.analyses_used = 0
+        if target_user.role == "user":
+            target_user.role = "manager"
+    else:
+        # Train: роль manager нужна для управления командой, но аналитику закроет capability-guard
+        if target_user.role == "user":
+            target_user.role = "manager"
+
+    db.commit()
+    logger.info(
+        f"Sale Manager {current_user.id} назначил SKU={sku} "
+        f"(product_mode={product_mode}) пользователю {target_user.id} ({target_user.email}), "
+        f"org={org.id}"
+    )
+
+    return RedirectResponse(url="/sales/", status_code=status.HTTP_302_FOUND)
 
     logger.info(f"Sale Manager {current_user.id} сбросил счётчик анализов для пользователя {target_user.id}")
     return RedirectResponse(url="/sales/", status_code=status.HTTP_302_FOUND)

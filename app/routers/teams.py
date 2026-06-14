@@ -1,8 +1,11 @@
 """Роутер для управления командами и приглашениями"""
 import os
 import json
+import logging
 import tempfile
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 from fastapi import APIRouter, Depends, Request, HTTPException, Form, UploadFile, File
 from fastapi.responses import RedirectResponse, HTMLResponse
 from sqlalchemy.orm import Session
@@ -143,15 +146,27 @@ def create_team_invitations(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Ошибка создания приглашений: {str(e)}")
+        logger.error(f"Ошибка создания приглашений: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Ошибка создания приглашений")
     
-    # Формируем ссылки и отправляем email
-    public_app_url = os.getenv("PUBLIC_APP_URL", "").rstrip("/")
-    if not public_app_url:
+    # Формируем ссылки: для train-команды используем TRAIN_PUBLIC_URL
+    team_is_train = (
+        getattr(team, "organization", None) is not None
+        and getattr(team.organization, "sku", "FULL") != "FULL"
+    ) or (
+        getattr(current_user, "product_mode", None) == "train"
+    )
+    if team_is_train:
+        train_url = os.getenv("TRAIN_PUBLIC_URL", "").rstrip("/")
+        public_base = train_url or os.getenv("PUBLIC_APP_URL", "").rstrip("/")
+    else:
+        public_base = os.getenv("PUBLIC_APP_URL", "").rstrip("/")
+
+    if not public_base:
         base_link = f"{request.url.scheme}://{request.url.netloc}/register?invite_token="
     else:
-        base_link = f"{public_app_url}/register?invite_token="
-    
+        base_link = f"{public_base}/register?invite_token="
+
     for inv in invitations:
         link = f"{base_link}{inv.token}"
         try:
@@ -331,5 +346,6 @@ def upload_team_script(
                 word_file_path.unlink()
             except Exception:
                 pass
-        raise HTTPException(status_code=500, detail=f"Ошибка обработки скрипта: {str(e)}")
+        logger.error(f"Ошибка обработки скрипта: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Ошибка обработки скрипта")
 

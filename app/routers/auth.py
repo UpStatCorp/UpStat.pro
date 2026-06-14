@@ -136,9 +136,10 @@ def login(request: Request, db: Session = Depends(get_db),
     # Проверяем и привязываем инвайт, если есть
     _attach_invitation_if_present(request, db, user)
     
-    # Редирект в зависимости от роли
+    # Редирект в зависимости от роли/capabilities
     if user.role == "sale_manager":
         return RedirectResponse(url="/sales/", status_code=status.HTTP_302_FOUND)
+    # /dashboard сам раздвоится на train/full по product_mode (train-frontend ветвление)
     return RedirectResponse(url="/dashboard", status_code=status.HTTP_302_FOUND)
 
 @router.get("/register", response_class=HTMLResponse)
@@ -257,11 +258,14 @@ def register(request: Request, db: Session = Depends(get_db),
 
     code = str(random.randint(100000, 999999))
     cache = get_cache_service(os.getenv("REDIS_URL"))
+    # Сохраняем brand из request.state в кэш, чтобы register_verify знал режим
+    brand = getattr(getattr(request, "state", None), "brand", "full")
     payload = json.dumps({
         "code": code,
         "name": name.strip(),
         "password_hash": hash_password(password),
         "invite_token": invite_token,
+        "brand": brand,
         "attempts": 0,
         "sent_at": datetime.utcnow().isoformat()
     })
@@ -333,11 +337,44 @@ def register_verify(request: Request, db: Session = Depends(get_db),
              "error": "Такой e-mail уже зарегистрирован"}
         )
 
+    # Определяем product_mode ДО создания пользователя (безопасный дефолт)
+    brand = data.get("brand", "full")
+    invite_token = data.get("invite_token")
+
+    # Начальный product_mode:
+    # - train-хост                    → "train"
+    # - invite к train-команде        → "train"
+    # - invite к FULL-команде         → "full"
+    # - самостоятельная рег без invite → "free" (требует назначения от Sale Manager)
+    #   (NULL → FULL оставлен только для СУЩЕСТВУЮЩИХ записей в БД; новые — "free")
+    initial_product_mode: str = "free"
+
+    if brand == "train":
+        initial_product_mode = "train"
+    elif invite_token:
+        # При наличии invite-токена проверяем, к какой команде ведёт приглашение
+        try:
+            from services.team_invitations import get_invitation_by_token
+            from models import Team, Organization as Org
+            inv_check = get_invitation_by_token(db, invite_token)
+            inv_team = db.get(Team, inv_check.team_id)
+            if inv_team and inv_team.organization_id:
+                inv_org = db.get(Org, inv_team.organization_id)
+                if inv_org and inv_org.sku != "FULL":
+                    initial_product_mode = "train"
+                else:
+                    initial_product_mode = "full"
+            else:
+                initial_product_mode = "full"
+        except Exception:
+            initial_product_mode = "full"  # Инвайт не найден — даём FULL (старое поведение)
+
     user = User(
         email=email_norm,
         name=data["name"],
         password_hash=data["password_hash"],
-        role="user"
+        role="user",
+        product_mode=initial_product_mode,
     )
     db.add(user)
     db.flush()
@@ -348,10 +385,11 @@ def register_verify(request: Request, db: Session = Depends(get_db),
     request.session["user_id"] = user.id
     request.session["show_welcome"] = True
 
-    if data.get("invite_token"):
-        request.session["invite_token"] = data["invite_token"]
+    if invite_token:
+        request.session["invite_token"] = invite_token
     _attach_invitation_if_present(request, db, user)
 
+    # Единый редирект на /dashboard (ветвление train/full происходит внутри dashboard)
     return RedirectResponse(url="/dashboard", status_code=status.HTTP_302_FOUND)
 
 
@@ -479,7 +517,14 @@ def google_callback(
         # Показать приветственное окно новому пользователю
         if is_new_user:
             request.session["show_welcome"] = True
-        
+
+        # Для нового train-пользователя (brand=train или invite ведёт на train-команду)
+        # устанавливаем product_mode ДО commit, чтобы не выдать FULL при сбое accept
+        if is_new_user:
+            brand = getattr(getattr(request, "state", None), "brand", "full")
+            if brand == "train":
+                user.product_mode = "train"
+
         # Обновляем время последнего входа
         from datetime import datetime
         user.last_login_at = datetime.utcnow()

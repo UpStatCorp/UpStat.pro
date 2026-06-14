@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, case, Integer, exists
 
 from database import get_db
-from deps import require_user
+from deps import require_user, require_capability
 from models import (
     AnalyticsMessage, TeamMember, Team, User,
     ParameterDefinition, ParameterValue, Conversation,
@@ -22,7 +22,7 @@ from models import (
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["analytics"])
+router = APIRouter(tags=["analytics"], dependencies=[Depends(require_capability("call_analysis"))])
 
 
 def _is_team_owner(db: Session, user_id: int) -> bool:

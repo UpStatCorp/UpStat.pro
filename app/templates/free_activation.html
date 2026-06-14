@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block content %}
+<div style="min-height:70vh;display:flex;align-items:center;justify-content:center;padding:2rem">
+  <div style="max-width:480px;text-align:center">
+    <div style="font-size:4rem;margin-bottom:1.5rem">🔒</div>
+    <h1 style="font-size:1.75rem;font-weight:700;margin-bottom:1rem">Доступ не активирован</h1>
+    <p style="color:var(--text-secondary,#666);margin-bottom:2rem;line-height:1.6">
+      Ваш аккаунт зарегистрирован, но доступ к функциям платформы
+      ещё не открыт. Обратитесь к вашему руководителю или в отдел
+      продаж UpStat — они назначат вам нужный тариф.
+    </p>
+    <div style="background:var(--surface,#f5f5f5);border-radius:12px;padding:1.5rem;margin-bottom:2rem;text-align:left">
+      <p style="font-weight:600;margin-bottom:.75rem">Что делать дальше:</p>
+      <ol style="padding-left:1.25rem;color:var(--text-secondary,#666);line-height:1.8">
+        <li>Попросите вашего РОПа прислать <strong>персональную ссылку-приглашение</strong></li>
+        <li>Или напишите в поддержку: <a href="mailto:support@upstat.pro">support@upstat.pro</a></li>
+      </ol>
+    </div>
+    <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap">
+      <a href="/settings" style="padding:.75rem 1.5rem;border-radius:8px;border:1px solid var(--border,#ddd);text-decoration:none;color:inherit">
+        Настройки профиля
+      </a>
+      <form action="/logout" method="post" style="margin:0">
+        <button type="submit" style="padding:.75rem 1.5rem;border-radius:8px;border:1px solid var(--border,#ddd);background:none;cursor:pointer">
+          Выйти
+        </button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

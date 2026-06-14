@@ -7,11 +7,11 @@ from typing import List, Optional
 from pydantic import BaseModel
 
 from database import get_db
-from deps import require_user
+from deps import require_user, require_capability
 from models import User
 from services.progress_tracker import get_progress_tracker, format_time_remaining
 
-router = APIRouter(prefix="/api/progress", tags=["progress"])
+router = APIRouter(prefix="/api/progress", tags=["progress"], dependencies=[Depends(require_capability("call_analysis"))])
 
 
 class ProgressResponse(BaseModel):

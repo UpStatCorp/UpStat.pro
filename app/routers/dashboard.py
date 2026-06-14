@@ -6,11 +6,130 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 
 from database import get_db
-from deps import require_user
+from deps import require_user, require_capability
 from models import Conversation, Message, Attachment, AnalysisTrainingPlan, Training, CRMRecording, CRMIntegration, User
 from sqlalchemy.orm import joinedload, selectinload
 
 router = APIRouter(tags=["dashboard"])
+
+# ─── Вспомогательные константы ────────────────────────────────────────────────
+_STAGE_LABELS = {
+    "contact": "Вступление в контакт",
+    "needs": "Работа с потребностями",
+    "presentation": "Презентация",
+    "objections": "Работа с возражениями",
+    "closing": "Завершение сделки",
+}
+
+
+def _compute_streak(dates_trained: set) -> int:
+    """Считает streak (дней подряд с тренировкой) через timedelta."""
+    from datetime import date, timedelta
+    today = date.today()
+    streak = 0
+    check = today
+    while True:
+        if check in dates_trained:
+            streak += 1
+            check -= timedelta(days=1)
+        else:
+            break
+    return streak
+
+
+def _train_dashboard(request: Request, db: Session, user):
+    """
+    Train-дашборд: статистика сессий, streak, тренировка на сегодня.
+    Рендерит train/dashboard.html.
+    """
+    from models import TrainingSession
+    from datetime import date, timedelta
+
+    today = date.today()
+
+    # Завершённые сессии с джойном на Training (для stage)
+    sessions_with_training = (
+        db.query(TrainingSession, Training)
+        .join(Training, TrainingSession.training_id == Training.id)
+        .filter(
+            TrainingSession.user_id == user.id,
+            TrainingSession.status == "completed",
+        )
+        .order_by(TrainingSession.completed_at.desc())
+        .all()
+    )
+
+    total_sessions = len(sessions_with_training)
+    scores = [s.score for s, t in sessions_with_training if s.score is not None]
+    avg_score = sum(scores) / len(scores) if scores else 0
+    completed_stages = sum(1 for s, t in sessions_with_training if s.completed_at)
+
+    # Streak через timedelta (без хрупкой арифметики)
+    dates_trained = {s.completed_at.date() for s, t in sessions_with_training if s.completed_at}
+    streak = _compute_streak(dates_trained)
+
+    # Последние 10 сессий для отображения
+    recent_sessions = []
+    for s, training in sessions_with_training[:10]:
+        stage_key = training.stage or training.scenario_type or ""
+        stage_label = _STAGE_LABELS.get(stage_key, "Тренировка")
+        recent_sessions.append({
+            "score": s.score,
+            "stage_label": stage_label,
+            "completed_at": s.completed_at,
+        })
+
+    # Тренировка на сегодня из программы (если есть TrainingProgram)
+    today_training = None
+    try:
+        from models import TrainingProgram, TrainingProgramDay
+        team_ids = [tm.team_id for tm in user.team_memberships]
+        if team_ids:
+            prog = (
+                db.query(TrainingProgram)
+                .filter(
+                    TrainingProgram.team_id.in_(team_ids),
+                    TrainingProgram.is_active == True,
+                )
+                .first()
+            )
+            if prog and prog.start_date:
+                start = prog.start_date.date() if hasattr(prog.start_date, "date") else today
+                day_idx = (today - start).days % max(1, prog.cycle_days)
+                prog_day = (
+                    db.query(TrainingProgramDay)
+                    .filter(
+                        TrainingProgramDay.program_id == prog.id,
+                        TrainingProgramDay.day_index == day_idx,
+                    )
+                    .first()
+                )
+                if prog_day and prog_day.training_id:
+                    t = db.get(Training, prog_day.training_id)
+                    if t:
+                        stage_key = t.stage or t.scenario_type or ""
+                        today_training = {
+                            "training_id": t.id,
+                            "stage_num": prog_day.day_index + 1,
+                            "stage_label": _STAGE_LABELS.get(stage_key, "Тренировка"),
+                        }
+    except Exception:
+        pass  # Таблицы программы ещё не созданы
+
+    return request.app.state.templates.TemplateResponse(
+        "train/dashboard.html",
+        {
+            "request": request,
+            "user": user,
+            "streak": streak,
+            "total_sessions": total_sessions,
+            "avg_score": avg_score,
+            "completed_stages": completed_stages,
+            "recent_sessions": recent_sessions,
+            "today_training": today_training,
+        },
+    )
+
 
 def _get_user_conversation(db: Session, user_id: int) -> Optional[Conversation]:
     return (
@@ -201,7 +320,28 @@ def _collect_user_analysis_packages(db: Session, user_id: int, limit: int = 100)
 def dashboard(request: Request, db: Session = Depends(get_db)):
     user = require_user(request, db)
     # Загружаем информацию о командах пользователя для отображения в меню
-    user = db.query(User).options(joinedload(User.team_memberships)).filter(User.id == user.id).first()
+    from sqlalchemy.orm import selectinload as _sel
+    user = (
+        db.query(User)
+        .options(joinedload(User.team_memberships), _sel(User.organization))
+        .filter(User.id == user.id)
+        .first()
+    )
+
+    # ── Ветвление по capabilities ──────────────────────────────────────────────
+    from services.capability_service import has_capability, get_capabilities
+    caps = get_capabilities(user)
+
+    # FREE-пользователи (нет ни одной платной функции): показываем страницу активации
+    if not caps:
+        templates = request.app.state.templates
+        return templates.TemplateResponse("free_activation.html", {
+            "request": request,
+            "user": user,
+        })
+
+    if not has_capability(user, "call_analysis"):
+        return _train_dashboard(request, db, user)
     
     # Получаем все конверсации пользователя
     user_conversations = (
@@ -319,7 +459,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         },
     )
 
-@router.get("/calls")
+@router.get("/calls", dependencies=[Depends(require_capability("call_analysis"))])
 def calls(request: Request, db: Session = Depends(get_db)):
     user = require_user(request, db)
     # Загружаем информацию о командах пользователя для отображения в меню
@@ -363,7 +503,7 @@ def calls(request: Request, db: Session = Depends(get_db)):
         "calls.html", {"request": request, "user": user, "packages": packages}
     )
 
-@router.post("/test/create-training")
+@router.post("/test/create-training", dependencies=[Depends(require_capability("call_analysis"))])
 def create_test_training(request: Request, db: Session = Depends(get_db)):
     """
     Создаёт тестовую тренировку для отладки многоэтапных промптов.

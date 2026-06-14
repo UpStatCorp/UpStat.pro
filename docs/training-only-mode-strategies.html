@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <title>UpStat — Три способа реализации режима «Только тренировки»</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 18mm 16mm 22mm 16mm;
+    }
+
+    :root {
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --accent: #0f172a;
+      --muted: #64748b;
+      --border: #e2e8f0;
+      --success: #059669;
+      --warning: #d97706;
+      --danger: #dc2626;
+      --surface: #f8fafc;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      font-size: 10.5pt;
+      line-height: 1.55;
+      color: var(--accent);
+      background: #fff;
+    }
+
+    .cover {
+      page-break-after: always;
+      min-height: 250mm;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 20mm 10mm;
+      background: linear-gradient(145deg, #0f172a 0%, #1e3a8a 45%, #2563eb 100%);
+      color: #fff;
+      border-radius: 0;
+    }
+
+    .cover-badge {
+      display: inline-block;
+      background: rgba(255,255,255,0.15);
+      border: 1px solid rgba(255,255,255,0.25);
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 9pt;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 24px;
+      width: fit-content;
+    }
+
+    .cover h1 {
+      font-size: 28pt;
+      font-weight: 800;
+      line-height: 1.15;
+      margin-bottom: 16px;
+      letter-spacing: -0.02em;
+    }
+
+    .cover .subtitle {
+      font-size: 13pt;
+      opacity: 0.92;
+      max-width: 90%;
+      margin-bottom: 40px;
+    }
+
+    .cover-meta {
+      margin-top: auto;
+      padding-top: 30mm;
+      border-top: 1px solid rgba(255,255,255,0.2);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      font-size: 10pt;
+    }
+
+    .cover-meta dt { opacity: 0.7; font-size: 8.5pt; text-transform: uppercase; letter-spacing: 0.06em; }
+    .cover-meta dd { font-weight: 600; margin-top: 4px; }
+
+    .page { padding: 0 2mm; }
+
+    h2 {
+      font-size: 16pt;
+      font-weight: 800;
+      color: var(--primary-dark);
+      margin: 0 0 12px;
+      letter-spacing: -0.02em;
+      page-break-after: avoid;
+    }
+
+    h3 {
+      font-size: 11.5pt;
+      font-weight: 700;
+      margin: 18px 0 8px;
+      color: var(--accent);
+      page-break-after: avoid;
+    }
+
+    h4 {
+      font-size: 10pt;
+      font-weight: 700;
+      margin: 12px 0 6px;
+      color: var(--primary);
+    }
+
+    p { margin-bottom: 10px; }
+
+    .section {
+      page-break-inside: avoid;
+      margin-bottom: 20px;
+    }
+
+    .section-break { page-break-before: always; }
+
+    .lead {
+      font-size: 11pt;
+      color: var(--muted);
+      margin-bottom: 16px;
+    }
+
+    .toc {
+      page-break-after: always;
+      padding: 10mm 2mm;
+    }
+
+    .toc h2 { margin-bottom: 20px; }
+    .toc ol { padding-left: 20px; }
+    .toc li { margin-bottom: 8px; font-size: 11pt; }
+    .toc a { color: inherit; text-decoration: none; }
+
+    .info-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 4px solid var(--primary);
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin: 14px 0;
+    }
+
+    .info-box.warning { border-left-color: var(--warning); background: #fffbeb; }
+    .info-box.success { border-left-color: var(--success); background: #ecfdf5; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0 16px;
+      font-size: 9.5pt;
+      page-break-inside: avoid;
+    }
+
+    th, td {
+      border: 1px solid var(--border);
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #eff6ff;
+      font-weight: 700;
+      color: var(--primary-dark);
+    }
+
+    tr:nth-child(even) td { background: #fafafa; }
+
+    .option-header {
+      page-break-before: always;
+      background: linear-gradient(90deg, #eff6ff, #f8fafc);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 22px;
+      margin-bottom: 18px;
+    }
+
+    .option-header .num {
+      display: inline-block;
+      background: var(--primary);
+      color: #fff;
+      font-weight: 800;
+      font-size: 11pt;
+      padding: 4px 12px;
+      border-radius: 6px;
+      margin-bottom: 10px;
+    }
+
+    .option-header h2 {
+      margin: 0 0 8px;
+      color: var(--accent);
+      font-size: 18pt;
+    }
+
+    .option-header .tagline {
+      color: var(--muted);
+      font-size: 11pt;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin: 16px 0;
+    }
+
+    .metric {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      text-align: center;
+      background: #fff;
+    }
+
+    .metric .label { font-size: 8pt; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .metric .value { font-size: 12pt; font-weight: 800; color: var(--primary-dark); margin-top: 4px; }
+
+    ul, ol { margin: 8px 0 12px 20px; }
+    li { margin-bottom: 5px; }
+
+    .pros-cons {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin: 14px 0;
+    }
+
+    .pros, .cons {
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 9.5pt;
+    }
+
+    .pros { background: #ecfdf5; border: 1px solid #a7f3d0; }
+    .cons { background: #fef2f2; border: 1px solid #fecaca; }
+    .pros h4 { color: var(--success); margin-top: 0; }
+    .cons h4 { color: var(--danger); margin-top: 0; }
+
+    .diagram {
+      background: #0f172a;
+      color: #e2e8f0;
+      border-radius: 10px;
+      padding: 16px 18px;
+      font-family: "SF Mono", "Menlo", "Consolas", monospace;
+      font-size: 8.5pt;
+      line-height: 1.45;
+      margin: 14px 0;
+      white-space: pre-wrap;
+      page-break-inside: avoid;
+    }
+
+    .compare-section { page-break-before: always; }
+
+    .recommendation {
+      page-break-before: always;
+      background: linear-gradient(135deg, #eff6ff 0%, #ecfdf5 100%);
+      border: 2px solid var(--primary);
+      border-radius: 12px;
+      padding: 22px 24px;
+      margin-top: 10px;
+    }
+
+    .recommendation h2 { color: var(--accent); }
+
+    .footer-note {
+      margin-top: 30px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+      font-size: 8.5pt;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 8pt;
+      font-weight: 700;
+    }
+    .badge-green { background: #d1fae5; color: #065f46; }
+    .badge-yellow { background: #fef3c7; color: #92400e; }
+    .badge-red { background: #fee2e2; color: #991b1b; }
+    .badge-blue { background: #dbeafe; color: #1e40af; }
+  </style>
+</head>
+<body>
+
+<!-- ОБЛОЖКА -->
+<div class="cover">
+  <div class="cover-badge">Стратегический документ · UpStat</div>
+  <h1>Три способа реализации режима<br>«Только тренировки»</h1>
+  <p class="subtitle">
+    Как запустить продукт для клиентов, которым нужны ежедневные голосовые тренировки менеджеров
+    без анализа и прослушивания звонков. Сравнение подходов для принятия решения.
+  </p>
+  <dl class="cover-meta">
+    <div><dt>Проект</dt><dd>UpStat.pro</dd></div>
+    <div><dt>Аудитория</dt><dd>Руководство, продукт, разработка</dd></div>
+    <div><dt>Дата</dt><dd>11 июня 2026</dd></div>
+    <div><dt>Статус</dt><dd>На согласование</dd></div>
+  </dl>
+</div>
+
+<!-- СОДЕРЖАНИЕ -->
+<div class="toc page">
+  <h2>Содержание</h2>
+  <ol>
+    <li>Контекст и задача</li>
+    <li>Что уже есть в платформе</li>
+    <li>Что нужно добавить в любом случае</li>
+    <li><strong>Способ 1:</strong> Feature Flag — один продукт, два режима</li>
+    <li><strong>Способ 2:</strong> Отдельный фронт — один backend, два интерфейса</li>
+    <li><strong>Способ 3:</strong> Отдельный сервис — микропродукт «UpStat Train»</li>
+    <li>Сравнительная таблица</li>
+    <li>Рекомендация команды разработки</li>
+  </ol>
+</div>
+
+<!-- КОНТЕКСТ -->
+<div class="page section">
+  <h2>1. Контекст и задача</h2>
+  <p class="lead">
+    Для части клиентов (в том числе российских команд продаж) нужен упрощённый сценарий:
+    менеджеры каждый день заходят в платформу и проходят голосовые тренировки с ИИ-тренером —
+    <strong>без загрузки звонков, без CRM-синхронизации и без аналитики по записям</strong>.
+  </p>
+
+  <div class="info-box">
+    <strong>Целевой пользовательский сценарий:</strong> РОП создаёт команду → приглашает менеджеров →
+    менеджеры видят каталог/программу тренировок → проходят 1–2 сессии в день → РОП видит,
+    кто тренировался и с каким результатом.
+  </div>
+
+  <h3>Ключевой вопрос для решения</h3>
+  <p>
+    Голосовой движок тренировок в UpStat <em>уже выделен</em> в отдельный модуль (<code>voice_assistant/</code>).
+    Связь с анализом звонков сейчас существует только на уровне <strong>создания планов</strong> (план
+    рождается из отчёта по звонку) и <strong>интерфейса</strong> (дашборд заточен под анализ).
+    Поэтому задача — не «писать тренировки с нуля», а <strong>отделить продуктовый режим</strong>.
+  </p>
+</div>
+
+<div class="page section section-break">
+  <h2>2. Что уже есть в платформе</h2>
+
+  <table>
+    <thead>
+      <tr><th>Компонент</th><th>Назначение</th><th>Готовность для training-only</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>voice_assistant/</strong></td>
+        <td>WebSocket, Azure Voice Live, голосовой диалог с ИИ-тренером</td>
+        <td><span class="badge badge-green">Готов</span></td>
+      </tr>
+      <tr>
+        <td><strong>training_stages_service</strong></td>
+        <td>Многоэтапные промпты по этапам продаж (contact, needs, closing…)</td>
+        <td><span class="badge badge-green">Готов</span></td>
+      </tr>
+      <tr>
+        <td><strong>TrainingValidatorService</strong></td>
+        <td>AI-оценка сессии, score, разблокировка следующей тренировки</td>
+        <td><span class="badge badge-green">Готов</span></td>
+      </tr>
+      <tr>
+        <td><strong>teams / invitations</strong></td>
+        <td>Команды, приглашения менеджеров, роли</td>
+        <td><span class="badge badge-green">Готов</span></td>
+      </tr>
+      <tr>
+        <td><strong>AnalysisTrainingPlan</strong></td>
+        <td>План тренировок — сейчас только из анализа звонка</td>
+        <td><span class="badge badge-yellow">Нужна доработка</span></td>
+      </tr>
+      <tr>
+        <td><strong>Dashboard / навигация</strong></td>
+        <td>UI заточен под «анализ звонков»</td>
+        <td><span class="badge badge-yellow">Нужна доработка</span></td>
+      </tr>
+      <tr>
+        <td><strong>product_mode / feature flags</strong></td>
+        <td>Переключение режимов продукта</td>
+        <td><span class="badge badge-red">Отсутствует</span></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="page section">
+  <h2>3. Что нужно добавить в любом случае</h2>
+  <p>Независимо от выбранного способа, потребуется реализовать:</p>
+  <ol>
+    <li><strong>Источник планов без звонка</strong> — каталог тренировок и/или программа на N дней (из существующих промптов в <code>app/static/docs/trainings/</code>).</li>
+    <li><strong>Режим продукта</strong> — флаг «full» vs «training_only» на уровне команды или аккаунта.</li>
+    <li><strong>Упрощённый дашборд</strong> — «тренировка на сегодня», прогресс, streak, история сессий.</li>
+    <li><strong>Отключение анализа</strong> — скрытие UI и блокировка API: /chat, /calls, CRM, аналитика по звонкам.</li>
+    <li><strong>Отчёт для РОПа</strong> — кто прошёл тренировку сегодня, средний score (без паспорта продавца и дельт по звонкам).</li>
+  </ol>
+</div>
+
+<!-- СПОСОБ 1 -->
+<div class="option-header">
+  <div class="num">СПОСОБ 1</div>
+  <h2>Feature Flag — один продукт, два режима</h2>
+  <p class="tagline">Самый быстрый и экономичный путь. Одна кодовая база, одно развёртывание.</p>
+</div>
+
+<div class="page section">
+  <h3>Суть подхода</h3>
+  <p>
+    Добавляем поле <code>product_mode</code> на уровне команды (или пользователя при регистрации):
+    <strong>full</strong> — текущий UpStat; <strong>training_only</strong> — только тренировки.
+    В зависимости от режима показываем другой дашборд, скрываем пункты меню и закрываем API анализа звонков.
+  </p>
+
+  <div class="diagram">┌─────────────────────────────────────────────────────────┐
+│                    ОДИН UpStat (FastAPI)                   │
+├─────────────────────────────────────────────────────────┤
+│  product_mode = full          │  product_mode = training  │
+│  ─────────────────            │  ─────────────────────    │
+│  /dashboard (анализ)          │  /dashboard/training      │
+│  /chat, /calls, /crm          │  /trainings/catalog       │
+│  pipeline.py                  │  CurriculumService        │
+│  seller_passport              │  (без звонков)            │
+│  + тренировки                 │  + тренировки             │
+└─────────────────────────────────────────────────────────┘
+         ▲                                    ▲
+         │         ОБЩИЙ СЛОЙ                 │
+         └──── auth, teams, voice_assistant ──┘</div>
+
+  <div class="metrics">
+    <div class="metric"><div class="label">Срок MVP</div><div class="value">2–3 нед.</div></div>
+    <div class="metric"><div class="label">Стоимость</div><div class="value">Низкая</div></div>
+    <div class="metric"><div class="label">Риск</div><div class="value">Низкий</div></div>
+    <div class="metric"><div class="label">Изоляция</div><div class="value">Средняя</div></div>
+  </div>
+
+  <h3>Что делаем технически</h3>
+  <h4>Backend</h4>
+  <ul>
+    <li>Миграция БД: <code>teams.product_mode</code> (enum: full / training_only).</li>
+    <li>Сделать <code>report_message_id</code> в плане тренировок необязательным + поле <code>plan_source</code> (analysis / catalog / program).</li>
+    <li>Новый сервис <code>CurriculumService</code> — создаёт план из каталога промптов без GPT-анализа звонка.</li>
+    <li>Middleware <code>require_full_product</code> на роутерах chat, crm, analytics, owner, pipeline.</li>
+  </ul>
+
+  <h4>Frontend</h4>
+  <ul>
+    <li>При регистрации или по инвайту — выбор/назначение режима (для B2B лучше через инвайт команды).</li>
+    <li>Новый шаблон <code>dashboard_training.html</code> — главная для training_only.</li>
+    <li>Страница <code>/trainings/catalog</code> — карточки по 5 этапам продаж.</li>
+    <li>Условный рендер сайдбара в <code>_layout_dashboard.html</code>.</li>
+  </ul>
+
+  <h4>Что остаётся общим</h4>
+  <p>Auth, teams, voice_assistant, TrainingValidator, Azure Voice Live, admin промптов, notifications.</p>
+
+  <div class="pros-cons">
+    <div class="pros">
+      <h4>Плюсы</h4>
+      <ul>
+        <li>Минимальные сроки и бюджет</li>
+        <li>Один деплой, одна БД, одна команда поддержки</li>
+        <li>Фиксы в голосовом движке сразу для всех клиентов</li>
+        <li>Клиент может перейти на full-режим без миграции данных</li>
+        <li>Используем 80% уже написанного кода</li>
+      </ul>
+    </div>
+    <div class="cons">
+      <h4>Минусы</h4>
+      <ul>
+        <li>Кодовая база растёт — нужна дисциплина (guards, тесты)</li>
+        <li>Теоретический риск: баг в guard откроет анализ training-клиенту</li>
+        <li>Брендинг «только тренировки» сложнее отделить визуально</li>
+        <li>Общий домен upstat.pro для обоих продуктов</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="info-box success">
+    <strong>Кому подходит:</strong> нужно быстро запустить пилот с 1–3 российскими клиентами,
+    проверить спрос, не вкладываясь в отдельную инфраструктуру.
+  </div>
+</div>
+
+<!-- СПОСОБ 2 -->
+<div class="option-header">
+  <div class="num">СПОСОБ 2</div>
+  <h2>Отдельный фронт — один backend, два интерфейса</h2>
+  <p class="tagline">Продуктово выглядит как два приложения, технически — один сервер и одна БД.</p>
+</div>
+
+<div class="page section">
+  <h3>Суть подхода</h3>
+  <p>
+    Backend остаётся единым (FastAPI + PostgreSQL/SQLite). Создаём <strong>отдельный UI-слой</strong>
+    для training-only: свой landing, свой дашборд, свой набор шаблонов и отдельный URL
+    (например, <code>train.upstat.pro</code> или <code>upstat.pro/train</code>).
+    Роутинг по домену/пути определяет, какой интерфейс отдавать; API общий, но с теми же feature guards.
+  </p>
+
+  <div class="diagram">  train.upstat.pro                    app.upstat.pro
+  ┌──────────────────┐              ┌──────────────────┐
+  │ Landing Train    │              │ Landing Full     │
+  │ Dashboard Train  │              │ Dashboard Full   │
+  │ Catalog          │              │ Calls / CRM      │
+  └────────┬─────────┘              └────────┬─────────┘
+           │                                  │
+           └──────────┬───────────────────────┘
+                      ▼
+           ┌─────────────────────┐
+           │   FastAPI Backend    │
+           │   + PostgreSQL       │
+           │   + voice_assistant  │
+           └─────────────────────┘</div>
+
+  <div class="metrics">
+    <div class="metric"><div class="label">Срок MVP</div><div class="value">3–5 нед.</div></div>
+    <div class="metric"><div class="label">Стоимость</div><div class="value">Средняя</div></div>
+    <div class="metric"><div class="label">Риск</div><div class="value">Низкий</div></div>
+    <div class="metric"><div class="label">Изоляция</div><div class="value">Высокая (UI)</div></div>
+  </div>
+
+  <h3>Что делаем технически</h3>
+  <h4>Всё из Способа 1, плюс:</h4>
+  <ul>
+    <li>Отдельная папка шаблонов: <code>app/templates/train/</code> — landing, dashboard, catalog, layout.</li>
+    <li>Middleware по <code>Host</code> header или path prefix — выбор «скина» приложения.</li>
+    <li>Отдельный landing и регистрация только для training (без упоминания звонков).</li>
+    <li>Опционально: отдельный CSS/брендинг (логотип «UpStat Train», другие цвета).</li>
+    <li>DNS: поддомен <code>train.upstat.pro</code> → тот же сервер.</li>
+  </ul>
+
+  <h4>Backend</h4>
+  <p>Идентичен Способу 1 — feature flag + CurriculumService + guards. Дублирования бизнес-логики нет.</p>
+
+  <div class="pros-cons">
+    <div class="pros">
+      <h4>Плюсы</h4>
+      <ul>
+        <li>Чистый продуктовый образ для клиента «только тренировки»</li>
+        <li>Маркетинг и продажи могут вести на отдельный URL</li>
+        <li>Backend и голосовой движок — общие, без дубля кода</li>
+        <li>Можно разный onboarding и pricing на landing</li>
+        <li>Меньше путаницы у менеджеров (не видят «лишние» разделы)</li>
+      </ul>
+    </div>
+    <div class="cons">
+      <h4>Минусы</h4>
+      <ul>
+        <li>Два набора HTML-шаблонов — больше UI-работы</li>
+        <li>Изменения в общих компонентах нужно проверять в двух UI</li>
+        <li>+1–2 недели к срокам относительно Способа 1</li>
+        <li>Backend всё ещё общий — полной технической изоляции нет</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="info-box success">
+    <strong>Кому подходит:</strong> когда важен отдельный бренд/URL для российского рынка,
+    но не хочется содержать два сервера и две базы данных.
+  </div>
+</div>
+
+<!-- СПОСОБ 3 -->
+<div class="option-header">
+  <div class="num">СПОСОБ 3</div>
+  <h2>Отдельный сервис — микропродукт «UpStat Train»</h2>
+  <p class="tagline">Максимальная изоляция. Отдельный deploy, API и жизненный цикл продукта.</p>
+</div>
+
+<div class="page section">
+  <h3>Суть подхода</h3>
+  <p>
+    Выносим training-only в <strong>отдельное приложение</strong>: свой репозиторий (или monorepo-пакет),
+    свой FastAPI-сервис, своя БД (или схема), свой деплой. Из основного UpStat <strong>копируем/выносим</strong>
+    только нужные модули: <code>voice_assistant/</code>, модели Training*, auth, teams.
+    Анализ звонков, CRM, pipeline, seller_passport — не включаются вообще.
+  </p>
+
+  <div class="diagram">  UpStat Full (app.upstat.pro)     UpStat Train (train.upstat.pro)
+  ┌─────────────────────────┐      ┌─────────────────────────┐
+  │ chat, calls, crm        │      │ catalog, program        │
+  │ pipeline, passport      │      │ voice_assistant         │
+  │ analytics, owner        │      │ teams, auth             │
+  │ + training (опционально)│      │ validator               │
+  └───────────┬─────────────┘      └───────────┬─────────────┘
+              │                                │
+              ▼                                ▼
+        PostgreSQL #1                    PostgreSQL #2
+        (conversations…)                 (trainings only)
+
+  Опционально: Shared Auth SSO или общий user_id через API</div>
+
+  <div class="metrics">
+    <div class="metric"><div class="label">Срок MVP</div><div class="value">6–10 нед.</div></div>
+    <div class="metric"><div class="label">Стоимость</div><div class="value">Высокая</div></div>
+    <div class="metric"><div class="label">Риск</div><div class="value">Средний</div></div>
+    <div class="metric"><div class="label">Изоляция</div><div class="value">Максимальная</div></div>
+  </div>
+
+  <h3>Что делаем технически</h3>
+  <h4>Архитектура</h4>
+  <ul>
+    <li>Новый сервис <code>upstat-train/</code> — slim FastAPI: auth, teams, training_plans, voice_assistant.</li>
+    <li>Общий пакет <code>upstat-core/</code> (опционально) — shared models, training_stages_service, validator.</li>
+    <li>Отдельная БД — только users, teams, trainings, sessions (без conversations, CRM, passport).</li>
+    <li>Отдельный CI/CD, отдельный мониторинг, отдельные env-переменные Azure.</li>
+    <li>SSO или invite-link между продуктами, если клиент позже захочет full-версию.</li>
+  </ul>
+
+  <h4>Стратегия кода</h4>
+  <ul>
+    <li><strong>Monorepo + shared library</strong> — лучший вариант внутри способа 3: один git, два deploy, общие модули через pip path.</li>
+    <li><strong>Полный форк</strong> — проще старт, но через 3–6 месяцев расхождение кода неизбежно.</li>
+  </ul>
+
+  <div class="pros-cons">
+    <div class="pros">
+      <h4>Плюсы</h4>
+      <ul>
+        <li>Изменения в анализе звонков никак не ломают Train</li>
+        <li>Можно деплоить в RU-регион отдельно (152-ФЗ, локальный хостинг)</li>
+        <li>Отдельный pricing, SLA, roadmap продукта</li>
+        <li>Минимальная attack surface — нет CRM/webhook/upload pipeline</li>
+        <li>Команда может работать параллельно без конфликтов</li>
+      </ul>
+    </div>
+    <div class="cons">
+      <h4>Минусы</h4>
+      <ul>
+        <li>Дорого: 2× инфраструктура, 2× деплой, 2× мониторинг</li>
+        <li>Багфиксы в voice_assistant нужно синхронизировать (или shared lib)</li>
+        <li>Дольший time-to-market</li>
+        <li>Миграция клиента full ↔ train — отдельный проект</li>
+        <li>Риск дублирования, если не выделить shared library сразу</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="info-box warning">
+    <strong>Кому подходит:</strong> когда training-only — самостоятельный коммерческий продукт
+    на годы вперёд, с отдельной командой, отдельным юрлицом/рынком и требованиями
+    к изоляции данных (например, только РФ-серверы).
+  </div>
+</div>
+
+<!-- СРАВНЕНИЕ -->
+<div class="page compare-section">
+  <h2>7. Сравнительная таблица</h2>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Критерий</th>
+        <th>Способ 1<br>Feature Flag</th>
+        <th>Способ 2<br>Два фронта</th>
+        <th>Способ 3<br>Отдельный сервис</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Срок до пилота</strong></td>
+        <td>2–3 недели</td>
+        <td>3–5 недель</td>
+        <td>6–10 недель</td>
+      </tr>
+      <tr>
+        <td><strong>Budget / команда</strong></td>
+        <td>1 dev</td>
+        <td>1 dev + дизайн</td>
+        <td>1–2 dev + DevOps</td>
+      </tr>
+      <tr>
+        <td><strong>Дублирование кода</strong></td>
+        <td>Минимальное</td>
+        <td>Только UI-шаблоны</td>
+        <td>Риск высокий без shared lib</td>
+      </tr>
+      <tr>
+        <td><strong>Изоляция от анализа звонков</strong></td>
+        <td>Логическая (guards)</td>
+        <td>UI + guards</td>
+        <td>Физическая (отдельный сервис)</td>
+      </tr>
+      <tr>
+        <td><strong>Отдельный бренд / URL</strong></td>
+        <td>Сложнее</td>
+        <td>Легко (train.upstat.pro)</td>
+        <td>Легко</td>
+      </tr>
+      <tr>
+        <td><strong>Апгрейд клиента на full</strong></td>
+        <td>Один клик (смена mode)</td>
+        <td>Один клик + другой URL</td>
+        <td>Миграция аккаунта</td>
+      </tr>
+      <tr>
+        <td><strong>RU-хостинг / 152-ФЗ</strong></td>
+        <td>Общий сервер</td>
+        <td>Общий сервер</td>
+        <td>Отдельный RU-deploy</td>
+      </tr>
+      <tr>
+        <td><strong>Поддержка long-term</strong></td>
+        <td>Одна кодовая база</td>
+        <td>Одна база + 2 UI</td>
+        <td>Две кодовые базы / monorepo</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- РЕКОМЕНДАЦИЯ -->
+<div class="page recommendation">
+  <h2>8. Рекомендация команды разработки</h2>
+
+  <h3>Оптимальная стратегия: поэтапно 1 → 2 → (опционально) 3</h3>
+
+  <p>
+    <strong>Этап 1 (сейчас): Способ 1 — Feature Flag.</strong>
+    Запускаем пилот за 2–3 недели. Проверяем, платят ли клиенты, проходят ли менеджеры
+    тренировки ежедневно, нужен ли РОПу отчёт. Минимальные инвестиции, максимальная скорость обратной связи.
+  </p>
+
+  <p>
+    <strong>Этап 2 (при 3+ paying клиентах): Способ 2 — отдельный фронт.</strong>
+    Добавляем train.upstat.pro и отдельный landing — без переписывания backend.
+    Продукт выглядит самостоятельно, технически остаём на одном сервере.
+  </p>
+
+  <p>
+    <strong>Этап 3 (только если бизнес-модель подтверждена): Способ 3 — отдельный сервис.</strong>
+    Имеет смысл при отдельном P&amp;L, требованиях RU-хостинга или если Train продаётся
+    как самостоятельный SaaS с другой ценой и командой.
+  </p>
+
+  <div class="info-box">
+    <strong>Не рекомендуем</strong> сразу идти в Способ 3 или дублировать код в отдельный репозиторий без shared library —
+    голосовой движок активно развивается, форк быстро устареет.
+  </div>
+
+  <h3>MVP Способа 1 — конкретный чеклист</h3>
+  <table>
+    <thead><tr><th>#</th><th>Задача</th><th>Оценка</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Миграция: teams.product_mode + nullable report_message_id</td><td>1 день</td></tr>
+      <tr><td>2</td><td>CurriculumService — план из каталога промптов</td><td>2–3 дня</td></tr>
+      <tr><td>3</td><td>Guards на роуты анализа (chat, calls, crm, analytics)</td><td>1–2 дня</td></tr>
+      <tr><td>4</td><td>dashboard_training.html + catalog + условный sidebar</td><td>3–4 дня</td></tr>
+      <tr><td>5</td><td>Регистрация/инвайт с назначением режима</td><td>1–2 дня</td></tr>
+      <tr><td>6</td><td>Отчёт РОПу: кто тренировался сегодня</td><td>2–3 дня</td></tr>
+      <tr><td>7</td><td>Тестирование + пилот с 1 клиентом</td><td>3–5 дней</td></tr>
+    </tbody>
+  </table>
+
+  <p style="margin-top:16px;"><strong>Итого MVP:</strong> ~2–3 недели одним разработчиком.</p>
+</div>
+
+<div class="footer-note page">
+  Документ подготовлен на основе анализа кодовой базы UpStat.pro · Июнь 2026<br>
+  Конфиденциально — для внутреннего использования
+</div>
+
+</body>
+</html>

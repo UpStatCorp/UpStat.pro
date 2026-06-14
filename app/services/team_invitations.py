@@ -175,7 +175,33 @@ def accept_invitation(db: Session, token: str, user: User) -> TeamMember:
         role_in_team="member"
     )
     db.add(member)
-    
+
+    # Наследуем organization_id и product_mode из команды для НОВОГО train-пользователя.
+    # FULL-пользователь НЕ понижается (FULL имеет приоритет).
+    try:
+        from models import Team
+        team = db.get(Team, inv.team_id)
+    except Exception:
+        team = None
+
+    if team and team.organization_id:
+        from models import Organization
+        org = db.get(Organization, team.organization_id)
+        if org and org.sku != "FULL":
+            # Только если пользователь сейчас без явного full — назначаем train
+            if user.product_mode != "full":
+                user.organization_id = team.organization_id
+                user.product_mode = "train"
+                logger.info(
+                    f"Пользователь {user.id} получил product_mode=train "
+                    f"через инвайт команды {inv.team_id} (org={org.id}, sku={org.sku})"
+                )
+            else:
+                # FULL-пользователь: только добавляем в команду, режим не меняем
+                logger.info(
+                    f"Пользователь {user.id} уже FULL — team membership добавлено без смены режима"
+                )
+
     # Помечаем приглашение как ACCEPTED
     inv.status = TeamInvitationStatus.ACCEPTED
     inv.accepted_user_id = user.id
@@ -184,7 +210,6 @@ def accept_invitation(db: Session, token: str, user: User) -> TeamMember:
     db.commit()
     db.refresh(member)
     
-    # Логируем
     logger.info(f"Пользователь {user.id} принял приглашение {inv.id} и добавлен в команду {inv.team_id}")
     
     return member

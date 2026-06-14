@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>{% block title %}UpStat Train{% endblock %}</title>
+
+  <link rel="stylesheet" href="/static/styles.css?v=15"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+
+  <style>
+    :root{
+      --bg:#f0f7ff;
+      --surface:#ffffff;
+      --text:#0f172a;
+      --muted:#64748b;
+      --border:#e2ecf7;
+      --shadow:0 1px 3px rgba(15,23,42,.06),0 8px 24px rgba(15,23,42,.08);
+      --radius:14px;
+      --surface-hover:#e8f4ff;
+      --primary:#0ea5e9;
+      --primary-hover:#0284c7;
+      --accent:#10b981;
+    }
+    body.dark{
+      --bg:#060d1a;
+      --surface:#0d1a2e;
+      --text:#e2f0ff;
+      --muted:#7ea6cc;
+      --border:#1a3050;
+      --shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px rgba(0,0,0,.5);
+      --surface-hover:#1a2d45;
+    }
+    *,*::before,*::after{box-sizing:border-box;}
+    html{height:100%;overflow-x:hidden;}
+    body{
+      min-height:100vh;margin:0;background:var(--bg);color:var(--text);
+      font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Inter,Arial;
+      overflow-x:hidden;
+    }
+    .app-shell{display:grid;grid-template-columns:250px 1fr;min-height:100vh;}
+
+    /* Sidebar */
+    .sidebar{
+      position:sticky;top:0;height:100vh;
+      background:linear-gradient(180deg,var(--surface) 0%,rgba(14,165,233,.04) 100%);
+      border-right:1px solid var(--border);
+      padding:20px;display:flex;flex-direction:column;gap:16px;
+    }
+    .brand{
+      font-weight:800;font-size:20px;letter-spacing:.2px;
+      color:var(--primary);
+      padding:12px 0;text-align:center;border-bottom:1px solid var(--border);
+    }
+    .brand small{display:block;font-size:11px;font-weight:500;color:var(--muted);letter-spacing:.5px;margin-top:2px;}
+    .menu{display:flex;flex-direction:column;gap:6px;margin-top:8px;}
+    .menu a{
+      display:flex;align-items:center;gap:10px;
+      padding:12px 14px;border-radius:10px;text-decoration:none;
+      color:var(--text);font-weight:500;font-size:14px;
+      transition:all .2s;border:1px solid transparent;
+    }
+    .menu a:hover,.menu a.active{
+      background:rgba(14,165,233,.1);
+      border-color:rgba(14,165,233,.2);
+      color:var(--primary);
+    }
+    .menu a i{width:18px;text-align:center;color:var(--muted);}
+    .menu a:hover i,.menu a.active i{color:var(--primary);}
+
+    .sidebar-footer{margin-top:auto;padding-top:12px;border-top:1px solid var(--border);}
+    .user-chip{
+      display:flex;align-items:center;gap:10px;padding:10px 12px;
+      border-radius:10px;background:var(--surface-hover);
+      font-size:13px;font-weight:500;
+    }
+    .user-chip .avatar{
+      width:32px;height:32px;border-radius:50%;background:var(--primary);
+      display:flex;align-items:center;justify-content:center;
+      color:#fff;font-weight:700;font-size:13px;flex-shrink:0;
+    }
+    .user-chip .meta{overflow:hidden;}
+    .user-chip .name{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px;}
+    .user-chip .role{font-size:11px;color:var(--muted);}
+    .logout-link{
+      display:flex;align-items:center;gap:8px;padding:10px 14px;
+      border-radius:10px;text-decoration:none;color:var(--muted);
+      font-size:13px;margin-top:6px;transition:all .2s;
+    }
+    .logout-link:hover{background:rgba(239,68,68,.1);color:#ef4444;}
+
+    /* Main */
+    .main{
+      display:flex;flex-direction:column;min-height:100vh;
+      background:var(--bg);overflow-y:auto;
+    }
+    .topbar{
+      padding:16px 32px;background:var(--surface);border-bottom:1px solid var(--border);
+      display:flex;align-items:center;justify-content:space-between;
+      position:sticky;top:0;z-index:10;
+    }
+    .topbar .page-title{font-size:18px;font-weight:700;}
+    .content{padding:28px 32px;flex:1;}
+
+    /* Responsive */
+    @media(max-width:768px){
+      .app-shell{grid-template-columns:1fr;}
+      .sidebar{display:none;}
+      .content{padding:16px;}
+    }
+
+    {% block styles %}{% endblock %}
+  </style>
+</head>
+<body>
+<div class="app-shell">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="brand">
+      UpStat <small>TRAIN</small>
+    </div>
+
+    <nav class="menu">
+      <a href="/dashboard" {% if request.url.path == '/dashboard' %}class="active"{% endif %}>
+        <i class="fas fa-home"></i> Главная
+      </a>
+      <a href="/trainings/catalog" {% if '/catalog' in request.url.path %}class="active"{% endif %}>
+        <i class="fas fa-book-open"></i> Каталог тренировок
+      </a>
+      <a href="/teams" {% if '/teams' in request.url.path and 'program' not in request.url.path and 'report' not in request.url.path %}class="active"{% endif %}>
+        <i class="fas fa-users"></i> Моя команда
+      </a>
+      {% if user.role == 'manager' %}
+      {% for tm in user.managed_teams %}
+      <a href="/teams/{{ tm.id }}/program" {% if 'program' in request.url.path %}class="active"{% endif %} style="padding-left:32px;font-size:13px;">
+        <i class="fas fa-calendar-alt"></i> Программа
+      </a>
+      <a href="/teams/{{ tm.id }}/train-report" {% if 'train-report' in request.url.path %}class="active"{% endif %} style="padding-left:32px;font-size:13px;">
+        <i class="fas fa-chart-line"></i> Отчёт команды
+      </a>
+      {% endfor %}
+      {% endif %}
+      <a href="/settings" {% if request.url.path == '/settings' %}class="active"{% endif %}>
+        <i class="fas fa-cog"></i> Настройки
+      </a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="user-chip">
+        <div class="avatar">{{ user.name[0].upper() if user.name else '?' }}</div>
+        <div class="meta">
+          <div class="name">{{ user.name }}</div>
+          <div class="role">{% if user.role == 'manager' %}РОП{% else %}Менеджер{% endif %}</div>
+        </div>
+      </div>
+      <a href="/logout" class="logout-link">
+        <i class="fas fa-sign-out-alt"></i> Выйти
+      </a>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <div class="main">
+    <header class="topbar">
+      <span class="page-title">{% block page_title %}UpStat Train{% endblock %}</span>
+      {% block topbar_extra %}{% endblock %}
+    </header>
+
+    <main class="content">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>
