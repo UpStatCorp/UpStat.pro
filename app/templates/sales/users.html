@@ -1,3 +1,4 @@
+{% import "partials/icons.html" as icons %}
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -5,7 +6,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Управление подписками — UpStat</title>
 
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;600;700&family=Roboto:wght@400;500&display=swap" rel="stylesheet">
@@ -687,7 +687,7 @@
       <div class="sidebar-header">
         <a href="/sales/" class="sidebar-logo">
           <div class="sidebar-logo-icon">
-            <i class="fas fa-chart-line"></i>
+            {{ icons.icon('chart', size=18) }}
           </div>
           <span>Панель продаж</span>
         </a>
@@ -695,7 +695,7 @@
 
       <nav class="sidebar-nav">
         <a href="/sales/" class="nav-item active">
-          <i class="fas fa-users"></i>
+          {{ icons.icon('users', size=20) }}
           <span>Пользователи</span>
         </a>
       </nav>
@@ -709,7 +709,7 @@
 
         <form action="/logout" method="post">
           <button type="submit" class="btn-logout">
-            <i class="fas fa-sign-out-alt"></i>
+            {{ icons.icon('logout', size=18) }}
             <span>Выйти</span>
           </button>
         </form>
@@ -724,12 +724,12 @@
       <header class="topbar">
         <div style="display: flex; align-items: center; gap: 16px;">
           <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Меню">
-            <i class="fas fa-bars" style="font-size: 20px;"></i>
+            {{ icons.icon('menu', size=20) }}
           </button>
           <h1 class="topbar-title">Управление подписками</h1>
         </div>
         <div class="topbar-time">
-          <i class="far fa-clock"></i>
+          {{ icons.icon('clock', size=16) }}
           <span id="current-time"></span>
         </div>
       </header>
@@ -743,7 +743,7 @@
               <div class="value">{{ total_users }}</div>
             </div>
             <div class="stat-icon total">
-              <i class="fas fa-users"></i>
+              {{ icons.icon('users', size=22) }}
             </div>
           </div>
 
@@ -753,7 +753,7 @@
               <div class="value">{{ premium_users }}</div>
             </div>
             <div class="stat-icon premium">
-              <i class="fas fa-infinity"></i>
+              {{ icons.icon('star', size=22) }}
             </div>
           </div>
 
@@ -763,7 +763,7 @@
               <div class="value">{{ free_users }}</div>
             </div>
             <div class="stat-icon free">
-              <i class="fas fa-hourglass-half"></i>
+              {{ icons.icon('clock', size=22) }}
             </div>
           </div>
         </div>
@@ -773,12 +773,12 @@
           <form class="search-form" method="get" action="/sales/">
             <input type="text" name="search" class="search-input" placeholder="Поиск по имени или email..." value="{{ search or '' }}">
             <button type="submit" class="btn btn-primary">
-              <i class="fas fa-search"></i>
+              {{ icons.icon('search', size=16) }}
               Найти
             </button>
             {% if search %}
             <a href="/sales/" class="btn btn-secondary">
-              <i class="fas fa-times"></i>
+              {{ icons.icon('close', size=16) }}
               Сбросить
             </a>
             {% endif %}
@@ -815,18 +815,18 @@
                 </td>
                 <td>
                   {% if u.role == 'manager' %}
-                  <span class="badge badge-rop"><i class="fas fa-user-tie"></i> РОП</span>
+                  <span class="badge badge-rop">{{ icons.icon('briefcase', size=14) }} РОП</span>
                   {% elif u.role == 'admin' %}
-                  <span class="badge badge-rop"><i class="fas fa-shield-alt"></i> Админ</span>
+                  <span class="badge badge-rop">{{ icons.icon('shield', size=14) }} Админ</span>
                   {% elif u.role == 'sale_manager' %}
-                  <span class="badge badge-rop"><i class="fas fa-chart-line"></i> Продажи</span>
+                  <span class="badge badge-rop">{{ icons.icon('chart', size=14) }} Продажи</span>
                   {% else %}
-                  <span class="badge badge-user"><i class="fas fa-user"></i> Пользователь</span>
+                  <span class="badge badge-user">{{ icons.icon('user', size=14) }} Пользователь</span>
                   {% endif %}
                 </td>
                 <td>
                   {% if u.is_premium %}
-                  <span class="badge badge-premium"><i class="fas fa-check-circle"></i> Безлимит</span>
+                  <span class="badge badge-premium">{{ icons.icon('check', size=14) }} Безлимит</span>
                   {% else %}
                   <span class="badge badge-free">Бесплатный</span>
                   {% endif %}
@@ -834,7 +834,7 @@
                 <td>
                   <div class="analyses-cell">
                     {% if u.is_premium %}
-                    <span class="analyses-unlimited"><i class="fas fa-infinity"></i> Безлимит</span>
+                    <span class="analyses-unlimited">{{ icons.icon('star', size=14) }} Безлимит</span>
                     {% else %}
                     <div class="analyses-info">
                       <div class="progress-bar">
@@ -851,7 +851,7 @@
                     </div>
                     <form method="post" action="/sales/reset-analyses/{{ u.id }}" style="margin: 0;">
                       <button type="submit" class="btn-reset">
-                        <i class="fas fa-redo"></i> Сбросить
+                        {{ icons.icon('refresh', size=12) }} Сбросить
                       </button>
                     </form>
                     {% endif %}
@@ -869,35 +869,35 @@
                   <div style="display:flex;flex-direction:column;gap:6px;">
                     {# ── Назначить продукт (SKU) ── #}
                     <form method="post" action="/sales/assign-product/{{ u.id }}" style="margin:0;display:flex;gap:4px;align-items:center;flex-wrap:wrap;">
-                      <select name="sku" style="font-size:12px;padding:3px 6px;border-radius:6px;border:1px solid #ccc;">
+                      <select name="sku" style="font-size:12px;padding:3px 6px;border-radius:6px;border:1px solid var(--border);">
                         <option value="FULL" {% if u.product_mode == 'full' or not u.product_mode %}selected{% endif %}>Full</option>
                         <option value="TRAIN_RU" {% if u.product_mode == 'train' and u.organization and u.organization.sku == 'TRAIN_RU' %}selected{% endif %}>Train RU</option>
                         <option value="TRAIN_GLOBAL" {% if u.product_mode == 'train' and u.organization and u.organization.sku == 'TRAIN_GLOBAL' %}selected{% endif %}>Train Global</option>
                       </select>
-                      <button type="submit" class="btn-action" style="font-size:11px;padding:4px 8px;background:#4f46e5;color:#fff;border:none;border-radius:6px;cursor:pointer;">
-                        <i class="fas fa-tag"></i> Назначить
+                      <button type="submit" class="btn-action" style="font-size:11px;padding:4px 8px;background:var(--blue);color:#fff;border:none;border-radius:6px;cursor:pointer;">
+                        {{ icons.icon('gift', size=12) }} Назначить
                       </button>
                     </form>
                     {# ── Текущий продукт ── #}
                     {% if u.product_mode == 'train' %}
-                    <span style="font-size:11px;color:#059669;font-weight:600;">
-                      <i class="fas fa-dumbbell"></i>
+                    <span style="font-size:11px;color:var(--green);font-weight:600;display:inline-flex;align-items:center;gap:4px;">
+                      {{ icons.icon('target', size=12) }}
                       Train {% if u.organization %}({{ u.organization.sku }}){% endif %}
                     </span>
                     {% elif u.product_mode == 'full' or not u.product_mode %}
-                    <span style="font-size:11px;color:#6366f1;font-weight:600;">
-                      <i class="fas fa-chart-bar"></i> Full
+                    <span style="font-size:11px;color:var(--blue);font-weight:600;display:inline-flex;align-items:center;gap:4px;">
+                      {{ icons.icon('chart', size=12) }} Full
                     </span>
                     {% endif %}
                     {# ── Старый безлимит для Full ── #}
                     <form method="post" action="/sales/toggle-premium/{{ u.id }}" style="margin:0;">
                       {% if u.is_premium %}
                       <button type="submit" class="btn-action btn-revoke" style="font-size:11px;" onclick="return confirm('Убрать безлимит у {{ u.name }}?')">
-                        <i class="fas fa-times"></i> Убрать безлимит
+                        {{ icons.icon('close', size=12) }} Убрать безлимит
                       </button>
                       {% else %}
                       <button type="submit" class="btn-action btn-grant" style="font-size:11px;" onclick="return confirm('Дать безлимит для {{ u.name }}?')">
-                        <i class="fas fa-crown"></i> Дать безлимит
+                        {{ icons.icon('star', size=12) }} Дать безлимит
                       </button>
                       {% endif %}
                     </form>
@@ -910,7 +910,7 @@
           {% else %}
           <div class="empty-state">
             <div class="empty-state-icon">
-              <i class="fas fa-users"></i>
+              {{ icons.icon('users', size=28) }}
             </div>
             <h3>Пользователи не найдены</h3>
             <p>{% if search %}Попробуйте изменить критерии поиска{% else %}Пока нет зарегистрированных пользователей{% endif %}</p>

@@ -1,16 +1,17 @@
 {% extends "admin/_layout_admin.html" %}
+{% import "partials/icons.html" as icons %}
 {% block title %}Редактор промпта чата тренера — UpStat{% endblock %}
 
 {% block content %}
 <div class="admin-container">
   <div class="admin-header">
     <div class="admin-title">
-      <h1>🎯 Редактор промпта чата тренера</h1>
+      <h1><span style="display: inline-flex; vertical-align: middle; margin-right: 8px;">{{ icons.icon('target', size=22) }}</span>Редактор промпта чата тренера</h1>
       <p>Настройте систему анализа тренировок продаж с оценкой по баллам</p>
     </div>
     <div class="admin-actions">
       <a href="/admin/prompts" class="btn btn-secondary">
-        <i class="icon-arrow-left"></i>
+        {{ icons.icon('arrow-left', size=16) }}
         Назад к промптам
       </a>
     </div>
@@ -57,7 +58,7 @@
           >{{ current_prompt.content if current_prompt else '' }}</textarea>
         </div>
         <div class="prompt-help">
-          <h4>📋 Структура промпта должна включать:</h4>
+          <h4><span style="display: inline-flex; vertical-align: middle; margin-right: 8px;">{{ icons.icon('file-text', size=16) }}</span>Структура промпта должна включать:</h4>
           <ul>
             <li><strong>Разбивка на тренировки:</strong> Как ИИ должен разделить 40-минутную встречу на отдельные тренировки</li>
             <li><strong>Определение ролей:</strong> Как определить, кто клиент, а кто продавец</li>
@@ -71,7 +72,7 @@
 
       <div class="form-actions">
         <button type="submit" class="btn btn-primary">
-          <i class="icon-save"></i>
+          {{ icons.icon('save', size=16) }}
           Сохранить новую версию
         </button>
         <a href="/admin/prompts" class="btn btn-secondary">Отмена</a>

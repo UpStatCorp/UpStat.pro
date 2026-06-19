@@ -1,6 +1,11 @@
 <div class="messages">
   {% for m in messages %}
     <div class="msg {{ 'you' if m.role=='user' else 'bot' }}" data-id="{{ m.id }}">
+
+      {% if m.role != 'user' %}
+      <div class="msg-avatar" aria-hidden="true">AI</div>
+      {% endif %}
+
       <div class="bubble">
         <div class="meta">
           <span class="role">{{ 'Вы' if m.role=='user' else 'Бот' }}</span>
@@ -13,30 +18,36 @@
 
         {% if m.attachments and m.attachments|length > 0 %}
           <div class="files">
+            {# Изображения #}
             <div class="files-grid">
             {% for a in m.attachments if a.mime_type.startswith('image/') %}
-              <a href="/attachments/{{ a.id }}" target="_blank" class="file-item image" title="{{ a.file_name }}">
-                <img src="/attachments/{{ a.id }}" alt="{{ a.file_name | e }}" />
+              <a href="/attachments/{{ a.id }}" target="_blank" class="file-item image" title="{{ a.file_name | e }}">
+                <img src="/attachments/{{ a.id }}" alt="{{ a.file_name | e }}" loading="lazy" />
               </a>
             {% endfor %}
             </div>
 
+            {# Аудио #}
             {% for a in m.attachments if a.mime_type.startswith('audio/') %}
-              <div class="file-item audio">
-                <audio controls preload="metadata">
-                  <source src="/attachments/{{ a.id }}" type="{{ a.mime_type }}">
-                </audio>
-                <a class="name" href="/attachments/{{ a.id }}" download>{{ a.file_name }}</a>
-                <span class="meta">{{ (a.size_bytes/1024/1024)|round(2) }} МБ</span>
-              </div>
+            <div class="file-audio">
+              <audio controls preload="metadata">
+                <source src="/attachments/{{ a.id }}" type="{{ a.mime_type }}">
+              </audio>
+              <a class="file-audio-name" href="/attachments/{{ a.id }}" download>
+                <svg width="12" height="12" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd"/></svg>
+                {{ a.file_name }}
+              </a>
+              <span class="file-audio-size">{{ (a.size_bytes/1024/1024)|round(2) }} МБ</span>
+            </div>
             {% endfor %}
 
+            {# Документы #}
             {% for a in m.attachments if not a.mime_type.startswith('image/') and not a.mime_type.startswith('audio/') %}
-              <a href="/attachments/{{ a.id }}" target="_blank" class="file-item doc" download>
-                <span class="icon">{{ a.file_name.split('.')[-1]|upper }}</span>
-                <span class="name">{{ a.file_name }}</span>
-                <span class="meta">{{ (a.size_bytes/1024/1024)|round(2) }} МБ · {{ a.mime_type }}</span>
-              </a>
+            <a href="/attachments/{{ a.id }}" target="_blank" class="file-chip" download>
+              <span class="file-chip-ext">{{ a.file_name.split('.')[-1]|upper }}</span>
+              <span class="file-chip-name">{{ a.file_name }}</span>
+              <span class="file-chip-meta">{{ (a.size_bytes/1024/1024)|round(2) }} МБ · {{ a.mime_type | upper }}</span>
+            </a>
             {% endfor %}
           </div>
         {% endif %}

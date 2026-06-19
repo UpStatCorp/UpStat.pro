@@ -1,4 +1,5 @@
 {% extends "admin/_layout_admin.html" %}
+{% import "partials/icons.html" as icons %}
 
 {% block title %}Research #{{ log.id }} — Админ-панель — UpStat{% endblock %}
 
@@ -11,7 +12,7 @@
   .rs-stage { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 14px; overflow: hidden; box-shadow: var(--shadow); }
   .rs-stage-head { padding: 14px 18px; background: #fafafa; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 12px; flex-wrap: wrap; cursor: pointer; }
   .rs-stage-head:hover { background: #f1f5f9; }
-  .rs-stage-num { width: 32px; height: 32px; border-radius: 8px; background: linear-gradient(135deg, #8b5cf6, #7c3aed); color: white; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex-shrink: 0; }
+  .rs-stage-num { width: 32px; height: 32px; border-radius: 8px; background: var(--primary); color: white; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; flex-shrink: 0; }
   .rs-stage-title { font-size: 15px; font-weight: 600; color: var(--text); flex: 1; min-width: 200px; }
   .rs-stage-meta { display: flex; gap: 10px; font-size: 11px; color: var(--muted); flex-wrap: wrap; }
   .rs-stage-meta span { background: white; border: 1px solid var(--border); padding: 3px 8px; border-radius: 6px; font-family: ui-monospace, SFMono-Regular, monospace; }
@@ -22,16 +23,16 @@
   .rs-block { margin-top: 16px; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
   .rs-block-title { padding: 10px 14px; background: #f8fafc; font-weight: 600; font-size: 12px; color: var(--text); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
   .rs-block-body { padding: 14px 16px; font-size: 13px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; }
-  .rs-block.reasoning .rs-block-title { background: linear-gradient(135deg, rgba(139, 92, 246, 0.08), rgba(124, 58, 237, 0.08)); color: #6d28d9; }
-  .rs-block.reasoning .rs-block-body { background: #faf5ff; font-family: ui-sans-serif, system-ui; }
+  .rs-block.reasoning .rs-block-title { background: var(--accent); color: var(--primary); }
+  .rs-block.reasoning .rs-block-body { background: var(--accent); font-family: ui-sans-serif, system-ui; }
   .rs-block.decisions .rs-block-title { background: rgba(16, 185, 129, 0.08); color: #047857; }
   .rs-block.decisions .rs-block-body { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; background: #f0fdf4; }
-  .rs-block.response .rs-block-title { background: rgba(59, 130, 246, 0.08); color: #1d4ed8; }
+  .rs-block.response .rs-block-title { background: var(--accent); color: var(--primary); }
   .rs-block.response .rs-block-body { font-family: ui-sans-serif, system-ui; }
   .rs-block.prompt .rs-block-title { background: rgba(107, 114, 128, 0.08); color: #374151; }
   .rs-block.prompt .rs-block-body { font-family: ui-monospace, monospace; font-size: 12px; background: #f9fafb; color: #4b5563; max-height: 320px; overflow: auto; }
   .rs-toggle { font-size: 11px; padding: 3px 8px; background: white; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
-  .rs-tldr { background: linear-gradient(135deg, #fffbeb, #fef3c7); border: 1px solid #fcd34d; border-radius: var(--radius); padding: 16px 20px; margin-bottom: 16px; }
+  .rs-tldr { background: rgba(245, 158, 11, 0.12); border: 1px solid #fcd34d; border-radius: var(--radius); padding: 16px 20px; margin-bottom: 16px; }
   .rs-tldr h3 { margin: 0 0 10px 0; font-size: 14px; color: #92400e; }
   .rs-tldr ul { margin: 0; padding-left: 18px; font-size: 13px; color: #78350f; line-height: 1.8; }
   .rs-toc { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 20px; margin-bottom: 16px; }
@@ -49,11 +50,11 @@
 <!-- Шапка -->
 <div style="margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
     <div>
-        <a href="/admin/research" style="color: var(--admin-info); text-decoration: none; font-size: 13px;">
-            <i class="fas fa-arrow-left"></i> Назад к списку
+        <a href="/admin/research" style="color: var(--admin-info); text-decoration: none; font-size: 13px; display: inline-flex; align-items: center; gap: 6px;">
+            {{ icons.icon('arrow-left', size=16) }} Назад к списку
         </a>
-        <h1 style="font-size: 22px; font-weight: 700; color: var(--text); margin: 6px 0 4px 0;">
-            <i class="fas fa-flask" style="color: var(--admin-primary); margin-right: 8px;"></i>
+        <h1 style="font-size: 22px; font-weight: 700; color: var(--text); margin: 6px 0 4px 0; display: flex; align-items: center; gap: 8px;">
+            <span style="color: var(--admin-primary); display: inline-flex;">{{ icons.icon('flask', size=20) }}</span>
             Research-лог #{{ log.id }}
         </h1>
         <p style="color: var(--muted); margin: 0; font-size: 13px;">
@@ -65,21 +66,21 @@
     <div style="display: flex; gap: 8px; align-items: center;">
         <div style="display: flex; gap: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden;">
             <a href="/admin/research/{{ log.id }}?mode=cards"
-               style="padding: 8px 14px; font-size: 13px; text-decoration: none; {% if mode == 'cards' %}background: var(--admin-primary); color: white;{% else %}background: white; color: var(--text);{% endif %}">
-               <i class="fas fa-layer-group"></i> Карточки
+               style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; font-size: 13px; text-decoration: none; {% if mode == 'cards' %}background: var(--admin-primary); color: white;{% else %}background: white; color: var(--text);{% endif %}">
+               {{ icons.icon('dashboard', size=16) }} Карточки
             </a>
             <a href="/admin/research/{{ log.id }}?mode=raw"
-               style="padding: 8px 14px; font-size: 13px; text-decoration: none; {% if mode == 'raw' %}background: var(--admin-primary); color: white;{% else %}background: white; color: var(--text);{% endif %}">
-               <i class="fas fa-file-code"></i> Raw .txt
+               style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; font-size: 13px; text-decoration: none; {% if mode == 'raw' %}background: var(--admin-primary); color: white;{% else %}background: white; color: var(--text);{% endif %}">
+               {{ icons.icon('code', size=16) }} Raw .txt
             </a>
         </div>
         <a href="/admin/research/{{ log.id }}/download" class="btn" style="background: var(--admin-info); color: white; border-color: var(--admin-info);">
-            <i class="fas fa-download"></i> Скачать
+            {{ icons.icon('download', size=16) }} Скачать
         </a>
         <form method="post" action="/admin/research/{{ log.id }}/delete" style="margin: 0;">
             <button type="submit" class="btn" style="background: var(--admin-primary); color: white; border-color: var(--admin-primary);"
                     onclick="return confirm('Удалить research-лог #{{ log.id }}?')">
-                <i class="fas fa-trash"></i> Удалить
+                {{ icons.icon('trash', size=16) }} Удалить
             </button>
         </form>
     </div>
@@ -90,50 +91,50 @@
     <div class="admin-card">
         <div class="admin-card-header">
             <div class="admin-card-title">Этапов</div>
-            <div class="admin-card-icon" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);">
-                <i class="fas fa-layer-group"></i>
+            <div class="admin-card-icon" style="background: var(--primary); color: #fff;">
+                {{ icons.icon('dashboard') }}
             </div>
         </div>
         <div class="admin-metric">{{ log.stages_count }}</div>
-        <div class="admin-metric-change"><i class="fas fa-cubes"></i><span>AI-вызовов в pipeline</span></div>
+        <div class="admin-metric-change">{{ icons.icon('dashboard', size=14) }}<span>AI-вызовов в pipeline</span></div>
     </div>
     <div class="admin-card">
         <div class="admin-card-header">
             <div class="admin-card-title">Токены</div>
-            <div class="admin-card-icon" style="background: linear-gradient(135deg, var(--admin-info), #2563eb);">
-                <i class="fas fa-coins"></i>
+            <div class="admin-card-icon" style="background: var(--primary); color: #fff;">
+                {{ icons.icon('card') }}
             </div>
         </div>
         <div class="admin-metric">{{ log.total_input_tokens + log.total_output_tokens }}</div>
-        <div class="admin-metric-change"><i class="fas fa-arrows-left-right"></i><span>in {{ log.total_input_tokens }} / out {{ log.total_output_tokens }}</span></div>
+        <div class="admin-metric-change">{{ icons.icon('refresh', size=14) }}<span>in {{ log.total_input_tokens }} / out {{ log.total_output_tokens }}</span></div>
     </div>
     <div class="admin-card">
         <div class="admin-card-header">
             <div class="admin-card-title">Модели</div>
-            <div class="admin-card-icon" style="background: linear-gradient(135deg, var(--admin-success), #059669);">
-                <i class="fas fa-microchip"></i>
+            <div class="admin-card-icon" style="background: var(--success); color: #fff;">
+                {{ icons.icon('settings') }}
             </div>
         </div>
         <div class="admin-metric" style="font-size: 15px; font-weight: 600; line-height: 1.4;">{{ log.models_summary }}</div>
-        <div class="admin-metric-change"><i class="fas fa-robot"></i><span>OpenAI</span></div>
+        <div class="admin-metric-change">{{ icons.icon('chat', size=14) }}<span>OpenAI</span></div>
     </div>
     <div class="admin-card">
         <div class="admin-card-header">
             <div class="admin-card-title">Статус</div>
             <div class="admin-card-icon"
-                 style="background: {% if log.status == 'completed' %}linear-gradient(135deg, var(--admin-success), #059669){% elif log.status == 'failed' %}linear-gradient(135deg, var(--admin-primary), #ef4444){% else %}linear-gradient(135deg, var(--admin-info), #2563eb){% endif %};">
-                <i class="fas {% if log.status == 'completed' %}fa-check{% elif log.status == 'failed' %}fa-times{% else %}fa-spinner{% endif %}"></i>
+                 style="background: {% if log.status == 'completed' %}var(--success){% elif log.status == 'failed' %}#dc2626{% else %}var(--primary){% endif %}; color: #fff;">
+                {{ icons.icon('check' if log.status == 'completed' else ('close' if log.status == 'failed' else 'refresh')) }}
             </div>
         </div>
         <div class="admin-metric" style="font-size: 18px; font-weight: 700;">{{ log.status }}</div>
-        <div class="admin-metric-change"><i class="fas fa-clock"></i><span>{{ log.created_at.strftime('%d.%m.%Y %H:%M') if log.created_at else '—' }}{% if log.completed_at %} → {{ log.completed_at.strftime('%H:%M:%S') }}{% endif %}</span></div>
+        <div class="admin-metric-change">{{ icons.icon('clock', size=14) }}<span>{{ log.created_at.strftime('%d.%m.%Y %H:%M') if log.created_at else '—' }}{% if log.completed_at %} → {{ log.completed_at.strftime('%H:%M:%S') }}{% endif %}</span></div>
     </div>
 </div>
 
 {% if log.error_message %}
 <div style="background: rgba(220, 38, 38, 0.05); border: 1px solid rgba(220, 38, 38, 0.2); border-radius: var(--radius); padding: 14px 18px; margin-bottom: 16px;">
-    <div style="font-weight: 600; color: var(--admin-primary); margin-bottom: 6px;">
-        <i class="fas fa-triangle-exclamation"></i> Ошибка
+    <div style="font-weight: 600; color: var(--admin-primary); margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+        {{ icons.icon('warning', size=16) }} Ошибка
     </div>
     <div style="font-family: monospace; font-size: 12px; color: #7f1d1d; white-space: pre-wrap; word-break: break-word;">{{ log.error_message }}</div>
 </div>
@@ -142,7 +143,7 @@
 {% if file_missing %}
 <div class="admin-table-container">
     <div class="rs-empty">
-        <i class="fas fa-file-excel" style="font-size: 32px; color: #d1d5db; display: block; margin-bottom: 12px;"></i>
+        <span style="color: #d1d5db; display: block; margin-bottom: 12px;">{{ icons.icon('file', size=32) }}</span>
         <h3 style="margin: 0 0 6px 0;">Файл не найден на диске</h3>
         <p style="margin: 0; font-size: 13px;">Запись в БД есть, но физический файл отсутствует.</p>
     </div>
@@ -150,11 +151,11 @@
 {% elif too_large %}
 <div class="admin-table-container">
     <div class="rs-empty">
-        <i class="fas fa-weight-hanging" style="font-size: 32px; color: #d1d5db; display: block; margin-bottom: 12px;"></i>
+        <span style="color: #d1d5db; display: block; margin-bottom: 12px;">{{ icons.icon('alert-circle', size=32) }}</span>
         <h3 style="margin: 0 0 6px 0;">Файл слишком большой для просмотра в браузере</h3>
         <p style="margin: 0 0 12px 0; font-size: 13px;">Размер: {{ log.file_size_human }}. Скачайте, чтобы открыть локально.</p>
         <a href="/admin/research/{{ log.id }}/download" class="btn" style="background: var(--admin-info); color: white; border-color: var(--admin-info);">
-            <i class="fas fa-download"></i> Скачать .txt
+            {{ icons.icon('download', size=16) }} Скачать .txt
         </a>
     </div>
 </div>
@@ -163,9 +164,9 @@
 <!-- RAW режим — оригинальный текст -->
 <div class="admin-table-container">
     <div class="admin-table-header" style="display: flex; align-items: center; justify-content: space-between;">
-        <h3 class="admin-table-title"><i class="fas fa-file-code" style="color: var(--admin-info); margin-right: 8px;"></i>Сырой .txt</h3>
+        <h3 class="admin-table-title" style="display: flex; align-items: center; gap: 8px;"><span style="color: var(--admin-info); display: inline-flex;">{{ icons.icon('code', size=18) }}</span>Сырой .txt</h3>
         <button type="button" onclick="copyResearchContent()" class="btn" style="padding: 6px 10px; font-size: 12px;">
-            <i class="fas fa-copy"></i> Скопировать
+            {{ icons.icon('copy', size=16) }} Скопировать
         </button>
     </div>
     <pre id="research-content" style="margin: 0; padding: 16px 20px; background: #0f172a; color: #e2e8f0; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; line-height: 1.55; max-height: 80vh; overflow: auto; white-space: pre-wrap; word-break: break-word; border-radius: 0 0 var(--radius) var(--radius);">{{ file_content }}</pre>
@@ -176,7 +177,7 @@
 
 {% if parsed.tldr %}
 <div class="rs-tldr">
-    <h3><i class="fas fa-thumbtack"></i> TL;DR — главное</h3>
+    <h3 style="display: flex; align-items: center; gap: 8px;">{{ icons.icon('star', size=16) }} TL;DR — главное</h3>
     <ul>
         {% for line in parsed.tldr %}<li>{{ line }}</li>{% endfor %}
     </ul>
@@ -186,16 +187,16 @@
 <!-- Тулбар -->
 <div class="admin-table-container" style="padding: 14px 18px; margin-bottom: 16px;">
     <div class="rs-toolbar">
-        <input type="text" id="rs-search" placeholder="🔍 Поиск по reasoning, оценкам, цитатам..." autocomplete="off"/>
+        <input type="text" id="rs-search" placeholder="Поиск по reasoning, оценкам, цитатам..." autocomplete="off"/>
         <span class="rs-chip active" data-filter="all">Все этапы ({{ parsed.stages|length }})</span>
-        <span class="rs-chip" data-filter="failed">⚠️ Только провалы</span>
-        <span class="rs-chip" data-filter="lowconf">🤔 Низкая уверенность</span>
-        <span class="rs-chip" data-filter="hasreasoning">🧠 С reasoning</span>
+        <span class="rs-chip" data-filter="failed">{{ icons.icon('warning', size=14) }} Только провалы</span>
+        <span class="rs-chip" data-filter="lowconf">{{ icons.icon('alert-circle', size=14) }} Низкая уверенность</span>
+        <span class="rs-chip" data-filter="hasreasoning">{{ icons.icon('zap', size=14) }} С reasoning</span>
         <button type="button" id="rs-expand-all" class="btn" style="padding: 6px 12px; font-size: 12px; margin-left: auto;">
-            <i class="fas fa-expand-arrows-alt"></i> Раскрыть все
+            {{ icons.icon('plus', size=14) }} Раскрыть все
         </button>
         <button type="button" id="rs-collapse-all" class="btn" style="padding: 6px 12px; font-size: 12px;">
-            <i class="fas fa-compress-arrows-alt"></i> Свернуть
+            {{ icons.icon('menu', size=14) }} Свернуть
         </button>
     </div>
 </div>
@@ -203,7 +204,7 @@
 <!-- Оглавление -->
 {% if parsed.stages|length > 1 %}
 <div class="rs-toc">
-    <h3><i class="fas fa-list-ol"></i> Оглавление</h3>
+    <h3 style="display: flex; align-items: center; gap: 8px;">{{ icons.icon('menu', size=16) }} Оглавление</h3>
     {% for stage in parsed.stages %}
     <div class="rs-toc-item">
         <span style="font-weight: 600; color: var(--muted); width: 28px;">#{{ stage.idx }}</span>
@@ -211,9 +212,9 @@
         {% if stage.decisions_summary %}
         <span class="rs-toc-summary">{{ stage.decisions_summary }}</span>
         {% endif %}
-        <span style="margin-left: auto; font-size: 11px; color: var(--muted); font-family: ui-monospace, monospace;">
-            {{ stage.model }} · {{ stage.tokens_total }} tok
-            {% if stage.reasoning %}· 🧠{% else %}· ⚠️{% endif %}
+        <span style="margin-left: auto; font-size: 11px; color: var(--muted); font-family: ui-monospace, monospace; display: inline-flex; align-items: center; gap: 4px;">
+            {{ stage.model }} · {{ stage.tokens_total }} tok ·
+            {% if stage.reasoning %}{{ icons.icon('zap', size=12) }}{% else %}{{ icons.icon('warning', size=12) }}{% endif %}
         </span>
     </div>
     {% endfor %}
@@ -229,25 +230,25 @@
      data-hasreasoning="{{ '1' if stage.reasoning else '0' }}">
     {% set is_system = stage.model == 'система' %}
     <div class="rs-stage-head" onclick="toggleStage(this.parentElement)">
-        <span class="rs-chevron"><i class="fas fa-chevron-right"></i></span>
-        <span class="rs-stage-num"{% if is_system %} style="background: linear-gradient(135deg, #475569, #334155);"{% endif %}>{{ stage.idx }}</span>
+        <span class="rs-chevron" style="display: inline-flex;">{{ icons.icon('arrow-right', size=16) }}</span>
+        <span class="rs-stage-num"{% if is_system %} style="background: var(--muted);"{% endif %}>{{ stage.idx }}</span>
         <span class="rs-stage-title">{{ stage.name }}</span>
         <div class="rs-stage-meta">
             {% if is_system %}
-            <span><i class="fas fa-gear"></i> система</span>
+            <span style="display: inline-flex; align-items: center; gap: 4px;">{{ icons.icon('settings', size=12) }} система</span>
             {% else %}
-            <span><i class="fas fa-microchip"></i> {{ stage.model }}</span>
+            <span style="display: inline-flex; align-items: center; gap: 4px;">{{ icons.icon('settings', size=12) }} {{ stage.model }}</span>
             <span>in {{ stage.tokens_in }} / out {{ stage.tokens_out }}</span>
             {% endif %}
             {% if stage.decisions_summary %}
             <span style="background: #fef3c7; color: #92400e; border-color: #fcd34d;">{{ stage.decisions_summary }}</span>
             {% endif %}
             {% if is_system %}
-            <span style="background: #f1f5f9; color: #475569; border-color: #cbd5e1;">⚙️ учёт</span>
+            <span style="display: inline-flex; align-items: center; gap: 4px; background: #f1f5f9; color: #475569; border-color: #cbd5e1;">{{ icons.icon('settings', size=12) }} учёт</span>
             {% elif stage.reasoning %}
-            <span style="background: #faf5ff; color: #6d28d9; border-color: #d8b4fe;">🧠 reasoning</span>
+            <span style="display: inline-flex; align-items: center; gap: 4px; background: var(--accent); color: var(--primary);">{{ icons.icon('zap', size=12) }} reasoning</span>
             {% else %}
-            <span style="background: #fee2e2; color: #b91c1c; border-color: #fca5a5;">⚠️ no reasoning</span>
+            <span style="display: inline-flex; align-items: center; gap: 4px; background: #fee2e2; color: #b91c1c; border-color: #fca5a5;">{{ icons.icon('warning', size=12) }} no reasoning</span>
             {% endif %}
         </div>
     </div>
@@ -258,14 +259,14 @@
         {% elif stage.reasoning %}
         <div class="rs-block reasoning">
             <div class="rs-block-title">
-                <i class="fas fa-brain"></i> Мысли модели — почему так оценила
+                {{ icons.icon('zap', size=16) }} Мысли модели — почему так оценила
             </div>
             <div class="rs-block-body">{{ stage.reasoning }}</div>
         </div>
         {% else %}
         <div class="rs-block reasoning">
             <div class="rs-block-title">
-                <i class="fas fa-triangle-exclamation"></i> Reasoning отсутствует
+                {{ icons.icon('warning', size=16) }} Reasoning отсутствует
             </div>
             <div class="rs-block-body" style="color: #b91c1c;">
                 Модель не вернула блок <code>=== REASONING ===</code>. Возможные причины:
@@ -278,7 +279,7 @@
         {% if stage.parsed_decisions %}
         <div class="rs-block decisions">
             <div class="rs-block-title">
-                <i class="fas fa-check-double"></i> Финальные решения (что попало в БД)
+                {{ icons.icon('check-circle', size=16) }} Финальные решения (что попало в БД)
                 <button type="button" class="rs-toggle" style="margin-left: auto;" onclick="toggleSibling(this)">скрыть</button>
             </div>
             <div class="rs-block-body">{{ stage.parsed_decisions }}</div>
@@ -289,9 +290,9 @@
         <div class="rs-block response">
             <div class="rs-block-title">
                 {% if is_system %}
-                <i class="fas fa-clipboard-list"></i> Детали учёта
+                {{ icons.icon('file-text', size=16) }} Детали учёта
                 {% else %}
-                <i class="fas fa-file-lines"></i> Остальной ответ модели (role mapping, оценки)
+                {{ icons.icon('file-text', size=16) }} Остальной ответ модели (role mapping, оценки)
                 {% endif %}
                 <button type="button" class="rs-toggle" style="margin-left: auto;" onclick="toggleSibling(this)">скрыть</button>
             </div>
@@ -302,7 +303,7 @@
         {% if stage.extra %}
         <div class="rs-block">
             <div class="rs-block-title">
-                <i class="fas fa-circle-info"></i> Доп. контекст
+                {{ icons.icon('info', size=16) }} Доп. контекст
                 <button type="button" class="rs-toggle" style="margin-left: auto;" onclick="toggleSibling(this)">скрыть</button>
             </div>
             <div class="rs-block-body" style="font-family: ui-monospace, monospace; font-size: 12px;">{{ stage.extra }}</div>
@@ -312,7 +313,7 @@
         {% if stage.prompt %}
         <div class="rs-block prompt">
             <div class="rs-block-title">
-                <i class="fas fa-wrench"></i> Промпт, отправленный в модель
+                {{ icons.icon('code', size=16) }} Промпт, отправленный в модель
                 <button type="button" class="rs-toggle" style="margin-left: auto;" onclick="toggleSibling(this)">показать</button>
             </div>
             <div class="rs-block-body" style="display: none;">{{ stage.prompt }}</div>
@@ -354,7 +355,7 @@ function copyResearchContent() {
         const btn = event.target.closest('button');
         if (btn) {
             const original = btn.innerHTML;
-            btn.innerHTML = '<i class="fas fa-check"></i> Скопировано';
+            btn.innerHTML = '<svg class="ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg> Скопировано';
             setTimeout(() => { btn.innerHTML = original; }, 1800);
         }
     });

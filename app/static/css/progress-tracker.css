@@ -24,7 +24,7 @@
     transform: translateY(20px);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     min-width: 320px;
-    border-left: 4px solid var(--progress-color, #3b82f6);
+    border-left: 4px solid var(--progress-color, #1e3a8a);
 }
 
 .progress-tracker.show {
@@ -38,7 +38,7 @@
 }
 
 .progress-tracker-in_progress {
-    --progress-color: #3b82f6;
+    --progress-color: #1e3a8a;
 }
 
 .progress-tracker-completed {

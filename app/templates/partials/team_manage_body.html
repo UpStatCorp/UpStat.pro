@@ -1,0 +1,123 @@
+<style>
+.tl-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:20px;flex-wrap:wrap;}
+.tl-header .tl-title{font-size:20px;font-weight:800;margin:0 0 3px;color:var(--text);}
+.tl-header .tl-sub{font-size:13px;color:var(--muted);margin:0;}
+
+.tl-section{margin-bottom:20px;}
+.tl-section-title{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;margin:0 0 10px;}
+
+.team-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;transition:border-color .15s;}
+.team-card:hover{border-color:var(--primary);}
+.team-card + .team-card{margin-top:8px;}
+.team-card .tc-name{font-size:15px;font-weight:700;color:var(--text);}
+.team-card .tc-meta{font-size:12px;color:var(--muted);margin-top:2px;}
+.team-card .tc-actions{display:flex;gap:8px;flex-wrap:nowrap;align-items:center;}
+
+/* Форма создания команды */
+.create-form-wrap{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:12px;}
+.create-form-wrap h3{margin:0 0 12px;font-size:13px;font-weight:700;}
+.create-form-wrap input[type=text]{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:var(--surface);color:var(--text);outline:none;transition:border-color .15s;box-sizing:border-box;}
+.create-form-wrap input[type=text]:focus{border-color:var(--primary);}
+.cf-row{display:flex;gap:8px;align-items:flex-end;margin-top:10px;}
+.cf-row .cf-input-wrap{flex:1;}
+.cf-row label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:5px;}
+
+.empty-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:36px 20px;text-align:center;}
+.empty-card svg{color:var(--muted);margin-bottom:12px;}
+.empty-card .ec-title{font-size:14px;font-weight:700;margin:0 0 5px;}
+.empty-card .ec-sub{font-size:13px;color:var(--muted);margin:0;}
+</style>
+
+<!-- Заголовок -->
+<div class="tl-header">
+  <div>
+    <div class="tl-title">Моя команда</div>
+    <div class="tl-sub">Управление командами и участниками</div>
+  </div>
+  {% if is_manager %}
+  <button onclick="toggleCreateForm()" class="btn primary">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    Создать команду
+  </button>
+  {% endif %}
+</div>
+
+<!-- Форма создания -->
+{% if is_manager %}
+<div id="create-team-form" style="display:none;margin-bottom:24px;">
+  <div class="create-form-wrap">
+    <h3>Новая команда</h3>
+    <form method="POST" action="/teams">
+      <div class="cf-row">
+        <div class="cf-input-wrap">
+          <label for="team-name">Название команды</label>
+          <input type="text" id="team-name" name="name" required placeholder="Например: Отдел продаж"/>
+        </div>
+        <button type="submit" class="btn primary">Создать</button>
+        <button type="button" onclick="toggleCreateForm()" class="btn">Отмена</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<!-- Мои команды (менеджер) -->
+{% if manager_teams %}
+<div class="tl-section">
+  <div class="tl-section-title">Я менеджер</div>
+  {% for team in manager_teams %}
+  <div class="team-card">
+    <div>
+      <div class="tc-name">{{ team.name }}</div>
+      <div class="tc-meta">Создана {{ team.created_at.strftime('%d.%m.%Y') }}</div>
+    </div>
+    <div class="tc-actions">
+      <a href="/teams/{{ team.id }}/members" class="btn">Участники</a>
+      {% if train_mode %}
+      <a href="/teams/{{ team.id }}/program" class="btn">Программа</a>
+      <a href="/teams/{{ team.id }}/train-report" class="btn primary">Отчёт</a>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Команды где я участник -->
+{% if member_teams %}
+<div class="tl-section">
+  <div class="tl-section-title">Я участник</div>
+  {% for team in member_teams %}
+  <div class="team-card">
+    <div>
+      <div class="tc-name">{{ team.name }}</div>
+      <div class="tc-meta">Менеджер: {{ team.manager.name }}</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Пусто -->
+{% if not manager_teams and not member_teams %}
+<div class="empty-card">
+  <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+    <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+  </svg>
+  <div class="ec-title">Нет команд</div>
+  <div class="ec-sub">
+    {% if is_manager %}Создайте первую команду или дождитесь приглашения{% else %}Дождитесь приглашения от менеджера{% endif %}
+  </div>
+</div>
+{% endif %}
+
+<script>
+function toggleCreateForm() {
+  const f = document.getElementById('create-team-form');
+  const show = f.style.display === 'none';
+  f.style.display = show ? 'block' : 'none';
+  if (show) document.getElementById('team-name').focus();
+  else document.getElementById('team-name').value = '';
+}
+</script>

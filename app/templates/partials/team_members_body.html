@@ -1,0 +1,170 @@
+<style>
+.tm-back{display:inline-flex;align-items:center;gap:5px;color:var(--muted);text-decoration:none;font-size:13px;font-weight:500;margin-bottom:20px;transition:color .15s;}
+.tm-back:hover{color:var(--text);}
+.tm-back svg{flex-shrink:0;}
+
+.tm-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:32px;flex-wrap:wrap;}
+.tm-header-left .tm-title{font-size:24px;font-weight:800;margin:0 0 4px;color:var(--text);}
+.tm-header-left .tm-sub{font-size:14px;color:var(--muted);margin:0;}
+.tm-header-actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+
+.tm-section{margin-bottom:32px;}
+.tm-section-title{font-size:15px;font-weight:700;margin:0 0 14px;color:var(--text);}
+
+/* Таблица участников */
+.tm-table-wrap{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);}
+.tm-table{width:100%;border-collapse:collapse;}
+.tm-table th{padding:10px 16px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid var(--border);background:var(--surface-hover);text-align:left;}
+.tm-table td{padding:12px 16px;font-size:14px;border-bottom:1px solid var(--border);vertical-align:middle;}
+.tm-table tr:last-child td{border-bottom:none;}
+.tm-table tr:hover td{background:var(--surface-hover);}
+.tm-table .user-name{font-weight:600;}
+.tm-table .user-email{font-size:12px;color:var(--muted);margin-top:1px;}
+
+.role-badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;}
+.role-manager{background:rgba(37,99,235,.08);color:var(--primary);}
+.role-member{background:rgba(100,116,139,.08);color:#64748b;}
+
+.inv-status{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;}
+.inv-pending{background:rgba(245,158,11,.1);color:#d97706;}
+.inv-accepted{background:rgba(16,185,129,.1);color:#059669;}
+.inv-expired{background:rgba(239,68,68,.08);color:#dc2626;}
+.inv-other{background:rgba(100,116,139,.08);color:#64748b;}
+
+/* Форма приглашения */
+.inv-form-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:22px 24px;box-shadow:var(--shadow);}
+.inv-form-card label{display:block;font-size:13px;font-weight:600;color:var(--muted);margin-bottom:8px;}
+.inv-form-card textarea{width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--surface);color:var(--text);font-family:inherit;resize:vertical;box-sizing:border-box;outline:none;transition:border-color .15s;}
+.inv-form-card textarea:focus{border-color:var(--primary);}
+
+.empty-state{padding:40px 20px;text-align:center;color:var(--muted);font-size:14px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);}
+</style>
+
+<!-- Breadcrumb -->
+<a href="/teams/my" class="tm-back">
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+  Назад к командам
+</a>
+
+<!-- Заголовок + кнопки -->
+<div class="tm-header">
+  <div class="tm-header-left">
+    <div class="tm-title">{{ team.name }}</div>
+    <div class="tm-sub">Управление участниками команды</div>
+  </div>
+  <div class="tm-header-actions">
+    {% if train_mode %}
+    <a href="/teams/{{ team.id }}/program" class="btn">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      Программа тренировок
+    </a>
+    <a href="/teams/{{ team.id }}/train-report" class="btn primary">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      Отчёт команды
+    </a>
+    {% else %}
+    <a href="/teams/{{ team.id }}/analytics" class="btn">
+      Аналитика
+    </a>
+    <a href="/teams/{{ team.id }}/script" class="btn primary">
+      Скрипт
+    </a>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Участники -->
+<div class="tm-section">
+  <div class="tm-section-title">Участники ({{ members|length }})</div>
+  <div class="tm-table-wrap">
+    <table class="tm-table">
+      <thead>
+        <tr>
+          <th>Имя</th>
+          <th>Email</th>
+          <th>Роль</th>
+          <th>Присоединился</th>
+          {% if not train_mode %}<th></th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for member in members %}
+        <tr>
+          <td>
+            <div class="user-name">{{ member.user.name }}</div>
+          </td>
+          <td style="color:var(--muted);">{{ member.user.email }}</td>
+          <td>
+            {% if member.role_in_team == 'manager' %}
+            <span class="role-badge role-manager">Менеджер</span>
+            {% else %}
+            <span class="role-badge role-member">Участник</span>
+            {% endif %}
+          </td>
+          <td style="color:var(--muted);font-size:13px;">{{ member.joined_at.strftime('%d.%m.%Y') }}</td>
+          {% if not train_mode %}
+          <td>
+            <a href="/teams/{{ team.id }}/member/{{ member.user_id }}/report"
+               style="font-size:13px;color:var(--primary);text-decoration:none;font-weight:600;">
+              Детали →
+            </a>
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Приглашения -->
+<div class="tm-section">
+  <div class="tm-section-title">Приглашения</div>
+
+  <div class="inv-form-card" style="margin-bottom:20px;">
+    <label for="emails">Email адреса (по одному на строку или через запятую)</label>
+    <form method="POST" action="/teams/{{ team.id }}/invitations">
+      <textarea id="emails" name="emails" required rows="4"
+        placeholder="user1@example.com&#10;user2@example.com"></textarea>
+      <button type="submit" class="btn primary" style="margin-top:12px;">
+        Отправить приглашения
+      </button>
+    </form>
+  </div>
+
+  {% if invitations %}
+  <div class="tm-table-wrap">
+    <table class="tm-table">
+      <thead>
+        <tr>
+          <th>Email</th>
+          <th>Статус</th>
+          <th>Отправлено</th>
+          <th>Истекает</th>
+          <th>Принято</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for inv in invitations %}
+        <tr>
+          <td style="font-size:13px;">{{ inv.invited_email }}</td>
+          <td>
+            {% if inv.status == 'PENDING' %}<span class="inv-status inv-pending">Ожидает</span>
+            {% elif inv.status == 'ACCEPTED' %}<span class="inv-status inv-accepted">Принято</span>
+            {% elif inv.status == 'EXPIRED' %}<span class="inv-status inv-expired">Истекло</span>
+            {% else %}<span class="inv-status inv-other">{{ inv.status }}</span>{% endif %}
+          </td>
+          <td style="font-size:13px;color:var(--muted);">{{ inv.created_at.strftime('%d.%m.%Y') }}</td>
+          <td style="font-size:13px;color:var(--muted);">{{ inv.expires_at.strftime('%d.%m.%Y') }}</td>
+          <td style="font-size:13px;color:var(--muted);">
+            {{ inv.accepted_at.strftime('%d.%m.%Y') if inv.accepted_at else '—' }}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">Нет отправленных приглашений</div>
+  {% endif %}
+</div>

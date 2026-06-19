@@ -1,11 +1,12 @@
 {% extends "admin/_layout_admin.html" %}
+{% import "partials/icons.html" as icons %}
 
 {% block title %}Исследование — Админ-панель — UpStat{% endblock %}
 
 {% block content %}
 <div style="margin-bottom: 20px;">
-    <h1 style="font-size: 22px; font-weight: 700; color: var(--text); margin: 0 0 4px 0;">
-        <i class="fas fa-flask" style="color: var(--admin-primary); margin-right: 8px;"></i>
+    <h1 style="font-size: 22px; font-weight: 700; color: var(--text); margin: 0 0 4px 0; display: flex; align-items: center; gap: 8px;">
+        <span style="color: var(--admin-primary); display: inline-flex;">{{ icons.icon('flask', size=20) }}</span>
         Исследование (Research Mode)
     </h1>
     <p style="color: var(--muted); margin: 0; font-size: 13px;">
@@ -18,13 +19,13 @@
     <div class="admin-card">
         <div class="admin-card-header">
             <div class="admin-card-title">Всего логов</div>
-            <div class="admin-card-icon" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);">
-                <i class="fas fa-flask"></i>
+            <div class="admin-card-icon" style="background: var(--primary); color: #fff;">
+                {{ icons.icon('flask') }}
             </div>
         </div>
         <div class="admin-metric">{{ stats.total }}</div>
         <div class="admin-metric-change">
-            <i class="fas fa-database"></i>
+            {{ icons.icon('file', size=14) }}
             <span>Все запуски pipeline</span>
         </div>
     </div>
@@ -32,13 +33,13 @@
     <div class="admin-card">
         <div class="admin-card-header">
             <div class="admin-card-title">Завершено</div>
-            <div class="admin-card-icon" style="background: linear-gradient(135deg, var(--admin-success), #059669);">
-                <i class="fas fa-check"></i>
+            <div class="admin-card-icon" style="background: var(--success); color: #fff;">
+                {{ icons.icon('check') }}
             </div>
         </div>
         <div class="admin-metric">{{ stats.completed }}</div>
         <div class="admin-metric-change positive">
-            <i class="fas fa-check-circle"></i>
+            {{ icons.icon('check-circle', size=14) }}
             <span>Успешные</span>
         </div>
     </div>
@@ -46,13 +47,13 @@
     <div class="admin-card">
         <div class="admin-card-header">
             <div class="admin-card-title">В работе</div>
-            <div class="admin-card-icon" style="background: linear-gradient(135deg, var(--admin-info), #2563eb);">
-                <i class="fas fa-spinner"></i>
+            <div class="admin-card-icon" style="background: var(--primary); color: #fff;">
+                {{ icons.icon('refresh') }}
             </div>
         </div>
         <div class="admin-metric">{{ stats.running }}</div>
         <div class="admin-metric-change">
-            <i class="fas fa-circle-notch"></i>
+            {{ icons.icon('refresh', size=14) }}
             <span>Сейчас выполняются</span>
         </div>
     </div>
@@ -60,13 +61,13 @@
     <div class="admin-card">
         <div class="admin-card-header">
             <div class="admin-card-title">С ошибкой</div>
-            <div class="admin-card-icon" style="background: linear-gradient(135deg, var(--admin-primary), #ef4444);">
-                <i class="fas fa-triangle-exclamation"></i>
+            <div class="admin-card-icon" style="background: #dc2626; color: #fff;">
+                {{ icons.icon('warning') }}
             </div>
         </div>
         <div class="admin-metric">{{ stats.failed }}</div>
         <div class="admin-metric-change negative">
-            <i class="fas fa-bug"></i>
+            {{ icons.icon('alert-circle', size=14) }}
             <span>Требуют внимания</span>
         </div>
     </div>
@@ -97,10 +98,10 @@
             </div>
             <div style="display: flex; gap: 6px;">
                 <button type="submit" class="btn" style="padding: 8px 14px;">
-                    <i class="fas fa-filter"></i> Применить
+                    {{ icons.icon('search', size=16) }} Применить
                 </button>
-                <a href="/admin/research" class="btn" style="padding: 8px 14px; background: #f3f4f6;">
-                    <i class="fas fa-times"></i> Сбросить
+                <a href="/admin/research" class="btn" style="padding: 8px 14px; background: var(--surface-hover);">
+                    {{ icons.icon('close', size=16) }} Сбросить
                 </a>
             </div>
         </form>
@@ -110,8 +111,8 @@
 <!-- Таблица -->
 <div class="admin-table-container">
     <div class="admin-table-header">
-        <h3 class="admin-table-title">
-            <i class="fas fa-list" style="color: var(--admin-info); margin-right: 8px;"></i>
+        <h3 class="admin-table-title" style="display: flex; align-items: center; gap: 8px;">
+            <span style="color: var(--admin-info); display: inline-flex;">{{ icons.icon('menu', size=18) }}</span>
             Логи · Найдено {{ total }}
         </h3>
     </div>
@@ -179,15 +180,15 @@
                 <td>
                     {% if r.status == 'completed' %}
                     <span class="role-badge" style="background: rgba(16, 185, 129, 0.1); color: var(--admin-success); border: 1px solid rgba(16, 185, 129, 0.2);">
-                        <i class="fas fa-check"></i> completed
+                        {{ icons.icon('check', size=14) }} completed
                     </span>
                     {% elif r.status == 'running' %}
-                    <span class="role-badge" style="background: rgba(59, 130, 246, 0.1); color: var(--admin-info); border: 1px solid rgba(59, 130, 246, 0.2);">
-                        <i class="fas fa-spinner"></i> running
+                    <span class="role-badge" style="background: var(--accent); color: var(--admin-info); border: 1px solid rgba(59, 130, 246, 0.2);">
+                        {{ icons.icon('refresh', size=14) }} running
                     </span>
                     {% elif r.status == 'failed' %}
                     <span class="role-badge" style="background: rgba(220, 38, 38, 0.1); color: var(--admin-primary); border: 1px solid rgba(220, 38, 38, 0.2);" title="{{ r.error_message or '' }}">
-                        <i class="fas fa-times"></i> failed
+                        {{ icons.icon('close', size=14) }} failed
                     </span>
                     {% else %}
                     <span class="role-badge user">{{ r.status }}</span>
@@ -196,19 +197,19 @@
                 <td>
                     <div style="display: flex; gap: 4px;">
                         <a href="/admin/research/{{ r.id }}" title="Открыть"
-                           style="padding: 4px 8px; border-radius: 6px; background: #6366f1; color: white; font-size: 11px; text-decoration: none;">
-                            <i class="fas fa-eye"></i>
+                           style="display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 6px; background: var(--primary); color: white; font-size: 11px; text-decoration: none;">
+                            {{ icons.icon('eye', size=14) }}
                         </a>
                         <a href="/admin/research/{{ r.id }}/download" title="Скачать .txt"
-                           style="padding: 4px 8px; border-radius: 6px; background: #6b7280; color: white; font-size: 11px; text-decoration: none;">
-                            <i class="fas fa-download"></i>
+                           style="display: inline-flex; align-items: center; padding: 4px 8px; border-radius: 6px; background: #6b7280; color: white; font-size: 11px; text-decoration: none;">
+                            {{ icons.icon('download', size=14) }}
                         </a>
                         <form method="post" action="/admin/research/{{ r.id }}/delete" style="margin: 0;">
                             <button type="submit"
-                                    style="padding: 4px 8px; border: none; border-radius: 6px; font-size: 11px; cursor: pointer; background: var(--admin-primary); color: white;"
+                                    style="display: inline-flex; align-items: center; padding: 4px 8px; border: none; border-radius: 6px; font-size: 11px; cursor: pointer; background: var(--admin-primary); color: white;"
                                     onclick="return confirm('Удалить research-лог #{{ r.id }}? Файл будет удалён безвозвратно.')"
                                     title="Удалить">
-                                <i class="fas fa-trash"></i>
+                                {{ icons.icon('trash', size=14) }}
                             </button>
                         </form>
                     </div>
@@ -230,12 +231,12 @@
             {% set qs_conv = '&conversation_id=' ~ filters.conversation_id if filters.conversation_id else '' %}
             {% if page > 1 %}
             <a class="btn" href="?page={{ page - 1 }}{{ qs_status }}{{ qs_user }}{{ qs_conv }}" style="padding: 6px 12px; font-size: 12px;">
-                <i class="fas fa-chevron-left"></i> Назад
+                {{ icons.icon('arrow-left', size=14) }} Назад
             </a>
             {% endif %}
             {% if page < total_pages %}
             <a class="btn" href="?page={{ page + 1 }}{{ qs_status }}{{ qs_user }}{{ qs_conv }}" style="padding: 6px 12px; font-size: 12px;">
-                Вперёд <i class="fas fa-chevron-right"></i>
+                Вперёд {{ icons.icon('arrow-right', size=14) }}
             </a>
             {% endif %}
         </div>
@@ -244,8 +245,8 @@
 
     {% else %}
     <div style="padding: 48px 24px; text-align: center;">
-        <div style="width: 80px; height: 80px; background: #f3f4f6; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; color: #9ca3af;">
-            <i class="fas fa-flask" style="font-size: 32px;"></i>
+        <div style="width: 80px; height: 80px; background: var(--surface-hover); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; color: #9ca3af;">
+            {{ icons.icon('flask', size=32) }}
         </div>
         <h3 style="color: var(--muted); margin: 0 0 8px 0;">Research-логов пока нет</h3>
         <p style="color: var(--muted); margin: 0;">

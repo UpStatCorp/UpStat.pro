@@ -1,10 +1,11 @@
 {% extends "admin/_layout_admin.html" %}
+{% import "partials/icons.html" as icons %}
 
 {% block content %}
 <!-- Заголовок -->
 <div style="margin-bottom: 32px;">
-    <h1 style="font-size: 28px; font-weight: 700; color: var(--text); margin: 0 0 8px 0;">
-        <i class="fas fa-code" style="color: var(--admin-info); margin-right: 12px;"></i>
+    <h1 style="font-size: 28px; font-weight: 700; color: var(--text); margin: 0 0 8px 0; display: flex; align-items: center; gap: 12px;">
+        <span style="color: var(--admin-info); display: inline-flex;">{{ icons.icon('code', size=26) }}</span>
         Управление промптами
     </h1>
     <p style="color: var(--muted); margin: 0; font-size: 16px;">
@@ -18,12 +19,12 @@
         <div class="admin-card-header">
             <div class="admin-card-title">Активные промпты</div>
             <div class="admin-card-icon users">
-                <i class="fas fa-code"></i>
+                {{ icons.icon('code', size=20) }}
             </div>
         </div>
         <div class="admin-metric">{{ stats.active_prompts }}</div>
         <div class="admin-metric-change positive">
-            <i class="fas fa-check-circle"></i>
+            {{ icons.icon('check-circle', size=14) }}
             <span>Используются в системе</span>
         </div>
     </div>
@@ -32,12 +33,12 @@
         <div class="admin-card-header">
             <div class="admin-card-title">Всего версий</div>
             <div class="admin-card-icon system">
-                <i class="fas fa-history"></i>
+                {{ icons.icon('clock', size=20) }}
             </div>
         </div>
         <div class="admin-metric">{{ stats.total_versions }}</div>
         <div class="admin-metric-change">
-            <i class="fas fa-archive"></i>
+            {{ icons.icon('refresh', size=14) }}
             <span>История изменений</span>
         </div>
     </div>
@@ -46,12 +47,12 @@
         <div class="admin-card-header">
             <div class="admin-card-title">Уникальных промптов</div>
             <div class="admin-card-icon conversations">
-                <i class="fas fa-layer-group"></i>
+                {{ icons.icon('copy', size=20) }}
             </div>
         </div>
         <div class="admin-metric">{{ stats.unique_prompts }}</div>
         <div class="admin-metric-change">
-            <i class="fas fa-tags"></i>
+            {{ icons.icon('file', size=14) }}
             <span>Различные типы</span>
         </div>
     </div>
@@ -61,21 +62,21 @@
 <div style="margin-bottom: 32px;">
     <div class="admin-table-container">
         <div class="admin-table-header">
-            <h3 class="admin-table-title">
-                <i class="fas fa-bolt" style="color: var(--admin-secondary); margin-right: 8px;"></i>
+            <h3 class="admin-table-title" style="display: flex; align-items: center; gap: 8px;">
+                <span style="color: var(--admin-secondary); display: inline-flex;">{{ icons.icon('zap', size=18) }}</span>
                 Быстрые действия
             </h3>
         </div>
         <div style="padding: 24px;">
             <div style="display: flex; gap: 16px; flex-wrap: wrap;">
                 <a href="/admin/prompts/create" style="display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; background: var(--admin-success); color: white; border-radius: 8px; text-decoration: none; font-weight: 500; transition: all 0.2s ease;">
-                    <i class="fas fa-chart-line"></i> Редактировать промпт аудита
+                    {{ icons.icon('chart', size=18) }} Редактировать промпт аудита
                 </a>
                 <a href="/admin/prompts/trainer" style="display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; background: #f59e0b; color: white; border-radius: 8px; text-decoration: none; font-weight: 500; transition: all 0.2s ease;">
-                    <i class="fas fa-chalkboard-teacher"></i> Редактировать промпт тренера
+                    {{ icons.icon('book', size=18) }} Редактировать промпт тренера
                 </a>
                 <a href="/admin/prompts/import" style="display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; background: var(--admin-info); color: white; border-radius: 8px; text-decoration: none; font-weight: 500; transition: all 0.2s ease;">
-                    <i class="fas fa-upload"></i> Импорт промптов
+                    {{ icons.icon('upload', size=18) }} Импорт промптов
                 </a>
             </div>
         </div>
@@ -85,8 +86,8 @@
 <!-- Промпты для аудита -->
 <div class="admin-table-container" style="margin-bottom: 32px;">
     <div class="admin-table-header">
-        <h3 class="admin-table-title">
-            <i class="fas fa-chart-line" style="color: var(--admin-info); margin-right: 8px;"></i>
+        <h3 class="admin-table-title" style="display: flex; align-items: center; gap: 8px;">
+            <span style="color: var(--admin-info); display: inline-flex;">{{ icons.icon('chart', size=18) }}</span>
             Промпты для аудита продаж
         </h3>
     </div>
@@ -108,7 +109,7 @@
             <tr{% if prompt.is_active %} style="background: rgba(16, 185, 129, 0.02);"{% endif %}>
                 <td>
                     <span style="display: inline-flex; align-items: center; gap: 4px; background: {% if prompt.is_active %}var(--admin-success){% else %}#6b7280{% endif %}; color: white; padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 500;">
-                        <i class="fas fa-tag"></i> v{{ prompt.version }}
+                        {{ icons.icon('file', size=12) }} v{{ prompt.version }}
                     </span>
                 </td>
                 <td>
@@ -120,8 +121,8 @@
                 </td>
                 <td>
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <div style="width: 24px; height: 24px; background: #e5e7eb; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #6b7280; font-size: 12px;">
-                            <i class="fas fa-user"></i>
+                        <div style="width: 24px; height: 24px; background: var(--surface-hover); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--muted);">
+                            {{ icons.icon('user', size=14) }}
                         </div>
                         <span style="font-weight: 500;">{{ prompt.creator.name if prompt.creator else 'Неизвестно' }}</span>
                     </div>
@@ -129,12 +130,12 @@
                 <td>
                     {% if prompt.is_active %}
                     <span style="display: inline-flex; align-items: center; gap: 4px; color: var(--admin-success);">
-                        <i class="fas fa-check-circle"></i>
+                        {{ icons.icon('check-circle', size=14) }}
                         Используется
                     </span>
                     {% else %}
                     <span style="display: inline-flex; align-items: center; gap: 4px; color: var(--muted);">
-                        <i class="fas fa-pause-circle"></i>
+                        {{ icons.icon('x-circle', size=14) }}
                         Неактивна
                     </span>
                     {% endif %}
@@ -144,9 +145,9 @@
                         <!-- Редактировать -->
                         <a href="/admin/prompts/create" 
                            style="display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; border: none; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.2s ease; background: var(--admin-info); color: white; text-decoration: none;"
-                           onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(59,130,246,0.3)'"
+                           onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(30,58,138,0.3)'"
                            onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
-                            <i class="fas fa-edit"></i> Редактировать
+                            {{ icons.icon('edit', size=14) }} Редактировать
                         </a>
                         
                         {% if not prompt.is_active %}
@@ -157,7 +158,7 @@
                                     onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(16,185,129,0.3)'"
                                     onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'"
                                     onclick="return confirm('Вы уверены, что хотите активировать версию v{{ prompt.version }}? Текущая активная версия будет деактивирована.')">
-                                <i class="fas fa-play"></i> Активировать
+                                {{ icons.icon('play', size=14) }} Активировать
                             </button>
                         </form>
                         {% endif %}
@@ -169,13 +170,13 @@
     </table>
     {% else %}
     <div style="padding: 48px 24px; text-align: center;">
-        <div style="width: 80px; height: 80px; background: #f3f4f6; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; color: #9ca3af;">
-            <i class="fas fa-chart-line" style="font-size: 32px;"></i>
+        <div style="width: 80px; height: 80px; background: var(--surface-hover); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; color: var(--muted);">
+            {{ icons.icon('chart', size=32) }}
         </div>
         <h3 style="color: var(--muted); margin: 0 0 8px 0;">Промпты для аудита не найдены</h3>
         <p style="color: var(--muted); margin: 0 0 16px 0;">В системе пока нет созданных промптов для аудита.</p>
         <a href="/admin/prompts/create" style="display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; background: var(--admin-success); color: white; border-radius: 8px; text-decoration: none; font-weight: 500;">
-            <i class="fas fa-edit"></i> Создать первый промпт
+            {{ icons.icon('edit', size=18) }} Создать первый промпт
         </a>
     </div>
     {% endif %}
@@ -184,8 +185,8 @@
 <!-- Промпты для тренера -->
 <div class="admin-table-container">
     <div class="admin-table-header">
-        <h3 class="admin-table-title">
-            <i class="fas fa-chalkboard-teacher" style="color: #f59e0b; margin-right: 8px;"></i>
+        <h3 class="admin-table-title" style="display: flex; align-items: center; gap: 8px;">
+            <span style="color: #f59e0b; display: inline-flex;">{{ icons.icon('book', size=18) }}</span>
             Промпты для чата тренера
         </h3>
     </div>
@@ -207,7 +208,7 @@
             <tr{% if prompt.is_active %} style="background: rgba(245, 158, 11, 0.02);"{% endif %}>
                 <td>
                     <span style="display: inline-flex; align-items: center; gap: 4px; background: {% if prompt.is_active %}#f59e0b{% else %}#6b7280{% endif %}; color: white; padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 500;">
-                        <i class="fas fa-tag"></i> v{{ prompt.version }}
+                        {{ icons.icon('file', size=12) }} v{{ prompt.version }}
                     </span>
                 </td>
                 <td>
@@ -219,8 +220,8 @@
                 </td>
                 <td>
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <div style="width: 24px; height: 24px; background: #e5e7eb; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #6b7280; font-size: 12px;">
-                            <i class="fas fa-user"></i>
+                        <div style="width: 24px; height: 24px; background: var(--surface-hover); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--muted);">
+                            {{ icons.icon('user', size=14) }}
                         </div>
                         <span style="font-weight: 500;">{{ prompt.creator.name if prompt.creator else 'Неизвестно' }}</span>
                     </div>
@@ -228,12 +229,12 @@
                 <td>
                     {% if prompt.is_active %}
                     <span style="display: inline-flex; align-items: center; gap: 4px; color: #f59e0b;">
-                        <i class="fas fa-check-circle"></i>
+                        {{ icons.icon('check-circle', size=14) }}
                         Используется
                     </span>
                     {% else %}
                     <span style="display: inline-flex; align-items: center; gap: 4px; color: var(--muted);">
-                        <i class="fas fa-pause-circle"></i>
+                        {{ icons.icon('x-circle', size=14) }}
                         Неактивна
                     </span>
                     {% endif %}
@@ -245,7 +246,7 @@
                            style="display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; border: none; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.2s ease; background: #f59e0b; color: white; text-decoration: none;"
                            onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(245,158,11,0.3)'"
                            onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
-                            <i class="fas fa-edit"></i> Редактировать
+                            {{ icons.icon('edit', size=14) }} Редактировать
                         </a>
                         
                         {% if not prompt.is_active %}
@@ -256,7 +257,7 @@
                                     onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(16,185,129,0.3)'"
                                     onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'"
                                     onclick="return confirm('Вы уверены, что хотите активировать версию v{{ prompt.version }}? Текущая активная версия будет деактивирована.')">
-                                <i class="fas fa-play"></i> Активировать
+                                {{ icons.icon('play', size=14) }} Активировать
                             </button>
                         </form>
                         {% endif %}
@@ -268,13 +269,13 @@
     </table>
     {% else %}
     <div style="padding: 48px 24px; text-align: center;">
-        <div style="width: 80px; height: 80px; background: #f3f4f6; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; color: #9ca3af;">
-            <i class="fas fa-chalkboard-teacher" style="font-size: 32px;"></i>
+        <div style="width: 80px; height: 80px; background: var(--surface-hover); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; color: var(--muted);">
+            {{ icons.icon('book', size=32) }}
         </div>
         <h3 style="color: var(--muted); margin: 0 0 8px 0;">Промпты для тренера не найдены</h3>
         <p style="color: var(--muted); margin: 0 0 16px 0;">В системе пока нет созданных промптов для чата тренера.</p>
         <a href="/admin/prompts/trainer" style="display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; background: #f59e0b; color: white; border-radius: 8px; text-decoration: none; font-weight: 500;">
-            <i class="fas fa-edit"></i> Создать первый промпт
+            {{ icons.icon('edit', size=18) }} Создать первый промпт
         </a>
     </div>
     {% endif %}

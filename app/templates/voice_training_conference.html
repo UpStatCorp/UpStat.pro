@@ -1,78 +1,47 @@
-{% extends "_layout_dashboard.html" %}
+{% extends layout_template %}
+{% import "partials/icons.html" as icons %}
 {% block title %}Голосовая тренировка: {{ training.topic if training else "Новая тренировка" }} — UpStat{% endblock %}
 
-{% block head %}
+{% block extra_head %}
 <style>
-  /* Дополнительные стили для правильного отображения страницы тренировки */
-  body {
-      overflow-x: hidden;
-      overflow-y: hidden;
-  }
-  
-  /* Скрываем боковое меню на странице тренировки - аккуратный подход */
-  body .app-shell {
-    grid-template-columns: 1fr !important;
-  }
-  
-  body .sidebar,
-  body aside.sidebar {
-    display: none !important;
-  }
-  
-  /* Убираем дефолтные отступы для страницы тренировки */
-  .dashboard-content {
-    padding: 0 !important;
-    margin: 0 !important;
-    max-width: 100% !important;
-    width: 100% !important;
-  }
-  
-  /* Фикс для корректного z-index */
+  /* Voice training page: full-bleed layout, no scroll */
+  body { overflow: hidden; }
+
+  /* Let the training container fill available space */
   .voice-training-container {
     isolation: isolate;
     width: 100%;
     min-height: 100vh;
   }
-  
-  /* Убеждаемся что main занимает всю ширину */
-  body .main {
-    width: 100% !important;
+
+  /* Remove dashboard padding so the training UI is full-bleed */
+  .dashboard-content,
+  .content {
+    padding: 0 !important;
+    margin: 0 !important;
     max-width: 100% !important;
+    width: 100% !important;
   }
 </style>
 <script>
-  // Защита от закрытия страницы во время тренировки
-  // Активируем защиту сразу при загрузке страницы
+  // Protect against accidental page close / back-navigation during training
   window.isTrainingActive = true;
   window.hasUnsavedChanges = true;
-  
-  console.log('🔒 Защита от закрытия страницы активирована при загрузке');
-  
-  // Отслеживаем начало тренировки
-  document.addEventListener('DOMContentLoaded', function() {
-    console.log('📄 DOM загружен, настраиваем защиту');
-    
-    // Добавляем состояние в историю для предотвращения навигации назад
+
+  window.addEventListener('beforeunload', function (e) {
+    if (window.isTrainingActive || window.hasUnsavedChanges) {
+      e.preventDefault();
+      e.returnValue = 'Вы уверены, что хотите выйти? Незавершённая тренировка будет потеряна.';
+      return e.returnValue;
+    }
+  });
+
+  document.addEventListener('DOMContentLoaded', function () {
     history.pushState(null, null, window.location.href);
-    
-    // Защита от закрытия страницы
-    window.addEventListener('beforeunload', function(e) {
+
+    window.addEventListener('popstate', function () {
       if (window.isTrainingActive || window.hasUnsavedChanges) {
-        console.log('⚠️ Попытка закрыть страницу - блокируем');
-        // Стандартное сообщение для браузера
-        e.preventDefault();
-        // Для современных браузеров нужно вернуть строку
-        e.returnValue = 'Вы уверены, что хотите выйти? Незавершенная тренировка будет потеряна.';
-        return e.returnValue;
-      }
-    });
-    
-    // Защита от навигации назад/вперед
-    window.addEventListener('popstate', function(e) {
-      if (window.isTrainingActive || window.hasUnsavedChanges) {
-        console.log('⚠️ Попытка навигации назад - блокируем');
-        if (!confirm('Вы уверены, что хотите выйти? Незавершенная тренировка будет потеряна.')) {
-          // Восстанавливаем состояние истории
+        if (!confirm('Вы уверены, что хотите выйти? Незавершённая тренировка будет потеряна.')) {
           history.pushState(null, null, window.location.href);
         } else {
           window.isTrainingActive = false;
@@ -80,38 +49,11 @@
         }
       }
     });
-    
-    // Обработка завершения тренировки
-    window.addEventListener('trainingEnded', function() {
+
+    window.addEventListener('trainingEnded', function () {
       window.isTrainingActive = false;
       window.hasUnsavedChanges = false;
-      console.log('✅ Защита от закрытия страницы отключена');
     });
-    
-    // Принудительно скрываем сайдбар через JavaScript
-    setTimeout(function() {
-      const sidebar = document.querySelector('.sidebar');
-      const appShell = document.querySelector('.app-shell');
-      if (sidebar) {
-        sidebar.style.display = 'none';
-        sidebar.style.visibility = 'hidden';
-        sidebar.style.width = '0';
-        console.log('✅ Сайдбар скрыт через JavaScript');
-      }
-      if (appShell) {
-        appShell.style.gridTemplateColumns = '0 1fr';
-        console.log('✅ Сетка обновлена через JavaScript');
-      }
-    }, 100);
-  });
-  
-  // Также активируем защиту до загрузки DOM
-  window.addEventListener('beforeunload', function(e) {
-    if (window.isTrainingActive || window.hasUnsavedChanges) {
-      e.preventDefault();
-      e.returnValue = 'Вы уверены, что хотите выйти? Незавершенная тренировка будет потеряна.';
-      return e.returnValue;
-    }
   });
 </script>
 {% endblock %}
@@ -120,7 +62,8 @@
 <div class="voice-training-container" 
      data-user-id="{% if user and user.id %}{{ user.id }}{% endif %}"
      data-training-id="{% if training and training.id %}{{ training.id }}{% endif %}"
-     data-session-id="{% if training and training.session_id %}{{ training.session_id }}{% endif %}">
+     data-session-id="{% if training and training.session_id %}{{ training.session_id }}{% endif %}"
+     data-post-training-url="{{ post_training_url | default('/dashboard') }}">
   <!-- Рабочая зона: слева чат, справа панель (название + участники) — по референсу -->
   <div class="training-main">
     <div class="training-chat-area">
@@ -162,8 +105,8 @@
           </div>
           <div class="message-content">
             <div class="message-bubble ai-message">
-              <p>👋 Привет! Я ваш ИИ-тренер.</p>
-              <p>🎤 <strong>Как использовать:</strong></p>
+              <p>Привет! Я ваш ИИ-тренер.</p>
+              <p>{{ icons.icon('mic', size=16) }} <strong>Как использовать:</strong></p>
               <p>1. Нажмите кнопку микрофона<br>
               2. Говорите - я буду слушать<br>
               3. После ответа продолжайте говорить<br>
@@ -313,18 +256,18 @@
 
       <!-- Достижения -->
       <div class="achievements-section">
-        <h4 class="achievements-title">🏆 Достижения</h4>
+        <h4 class="achievements-title">{{ icons.icon('trophy', size=18) }} Достижения</h4>
         <div class="achievements-list" id="achievements-list">
           <div class="achievement locked">
-            <span class="achievement-icon">🎯</span>
+            <span class="achievement-icon">{{ icons.icon('target', size=18) }}</span>
             <span class="achievement-name">Первый шаг</span>
           </div>
           <div class="achievement locked">
-            <span class="achievement-icon">🔥</span>
+            <span class="achievement-icon">{{ icons.icon('zap', size=18) }}</span>
             <span class="achievement-name">В ударе</span>
           </div>
           <div class="achievement locked">
-            <span class="achievement-icon">💎</span>
+            <span class="achievement-icon">{{ icons.icon('star', size=18) }}</span>
             <span class="achievement-name">Мастер</span>
           </div>
         </div>
@@ -471,7 +414,7 @@
 <div class="modal-overlay" id="confirm-stop-modal" style="display: none;">
   <div class="modal-content confirm-modal">
     <div class="modal-header">
-      <h3>⚠️ Завершить тренировку?</h3>
+      <h3>{{ icons.icon('warning', size=20) }} Завершить тренировку?</h3>
     </div>
     <div class="modal-body">
       <p style="text-align: center; font-size: 16px; color: var(--text); margin: 20px 0;">
@@ -490,7 +433,7 @@
 <div class="modal-overlay" id="settings-modal" style="display: none;">
   <div class="modal-content">
     <div class="modal-header">
-      <h3>⚙️ Настройки тренировки</h3>
+      <h3>{{ icons.icon('settings', size=20) }} Настройки тренировки</h3>
       <button class="modal-close" id="close-settings-modal">
         <svg viewBox="0 0 20 20" fill="currentColor">
           <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
@@ -547,41 +490,41 @@
 <div class="modal-overlay welcome-modal-overlay" id="welcome-modal" style="display: none;">
   <div class="modal-content welcome-modal-content">
     <div class="welcome-modal-header">
-      <div class="welcome-icon">🎯</div>
+      <div class="welcome-icon">{{ icons.icon('target', size=32) }}</div>
       <h2 class="welcome-title">Добро пожаловать на тренировку с ИИ-тренером!</h2>
     </div>
     <div class="welcome-modal-body">
       <div class="recommendations-list">
         <div class="recommendation-item">
-          <div class="recommendation-icon">🎤</div>
+          <div class="recommendation-icon">{{ icons.icon('mic', size=20) }}</div>
           <div class="recommendation-text">
             <strong>Используйте качественный микрофон</strong>
             <p>Для лучшего распознавания речи используйте гарнитуру или внешний микрофон</p>
           </div>
         </div>
         <div class="recommendation-item">
-          <div class="recommendation-icon">🔇</div>
+          <div class="recommendation-icon">{{ icons.icon('mic-off', size=20) }}</div>
           <div class="recommendation-text">
             <strong>Найдите тихое место</strong>
             <p>Убедитесь, что вас не будут отвлекать посторонние звуки</p>
           </div>
         </div>
         <div class="recommendation-item">
-          <div class="recommendation-icon">💬</div>
+          <div class="recommendation-icon">{{ icons.icon('chat', size=20) }}</div>
           <div class="recommendation-text">
             <strong>Говорите естественно</strong>
             <p>ИИ-тренер понимает естественную речь, не нужно говорить медленно или по слогам</p>
           </div>
         </div>
         <div class="recommendation-item">
-          <div class="recommendation-icon">⏸️</div>
+          <div class="recommendation-icon">{{ icons.icon('clock', size=20) }}</div>
           <div class="recommendation-text">
             <strong>Делайте паузы</strong>
             <p>После ответа ИИ-тренера подождите пару секунд перед тем, как начать говорить</p>
           </div>
         </div>
         <div class="recommendation-item">
-          <div class="recommendation-icon">📋</div>
+          <div class="recommendation-icon">{{ icons.icon('file-text', size=20) }}</div>
           <div class="recommendation-text">
             <strong>Следите за чеклистом</strong>
             <p>Используйте боковую панель с чеклистом для отслеживания прогресса</p>
@@ -601,7 +544,7 @@
 </div>
 
 <!-- Подключение стилей -->
-<link rel="stylesheet" href="/static/css/voice-training.css">
+<link rel="stylesheet" href="/static/css/voice-training.css?v=2">
 
 <!-- Подключение скриптов -->
 <script src="/static/js/voice-training.js"></script>
@@ -615,15 +558,16 @@ document.addEventListener('DOMContentLoaded', function() {
     // Получаем данные из data-атрибутов контейнера
     const container = document.querySelector('.voice-training-container');
     if (!container) {
-        console.error('❌ Контейнер тренировки не найден');
+        console.error('Контейнер тренировки не найден');
         return;
     }
     
     // ID пользователя из data-атрибута
     const userIdStr = container.getAttribute('data-user-id');
     window.currentUserId = userIdStr ? parseInt(userIdStr, 10) : null;
+    window.postTrainingUrl = container.getAttribute('data-post-training-url') || '/dashboard';
     if (!window.currentUserId) {
-        console.warn('⚠️ User ID не найден');
+        console.warn('User ID не найден');
     }
     
     // ID тренировки и сессии из data-атрибутов
@@ -632,13 +576,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const trainingId = trainingIdStr ? parseInt(trainingIdStr, 10) : null;
     const sessionId = sessionIdStr ? parseInt(sessionIdStr, 10) : null;
     
-    console.log('🎯 Инициализация тренировки:', { trainingId: trainingId, sessionId: sessionId, userId: window.currentUserId });
+    console.log('Инициализация тренировки:', { trainingId: trainingId, sessionId: sessionId, userId: window.currentUserId });
     
     // Инициализация тренировки
     if (window.VoiceTraining) {
         // Убеждаемся, что не создаем несколько экземпляров
         if (window.trainingInstance) {
-            console.log('⚠️ Обнаружен существующий экземпляр VoiceTraining, закрываем его...');
+            console.log('Обнаружен существующий экземпляр VoiceTraining, закрываем его...');
             if (window.trainingInstance.ws) {
                 window.trainingInstance.ws.close();
             }
@@ -646,7 +590,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         window.trainingInstance = new VoiceTraining(trainingId, sessionId);
     } else {
-        console.error('❌ VoiceTraining класс не найден');
+        console.error('VoiceTraining класс не найден');
     }
 });
 
@@ -656,7 +600,7 @@ function showWelcomeModal() {
     const startBtn = document.getElementById('start-training-btn');
     
     if (!welcomeModal || !startBtn) {
-        console.warn('⚠️ Элементы модального окна не найдены');
+        console.warn('Элементы модального окна не найдены');
         return;
     }
     
@@ -719,7 +663,7 @@ function closeWelcomeModal() {
 (function() {
   'use strict';
   
-  console.log('🚀 Запуск скрипта скрытия меню и защиты');
+  console.log('Запуск скрипта скрытия меню и защиты');
   
   // Функция для скрытия сайдбара
   function hideSidebar() {
@@ -729,16 +673,16 @@ function closeWelcomeModal() {
     if (sidebar) {
       sidebar.style.display = 'none';
       sidebar.style.visibility = 'hidden';
-      console.log('✅ Сайдбар скрыт через JavaScript (inline)');
+      console.log('Сайдбар скрыт через JavaScript (inline)');
     } else {
-      console.log('⚠️ Сайдбар не найден');
+      console.log('Сайдбар не найден');
     }
     
     if (appShell) {
       appShell.style.gridTemplateColumns = '1fr';
-      console.log('✅ Сетка обновлена через JavaScript (inline)');
+      console.log('Сетка обновлена через JavaScript (inline)');
     } else {
-      console.log('⚠️ app-shell не найден');
+      console.log('app-shell не найден');
     }
   }
   
@@ -748,14 +692,14 @@ function closeWelcomeModal() {
   // Выполняем после загрузки DOM
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() {
-      console.log('📄 DOM загружен (inline script), скрываем меню');
+      console.log('DOM загружен (inline script), скрываем меню');
       hideSidebar();
       setTimeout(hideSidebar, 50);
       setTimeout(hideSidebar, 200);
       setTimeout(hideSidebar, 500);
     });
   } else {
-    console.log('📄 DOM уже загружен (inline script), скрываем меню');
+    console.log('DOM уже загружен (inline script), скрываем меню');
     setTimeout(hideSidebar, 50);
     setTimeout(hideSidebar, 200);
     setTimeout(hideSidebar, 500);
@@ -765,7 +709,7 @@ function closeWelcomeModal() {
   const observer = new MutationObserver(function(mutations) {
     const sidebar = document.querySelector('.sidebar');
     if (sidebar && sidebar.style.display !== 'none') {
-      console.log('🔍 Обнаружен сайдбар через MutationObserver, скрываем');
+      console.log('Обнаружен сайдбар через MutationObserver, скрываем');
       hideSidebar();
     }
   });
@@ -778,7 +722,7 @@ function closeWelcomeModal() {
       attributes: true,
       attributeFilter: ['style', 'class']
     });
-    console.log('👁️ MutationObserver запущен');
+    console.log('MutationObserver запущен');
   } else {
     document.addEventListener('DOMContentLoaded', function() {
       observer.observe(document.body, {
@@ -787,7 +731,7 @@ function closeWelcomeModal() {
         attributes: true,
         attributeFilter: ['style', 'class']
       });
-      console.log('👁️ MutationObserver запущен (после DOMContentLoaded)');
+      console.log('MutationObserver запущен (после DOMContentLoaded)');
     });
   }
   
@@ -797,12 +741,12 @@ function closeWelcomeModal() {
     checkCount++;
     const sidebar = document.querySelector('.sidebar');
     if (sidebar && sidebar.style.display !== 'none') {
-      console.log('🔄 Периодическая проверка: сайдбар виден, скрываем');
+      console.log('Периодическая проверка: сайдбар виден, скрываем');
       hideSidebar();
     }
     if (checkCount > 30) { // Останавливаем через 3 секунды
       clearInterval(checkInterval);
-      console.log('⏹️ Периодическая проверка остановлена');
+      console.log('Периодическая проверка остановлена');
     }
   }, 100);
 })();

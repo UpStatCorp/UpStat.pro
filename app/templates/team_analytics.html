@@ -1,4 +1,5 @@
 {% extends "_layout_dashboard.html" %}
+{% import "partials/icons.html" as icons %}
 {% block title %}Аналитика команды {{ team.name }} — UpStat{% endblock %}
 
 {% block head %}
@@ -6,10 +7,10 @@
 <style>
   /* Premium Design System - Top SaaS Companies */
   :root {
-    --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    --gradient-success: linear-gradient(135deg, #10b981 0%, #059669 100%);
-    --gradient-warning: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-    --gradient-info: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    --gradient-primary: var(--primary);
+    --gradient-success: var(--success);
+    --gradient-warning: #f59e0b;
+    --gradient-info: var(--primary);
     --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
     --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
@@ -60,10 +61,7 @@
   .metric-value {
     font-size: 42px;
     font-weight: 800;
-    background: var(--gradient-primary);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: var(--primary);
     margin: 12px 0;
     letter-spacing: -1px;
     line-height: 1;
@@ -127,10 +125,7 @@
     font-weight: 800;
     margin-bottom: 28px;
     letter-spacing: -0.5px;
-    background: var(--gradient-info);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: var(--primary);
   }
   
   /* Premium Members Grid */
@@ -208,7 +203,7 @@
   .stat-mini {
     text-align: center;
     padding: 16px;
-    background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+    background: var(--accent);
     border-radius: 12px;
     border: 1px solid rgba(102, 126, 234, 0.1);
     transition: all 0.3s ease;
@@ -223,10 +218,7 @@
   .stat-mini-value {
     font-size: 24px;
     font-weight: 800;
-    background: var(--gradient-primary);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: var(--primary);
     margin-bottom: 6px;
   }
   
@@ -333,10 +325,7 @@
     font-size: 26px;
     font-weight: 800;
     letter-spacing: -0.5px;
-    background: var(--gradient-primary);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: var(--text);
   }
   
   /* Animations */
@@ -372,7 +361,7 @@
 <div class="dashboard-container">
   <div class="dashboard-header">
     <div class="dashboard-title">
-      <h1>📊 Аналитика команды {{ team.name }}</h1>
+      <h1>{{ icons.icon('analytics', size=22) }} Аналитика команды {{ team.name }}</h1>
       <p class="dashboard-subtitle">Прогресс участников, конверсии и коррекции</p>
     </div>
     <div class="dashboard-actions">
@@ -415,7 +404,7 @@
   <div style="margin-bottom: 40px;">
     <div class="section-header">
       <h2>Участники команды</h2>
-      <span style="padding: 6px 16px; background: rgba(102, 126, 234, 0.1); border-radius: 12px; font-size: 13px; font-weight: 700; color: #667eea;">{{ analytics.members|length if analytics.members else 0 }}</span>
+      <span style="padding: 6px 16px; background: var(--accent); border-radius: 12px; font-size: 13px; font-weight: 700; color: var(--primary);">{{ analytics.members|length if analytics.members else 0 }}</span>
     </div>
     {% if analytics.members and analytics.members|length > 0 %}
     <div class="members-grid">
@@ -465,7 +454,7 @@
     </div>
     {% else %}
     <div style="padding: 60px 40px; text-align: center; background: var(--surface); border: 2px solid var(--border); border-radius: 20px; color: var(--muted);">
-      <div style="font-size: 48px; margin-bottom: 16px;">👥</div>
+      <div style="margin-bottom: 16px; color: var(--muted);">{{ icons.icon('team', size=40) }}</div>
       <p style="margin: 0; font-size: 16px; font-weight: 600;">Нет участников в команде</p>
     </div>
     {% endif %}
@@ -562,12 +551,12 @@
             }
           });
         } else {
-          ctx.parentElement.innerHTML = '<div style="padding: 60px 40px; text-align: center; color: var(--muted);"><div style="font-size: 48px; margin-bottom: 16px;">📊</div><p style="margin: 0; font-size: 16px; font-weight: 600;">Нет данных для отображения</p></div>';
+          ctx.parentElement.innerHTML = '<div style="padding: 60px 40px; text-align: center; color: var(--muted);"><div style="margin-bottom: 16px;">{{ icons.icon('analytics', size=40) }}</div><p style="margin: 0; font-size: 16px; font-weight: 600;">Нет данных для отображения</p></div>';
         }
       })
       .catch(err => {
         console.error('Ошибка загрузки метрик:', err);
-        ctx.parentElement.innerHTML = '<div style="padding: 60px 40px; text-align: center; color: var(--muted);"><div style="font-size: 48px; margin-bottom: 16px;">⚠️</div><p style="margin: 0; font-size: 16px; font-weight: 600;">Ошибка загрузки данных</p></div>';
+        ctx.parentElement.innerHTML = '<div style="padding: 60px 40px; text-align: center; color: var(--muted);"><div style="margin-bottom: 16px;">{{ icons.icon('warning', size=40) }}</div><p style="margin: 0; font-size: 16px; font-weight: 600;">Ошибка загрузки данных</p></div>';
       });
   }
   
@@ -583,7 +572,7 @@
               <div style="display: flex; align-items: center; gap: 12px;">
                 <strong style="font-size: 16px; font-weight: 800;">${e.user_name}</strong>
                 <span class="error-badge ${e.correction_applied ? 'applied' : 'pending'}">
-                  ${e.correction_applied ? '✓ Применено' : '⏳ Ожидает'}
+                  ${e.correction_applied ? '{{ icons.icon('check', size=14) }} Применено' : '{{ icons.icon('clock', size=14) }} Ожидает'}
                 </span>
               </div>
               <div style="font-size: 12px; color: var(--muted); font-weight: 600;">
@@ -601,12 +590,12 @@
           </div>
         `).join('');
       } else {
-        container.innerHTML = '<div style="padding: 60px 40px; text-align: center; color: var(--muted);"><div style="font-size: 48px; margin-bottom: 16px;">✨</div><p style="margin: 0; font-size: 16px; font-weight: 600;">Нет ошибок и коррекций</p></div>';
+        container.innerHTML = '<div style="padding: 60px 40px; text-align: center; color: var(--muted);"><div style="margin-bottom: 16px;">{{ icons.icon('check', size=40) }}</div><p style="margin: 0; font-size: 16px; font-weight: 600;">Нет ошибок и коррекций</p></div>';
       }
     })
     .catch(err => {
       console.error('Ошибка загрузки ошибок:', err);
-      document.getElementById('errors-list').innerHTML = '<div style="padding: 60px 40px; text-align: center; color: var(--muted);"><div style="font-size: 48px; margin-bottom: 16px;">⚠️</div><p style="margin: 0; font-size: 16px; font-weight: 600;">Ошибка загрузки данных</p></div>';
+      document.getElementById('errors-list').innerHTML = '<div style="padding: 60px 40px; text-align: center; color: var(--muted);"><div style="margin-bottom: 16px;">{{ icons.icon('warning', size=40) }}</div><p style="margin: 0; font-size: 16px; font-weight: 600;">Ошибка загрузки данных</p></div>';
     });
 </script>
 {% endblock %}

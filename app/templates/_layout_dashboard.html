@@ -1,3 +1,4 @@
+{% import "partials/icons.html" as icons %}
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -6,7 +7,7 @@
   <title>{% block title %}Личный кабинет — UpStat{% endblock %}</title>
 
   <!-- базовые стили проекта -->
-  <link rel="stylesheet" href="/static/styles.css?v=15"/>
+  <link rel="stylesheet" href="/static/styles.css?v=20"/>
 
   <!-- макет: сетка, сайдбар, топбар -->
   <style>
@@ -15,25 +16,33 @@
       --surface:#ffffff;
       --text:#0f172a;
       --muted:#64748b;
-      --border:#e5e7eb;
-      --shadow:0 1px 2px rgba(15,23,42,.04),0 8px 24px rgba(15,23,42,.06);
+      --border:#e6e9ef;
+      --shadow:0 1px 2px rgba(15,23,42,.05);
+      --shadow-md:0 4px 16px rgba(15,23,42,.06);
       --radius:14px;
       --surface-hover:#f1f5f9;
-      --primary:#2563eb;
-      --primary-hover:#1d4ed8;
+      --accent:#eef2ff;
+      --accent-strong:#e0e7ff;
+      --ring:rgba(30,58,138,.30);
+      --primary:#1e3a8a;
+      --primary-hover:#1e40af;
     }
 
-    /* Тёмная тема */
+    /* Тёмная тема — глубокий navy */
     body.dark{
-      --bg:#0a0e1a;
-      --surface:#111827;
-      --text:#f1f5f9;
+      --bg:#0b1220;
+      --surface:#111a2e;
+      --text:#e8edf6;
       --muted:#94a3b8;
-      --border:#1e293b;
-      --shadow:0 1px 2px rgba(0,0,0,.2),0 8px 24px rgba(0,0,0,.4);
-      --surface-hover:#1e293b;
-      --primary:#3b82f6;
-      --primary-hover:#2563eb;
+      --border:#1e2a44;
+      --shadow:0 1px 2px rgba(0,0,0,.4);
+      --shadow-md:0 4px 16px rgba(0,0,0,.45);
+      --surface-hover:#1a253c;
+      --accent:rgba(59,91,219,.16);
+      --accent-strong:rgba(59,91,219,.24);
+      --ring:rgba(79,110,247,.40);
+      --primary:#3b5bdb;
+      --primary-hover:#4f6ef7;
     }
 
     *, *::before, *::after { box-sizing: border-box; }
@@ -49,84 +58,73 @@
     /* Sidebar */
     .sidebar{
       position:sticky; top:0; height:100vh;
-      background: linear-gradient(180deg, var(--surface) 0%, rgba(37, 99, 235, 0.02) 100%);
+      background: var(--surface);
       border-right:1px solid var(--border);
-      padding:24px; display:flex; flex-direction:column; gap:20px;
-      backdrop-filter: blur(10px);
-      transition: background 0.3s ease, border-color 0.3s ease, box-shadow .25s ease;
-    }
-    body.dark .sidebar{
-      background: linear-gradient(180deg, #111827 0%, #0f1623 100%);
-      border-right-color:#1e293b;
+      padding:18px 14px; display:flex; flex-direction:column; gap:14px;
+      transition: background 0.2s ease, border-color 0.2s ease;
     }
     .brand{
-      font-weight:800; letter-spacing:.2px; font-size:24px;
-      background: linear-gradient(135deg, var(--primary), #1d4ed8);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      padding: 16px 0;
-      text-align: center;
+      display:flex; align-items:center; gap:10px;
+      font-weight:700; letter-spacing:-.01em; font-size:19px;
+      color:var(--text);
+      padding: 10px 8px 6px;
     }
-    .menu{display:flex; flex-direction:column; gap:8px; margin-top:8px;}
+    .brand-logo{
+      display:inline-flex; align-items:center; justify-content:center;
+      width:28px; height:28px; border-radius:8px;
+      background:var(--primary); color:#fff; flex-shrink:0;
+    }
+    .brand-logo svg{width:16px; height:16px;}
+    .menu{display:flex; flex-direction:column; gap:2px; margin-top:4px;}
     .menu a{
-      display:flex; align-items:center; gap:12px;
-      padding:14px 16px; border-radius:12px; text-decoration:none;
-      color:var(--text); transition:all 0.3s ease; font-weight:500;
-      border: 1px solid transparent;
+      display:flex; align-items:center; gap:10px;
+      padding:9px 12px; border-radius:10px; text-decoration:none;
+      color:var(--muted); transition:background .15s ease, color .15s ease; font-weight:500;
+      font-size:14px;
     }
+    .menu a svg{width:18px; height:18px; flex-shrink:0;}
     .menu a:hover{
-      background: rgba(37, 99, 235, 0.08);
-      border-color: rgba(37, 99, 235, 0.15);
-      transform: translateX(4px);
-    }
-    body.dark .menu a:hover{
-      background: rgba(59, 130, 246, 0.12);
-      border-color: rgba(59, 130, 246, 0.2);
+      background: var(--surface-hover);
+      color: var(--text);
     }
     .menu a.active{
-      background: linear-gradient(135deg, var(--primary), var(--primary-hover));
-      color: white;
-      box-shadow: 0 8px 24px rgba(37, 99, 235, 0.3);
-      transform: translateX(4px);
-    }
-    body.dark .menu a.active{
-      box-shadow: 0 8px 24px rgba(59, 130, 246, 0.4);
+      background: var(--primary);
+      color: #fff;
     }
 
     .sidebar-footer{
       margin-top:auto; 
       border-top:1px solid var(--border); 
-      padding-top:20px;
-      transition: border-color 0.3s ease;
+      padding-top:14px;
+      transition: border-color 0.2s ease;
     }
     .userbox{
-      font-size:14px; color:var(--muted); line-height:1.4;
-      padding: 16px;
-      background: var(--surface);
-      border-radius: 12px;
+      font-size:13px; color:var(--muted); line-height:1.45;
+      padding: 12px;
+      background: var(--surface-hover);
+      border-radius: 10px;
       border: 1px solid var(--border);
-      transition: all 0.3s ease;
-    }
-    body.dark .userbox{
-      background: rgba(30, 41, 59, 0.5);
-      border-color:#334155;
     }
     .userbox b{color:var(--text); font-weight:600;}
     .btn{
-      display:inline-flex; align-items:center; gap:8px; 
-      border:1px solid var(--border); background:var(--surface-hover); 
-      color:var(--text); padding:10px 16px; border-radius:12px; 
-      cursor:pointer; font-weight:500; transition: all 0.3s ease;
+      display:inline-flex; align-items:center; justify-content:center; gap:8px; 
+      border:1px solid var(--border); background:var(--surface); 
+      color:var(--text); padding:9px 16px; border-radius:999px; 
+      cursor:pointer; font-weight:500; font-size:14px;
+      transition: background .15s ease, border-color .15s ease, color .15s ease;
     }
+    .btn svg{width:16px; height:16px;}
     .btn:hover{
-      background: var(--primary);
-      color: white;
-      border-color: var(--primary);
-      transform: translateY(-2px);
-      box-shadow: 0 8px 24px rgba(37, 99, 235, 0.2);
+      background: var(--surface-hover);
+      border-color: var(--border);
     }
-    .btn:focus{outline:2px solid #c7d2fe; outline-offset:2px}
+    .btn-primary, .btn.primary{
+      background: var(--primary); color:#fff; border-color: var(--primary);
+    }
+    .btn-primary:hover, .btn.primary:hover{
+      background: var(--primary-hover); border-color: var(--primary-hover);
+    }
+    .btn:focus-visible{outline:2px solid var(--ring); outline-offset:2px}
     .btn.block{width:100%}
 
     /* Theme switch */
@@ -138,7 +136,7 @@
     .ts-icon{position:absolute; top:50%; transform:translateY(-50%); width:16px; height:16px; color:#f59e0b; opacity:.9; transition: opacity .2s ease}
     .ts-sun{left:10px}
     .ts-moon{right:10px; color:#60a5fa}
-    .ts-label:has(.ts-input:checked){background: linear-gradient(135deg, var(--primary), #1d4ed8); border-color: transparent}
+    .ts-label:has(.ts-input:checked){background: var(--primary); border-color: transparent}
     .ts-label:has(.ts-input:checked) .ts-thumb{left:27px}
     .ts-label:has(.ts-input:checked) .ts-sun{opacity:.0}
     .ts-label:has(.ts-input:checked) .ts-moon{opacity:1}
@@ -147,15 +145,9 @@
     .main{display:flex; flex-direction:column; min-width:0; overflow-x:hidden;}
     .topbar{
       display:flex; align-items:center; justify-content:space-between;
-      padding:16px 24px; background:var(--surface); border-bottom:1px solid var(--border);
-      position:sticky; top:0; z-index:10; backdrop-filter: blur(10px);
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-      transition: all 0.3s ease;
-    }
-    body.dark .topbar{
-      background: rgba(17, 24, 39, 0.95);
-      border-bottom-color:#1e293b;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+      padding:12px 24px; background:var(--surface); border-bottom:1px solid var(--border);
+      position:sticky; top:0; z-index:10;
+      transition: background .2s ease, border-color .2s ease;
     }
     .topbar-right{display:flex; align-items:center; gap:12px; flex-wrap:wrap;}
     .content{padding:0; min-width:0; overflow-x:auto; max-width:100%;}
@@ -168,15 +160,10 @@
       border-radius:var(--radius); 
       padding:16px; 
       box-shadow:var(--shadow);
-      transition: all 0.3s ease;
-    }
-    body.dark .card{
-      background: rgba(30, 41, 59, 0.4);
-      border-color:#334155;
+      transition: border-color .15s ease;
     }
     body.dark .card:hover{
-      background: rgba(30, 41, 59, 0.6);
-      border-color:#475569;
+      border-color:#2a3a5c;
     }
     .card h3{margin:0 0 6px 0; font-size:14px; color:var(--muted); font-weight:600}
     .metric{font-size:28px; font-weight:800; color:var(--text);}
@@ -187,18 +174,13 @@
       border-radius:12px; 
       overflow-x:auto;
       -webkit-overflow-scrolling:touch;
-      transition: all 0.3s ease;
-    }
-    body.dark .table{
-      background: rgba(30, 41, 59, 0.4);
-      border-color:#334155;
     }
     .table table{width:100%; border-collapse:collapse}
     .table th,.table td{
       padding:12px 14px; 
       border-bottom:1px solid var(--border); 
       font-size:14px;
-      transition: background-color 0.3s ease;
+      transition: background-color .15s ease;
     }
     .table th{
       text-align:left; 
@@ -206,11 +188,8 @@
       font-weight:600; 
       background:var(--surface-hover);
     }
-    body.dark .table th{
-      background: rgba(30, 41, 59, 0.6);
-    }
     body.dark .table tr:hover td{
-      background: rgba(59, 130, 246, 0.05);
+      background: var(--surface-hover);
     }
 
     /* Mobile menu button */
@@ -278,84 +257,25 @@
         height: 100vh;
         z-index: 1000;
         transform: translateX(-105%);
-        transition: transform 0.3s ease;
-        box-shadow: 0 16px 40px rgba(1,8,30,.7);
-        background: linear-gradient(160deg, rgba(4,10,25,.98) 0%, rgba(20,30,62,.95) 65%, rgba(14,26,61,0.92) 100%);
-        padding: 28px 22px 22px;
-        border-right: none;
+        transition: transform 0.25s ease;
+        box-shadow: var(--shadow-md);
+        background: var(--surface);
+        padding: 18px 14px;
+        border-right: 1px solid var(--border);
         border-radius: 0;
         overflow-y: auto;
         display:flex;
         flex-direction:column;
-        gap:18px;
-        backdrop-filter: blur(30px);
+        gap:14px;
       }
       
       .sidebar.active {
         transform: translateX(0);
       }
       
-      .sidebar::after {
-        content: "";
-        position:absolute;
-        inset:0;
-        pointer-events:none;
-        border-top-right-radius:0;
-        border-bottom-right-radius:0;
-        border:1px solid rgba(255,255,255,0.05);
-      }
-      
-      .sidebar .brand{
-        text-align:left;
-        font-size:22px;
-        letter-spacing:.6px;
-        font-weight:600;
-        color:#7fc5ff;
-        margin-bottom:14px;
-      }
-      
-      .sidebar .menu{
-        flex:1;
-        display:flex;
-        flex-direction:column;
-        gap:14px;
-      }
-      
-      .sidebar .menu a{
-        padding:14px 16px;
-        border-radius:14px;
-        border:1px solid rgba(255,255,255,0.1);
-        background: rgba(13,20,43,0.45);
-        box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04);
-        font-size:15px;
-        font-weight:500;
-        color:#f8fbff;
-        transition: transform .2s ease, background .2s ease;
-      }
-      
-      .sidebar .menu a:hover{
-        transform: translateY(-1px);
-        background: rgba(37,99,235,0.15);
-      }
-      
-      .sidebar .menu a.active{
-        background: linear-gradient(135deg, #2563eb, #1d4ed8);
-        color:#fff;
-        box-shadow: 0 14px 38px rgba(37,99,235,.35);
-      }
-      
       .sidebar-footer{
         margin-top:auto;
-        border-top:0;
-        padding-top:0;
         width:100%;
-      }
-      
-      .sidebar-footer .userbox{
-        padding:14px 12px;
-        border-radius:16px;
-        background: rgba(255,255,255,0.08);
-        border:1px solid rgba(255,255,255,0.12);
       }
       
       .sidebar-footer form{
@@ -364,13 +284,6 @@
       
       .sidebar-footer .btn.block{
         width:100%;
-        border-radius:16px;
-        padding:14px;
-        background:#0b1226;
-        border:1px solid rgba(255,255,255,0.18);
-        color:#fff;
-        font-weight:600;
-        letter-spacing:.5px;
       }
       
       .topbar{position: sticky}
@@ -390,25 +303,26 @@
       to{transform:translateY(0); opacity:1}
     }
     .banner-danger{
-      background: linear-gradient(90deg, #fef2f2, #fee2e2, #fecaca);
-      color:#991b1b; border-bottom:2px solid #ef4444;
+      background: #fef2f2;
+      color:#991b1b; border-bottom:1px solid #fecaca;
     }
     body.dark .banner-danger{
-      background: linear-gradient(90deg, rgba(127,29,29,0.3), rgba(153,27,27,0.2));
-      color:#fca5a5; border-bottom-color:#dc2626;
+      background: rgba(127,29,29,0.22);
+      color:#fca5a5; border-bottom-color:rgba(220,38,38,.4);
     }
     .banner-warning{
-      background: linear-gradient(90deg, #fffbeb, #fef3c7, #fde68a);
-      color:#92400e; border-bottom:2px solid #f59e0b;
+      background: #fffbeb;
+      color:#92400e; border-bottom:1px solid #fde68a;
     }
     body.dark .banner-warning{
-      background: linear-gradient(90deg, rgba(120,53,15,0.3), rgba(146,64,14,0.2));
-      color:#fcd34d; border-bottom-color:#d97706;
+      background: rgba(120,53,15,0.22);
+      color:#fcd34d; border-bottom-color:rgba(217,119,6,.4);
     }
     .banner-content{
       display:flex; align-items:center; gap:10px; flex:1;
     }
-    .banner-icon{font-size:18px;}
+    .banner-icon{display:inline-flex; align-items:center;}
+    .banner-icon svg{width:18px; height:18px;}
     .banner-text{flex:1;}
     .banner-text strong{font-weight:700;}
     .banner-close{
@@ -427,7 +341,7 @@
       position: absolute;
       top: -6px;
       right: -6px;
-      background: linear-gradient(135deg, #ef4444, #dc2626);
+      background: var(--danger);
       color: white;
       font-size: 11px;
       font-weight: 700;
@@ -438,13 +352,6 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4);
-      animation: pulse-badge 2s infinite;
-    }
-    
-    @keyframes pulse-badge {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.1); }
     }
     
     .notifications-overlay {
@@ -474,12 +381,12 @@
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 16px;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      box-shadow: var(--shadow-md);
       z-index: 9999;
-      transform: translateY(-20px);
+      transform: translateY(-8px);
       opacity: 0;
       pointer-events: none;
-      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: transform .2s ease, opacity .2s ease;
       display: flex;
       flex-direction: column;
     }
@@ -496,7 +403,7 @@
       align-items: center;
       padding: 20px 24px;
       border-bottom: 1px solid var(--border);
-      background: linear-gradient(135deg, rgba(37, 99, 235, 0.05), rgba(29, 78, 216, 0.02));
+      background: var(--surface);
     }
     
     .notifications-header h3 {
@@ -580,11 +487,11 @@
     }
     
     .notification-item:hover {
-      background: rgba(37, 99, 235, 0.03);
+      background: var(--surface-hover);
     }
     
     .notification-item.unread {
-      background: rgba(37, 99, 235, 0.05);
+      background: var(--accent);
       border-left: 3px solid var(--primary);
       padding-left: 13px;
     }
@@ -637,7 +544,7 @@
     }
     
     .notification-link-inline:hover {
-      color: #1d4ed8;
+      color: var(--primary-hover);
       gap: 6px;
     }
     
@@ -699,7 +606,7 @@
   {% if remaining_analyses <= 0 %}
   <div class="subscription-banner banner-danger" id="subscription-banner">
     <div class="banner-content">
-      <span class="banner-icon">⚠️</span>
+      <span class="banner-icon">{{ icons.icon('warning', size=18) }}</span>
       <span class="banner-text">
         <strong>Лимит бесплатных анализов исчерпан.</strong> Для продолжения работы приобретите подписку или обратитесь к менеджеру.
       </span>
@@ -709,7 +616,7 @@
   {% elif remaining_analyses <= 2 %}
   <div class="subscription-banner banner-warning" id="subscription-banner">
     <div class="banner-content">
-      <span class="banner-icon">📊</span>
+      <span class="banner-icon">{{ icons.icon('chart', size=18) }}</span>
       <span class="banner-text">
         У вас осталось <strong>{{ remaining_analyses }} из {{ user.free_analyses_limit }}</strong> бесплатных анализов. Для безлимитного доступа обратитесь к менеджеру.
       </span>
@@ -722,22 +629,25 @@
   <div class="app-shell">
     <!-- Sidebar -->
     <aside class="sidebar">
-      <div class="brand">UpStat</div>
+      <div class="brand">
+        <span class="brand-logo">{{ icons.icon('logo', size=16) }}</span>
+        UpStat
+      </div>
 
       <nav class="menu" aria-label="Основная навигация">
-        <a href="/dashboard" class="{% if request.url.path.startswith('/dashboard') %}active{% endif %}" aria-label="Перейти на дашборд">Дашборд</a>
-        <a href="/calls" class="{% if request.url.path.startswith('/calls') %}active{% endif %}" aria-label="История звонков">История звонков</a>
-        <a href="/settings" class="{% if request.url.path.startswith('/settings') %}active{% endif %}" aria-label="Настройки">Настройки</a>
-        <a href="/chat" class="{% if request.url.path == '/chat' %}active{% endif %}" aria-label="Чат">Чат</a>
-        <a href="/crm" class="{% if request.url.path.startswith('/crm') %}active{% endif %}" aria-label="CRM Интеграции">CRM</a>
+        <a href="/dashboard" class="{% if request.url.path.startswith('/dashboard') %}active{% endif %}" aria-label="Перейти на дашборд">{{ icons.icon('dashboard', size=18) }}Дашборд</a>
+        <a href="/calls" class="{% if request.url.path.startswith('/calls') %}active{% endif %}" aria-label="История звонков">{{ icons.icon('phone', size=18) }}История звонков</a>
+        <a href="/settings" class="{% if request.url.path.startswith('/settings') %}active{% endif %}" aria-label="Настройки">{{ icons.icon('settings', size=18) }}Настройки</a>
+        <a href="/chat" class="{% if request.url.path == '/chat' %}active{% endif %}" aria-label="Чат">{{ icons.icon('chat', size=18) }}Чат</a>
+        <a href="/crm" class="{% if request.url.path.startswith('/crm') %}active{% endif %}" aria-label="CRM Интеграции">{{ icons.icon('crm', size=18) }}CRM</a>
         {% if user and (user.role == 'manager' or user.role == 'admin') %}
-        <a href="/analytics" class="{% if request.url.path.startswith('/analytics') %}active{% endif %}" aria-label="Аналитика звонков">Аналитика</a>
+        <a href="/analytics" class="{% if request.url.path.startswith('/analytics') %}active{% endif %}" aria-label="Аналитика звонков">{{ icons.icon('analytics', size=18) }}Аналитика</a>
         {% endif %}
         {% if user and (user.role == 'manager' or user.role == 'admin' or (user.team_memberships and user.team_memberships|length > 0)) %}
-        <a href="/teams/my" class="{% if request.url.path.startswith('/teams') %}active{% endif %}" aria-label="Моя команда">Моя команда</a>
+        <a href="/teams/my" class="{% if request.url.path.startswith('/teams') %}active{% endif %}" aria-label="Моя команда">{{ icons.icon('team', size=18) }}Моя команда</a>
         {% endif %}
         {% if user and (user.role == 'manager' or user.role == 'admin') %}
-        <a href="/owner" class="{% if request.url.path.startswith('/owner') %}active{% endif %}" aria-label="Экран владельца" style="background:linear-gradient(90deg,rgba(20,157,255,0.08),rgba(216,168,58,0.08));font-weight:700;">⚡ Владелец</a>
+        <a href="/owner" class="{% if request.url.path.startswith('/owner') %}active{% endif %}" aria-label="Экран владельца" style="font-weight:600;">{{ icons.icon('owner', size=18) }}Владелец</a>
         {% endif %}
       </nav>
 
@@ -749,7 +659,7 @@
 
         <!-- Кнопка выхода в сайдбаре (можно удалить, если достаточно в топбаре) -->
         <form action="/logout" method="post" style="margin-top:10px">
-          <button type="submit" class="btn block" title="Выйти из аккаунта">Выйти</button>
+          <button type="submit" class="btn block" title="Выйти из аккаунта">{{ icons.icon('logout', size=16) }}Выйти</button>
         </form>
       </div>
     </aside>
@@ -767,12 +677,12 @@
         <div class="topbar-right">
           {% if user and user.role == 'admin' %}
           <a href="/admin" class="btn" style="background: #dc2626; color: white; border-color: #dc2626;" title="Админ-панель">
-            <i class="fas fa-user-shield"></i> Админ
+            {{ icons.icon('shield', size=16) }} Админ
           </a>
           {% endif %}
           {% if user and user.role == 'sale_manager' %}
-          <a href="/sales/" class="btn" style="background: #8b5cf6; color: white; border-color: #8b5cf6;" title="Панель продаж">
-            <i class="fas fa-credit-card"></i> Продажи
+          <a href="/sales/" class="btn" style="background: #6d28d9; color: white; border-color: #6d28d9;" title="Панель продаж">
+            {{ icons.icon('card', size=16) }} Продажи
           </a>
           {% endif %}
           
@@ -784,15 +694,6 @@
             <span class="notification-badge" id="notification-badge" style="display: none;">0</span>
           </button>
           
-          <div class="theme-switch" title="Тема">
-            <label class="ts-label">
-              <input id="theme-switch" class="ts-input" type="checkbox" aria-label="Переключить тему">
-              <span class="ts-track"></span>
-              <span class="ts-thumb"></span>
-              <svg class="ts-icon ts-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path></svg>
-              <svg class="ts-icon ts-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"></path></svg>
-            </label>
-          </div>
         </div>
       </header>
 
@@ -938,6 +839,23 @@
       }
     }
     
+    // Экранирование пользовательских/серверных данных перед вставкой в innerHTML (защита от XSS)
+    function escapeHtml(value) {
+      return String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+    // Разрешаем только безопасные URL (относительные или http/https), иначе пусто
+    function safeUrl(value) {
+      const v = String(value == null ? '' : value).trim();
+      if (v.startsWith('/') && !v.startsWith('//')) return escapeHtml(v);
+      if (/^https?:\/\//i.test(v)) return escapeHtml(v);
+      return '';
+    }
+
     // Отрисовка уведомлений
     function renderNotifications(notifications) {
       const listContainer = document.getElementById('notifications-list');
@@ -951,23 +869,25 @@
       notifications.forEach(n => {
         const isUnread = !n.is_read;
         const timeAgo = getTimeAgo(new Date(n.created_at));
+        const nid = Number(n.id) || 0;
+        const link = safeUrl(n.link);
         
         html += `
-          <div class="notification-item ${isUnread ? 'unread' : ''}" data-id="${n.id}">
+          <div class="notification-item ${isUnread ? 'unread' : ''}" data-id="${nid}">
             <div class="notification-main">
               <div class="notification-content">
                 <div class="notification-header">
-                  <h4 class="notification-title">${n.title}</h4>
-                  <span class="notification-time">${timeAgo}</span>
+                  <h4 class="notification-title">${escapeHtml(n.title)}</h4>
+                  <span class="notification-time">${escapeHtml(timeAgo)}</span>
                 </div>
-                ${n.link ? `
-                  <a href="${n.link}" class="notification-link-inline" onclick="markNotificationAsRead(${n.id})">
-                    ${n.link_text || 'Открыть'} →
+                ${link ? `
+                  <a href="${link}" class="notification-link-inline" onclick="markNotificationAsRead(${nid})">
+                    ${escapeHtml(n.link_text || 'Открыть')} →
                   </a>
                 ` : ''}
               </div>
             </div>
-            <button class="notification-delete" onclick="deleteNotification(${n.id}, event)" title="Удалить">
+            <button class="notification-delete" onclick="deleteNotification(${nid}, event)" title="Удалить">
               <svg style="width: 18px; height: 18px;" viewBox="0 0 20 20" fill="currentColor">
                 <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd"/>
               </svg>

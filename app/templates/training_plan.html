@@ -1,4 +1,5 @@
 {% extends "_layout_dashboard.html" %}
+{% import "partials/icons.html" as icons %}
 {% block title %}План тренировок — UpStat{% endblock %}
 {% block content %}
 
@@ -23,7 +24,7 @@
   <!-- Заголовок -->
   <div class="plan-header">
     <div class="plan-info">
-      <h1>🎯 План тренировок{% if is_viewer_mode %} <span style="font-size: 14px; color: var(--muted); font-weight: 400;">(Режим просмотра)</span>{% endif %}</h1>
+      <h1>{{ icons.icon('target', size=22) }} План тренировок{% if is_viewer_mode %} <span style="font-size: 14px; color: var(--muted); font-weight: 400;">(Режим просмотра)</span>{% endif %}</h1>
       <p>Создан на основе анализа звонка от {{ plan.created_at.strftime("%d.%m.%Y %H:%M") }}</p>
     </div>
     <div class="plan-progress">
@@ -47,9 +48,9 @@
     <div class="training-card {% if training.status == 'locked' %}locked{% elif training.status == 'completed' %}completed{% endif %}">
       <div class="training-number">
         {% if training.status == 'completed' %}
-          <span class="check-icon">✅</span>
+          <span class="check-icon">{{ icons.icon('check', size=22) }}</span>
         {% elif training.status == 'locked' %}
-          <span class="lock-icon">🔒</span>
+          <span class="lock-icon">{{ icons.icon('lock', size=22) }}</span>
         {% else %}
           <span class="number">{{ training.order }}</span>
         {% endif %}
@@ -61,17 +62,17 @@
         
         {% if training.recommendation %}
         <div class="training-recommendation">
-          <strong>💡 Рекомендация:</strong> {{ training.recommendation }}
+          <strong>Рекомендация:</strong> {{ training.recommendation }}
         </div>
         {% endif %}
         
         {% if training.status != 'locked' %}
         <div class="training-stats">
           {% if training.attempts > 0 %}
-          <span class="stat">📊 Попыток: {{ training.attempts }}</span>
+          <span class="stat">{{ icons.icon('chart', size=14) }} Попыток: {{ training.attempts }}</span>
           {% endif %}
           {% if training.best_score %}
-          <span class="stat">⭐ Лучший результат: {{ training.best_score }}/100</span>
+          <span class="stat">{{ icons.icon('star', size=14) }} Лучший результат: {{ training.best_score }}/100</span>
           {% endif %}
         </div>
         {% endif %}
@@ -82,34 +83,34 @@
           {# Режим просмотра: менеджер смотрит план участника, кнопки начала тренировки скрыты #}
           {% if training.status == 'locked' %}
             <div class="training-status-badge locked">
-              🔒 Недоступно
+              {{ icons.icon('lock', size=16) }} Недоступно
             </div>
           {% elif training.status == 'completed' %}
             <div class="training-status-badge completed">
-              ✅ Завершено
+              {{ icons.icon('check', size=16) }} Завершено
             </div>
           {% elif training.status == 'in_progress' %}
             <div class="training-status-badge in-progress">
-              🔄 В процессе
+              {{ icons.icon('clock', size=16) }} В процессе
             </div>
           {% else %}
             <div class="training-status-badge available">
-              ⏳ Доступно
+              {{ icons.icon('clock', size=16) }} Доступно
             </div>
           {% endif %}
         {% else %}
           {# Обычный режим: владелец плана может начинать тренировки #}
           {% if training.status == 'locked' %}
             <button class="btn btn-secondary" disabled>
-              🔒 Недоступно
+              {{ icons.icon('lock', size=16) }} Недоступно
             </button>
           {% elif training.status == 'completed' %}
             <button class="btn btn-outline start-training-btn" data-training-id="{{ training.id }}">
-              🔄 Пройти снова
+              {{ icons.icon('play', size=16) }} Пройти снова
             </button>
           {% else %}
-            <button class="btn btn-primary start-training-btn" data-training-id="{{ training.id }}" style="background: linear-gradient(135deg, #10b981, #059669);">
-              ▶️ Начать тренировку
+            <button class="btn btn-primary start-training-btn" data-training-id="{{ training.id }}" style="background: var(--success);">
+              {{ icons.icon('play', size=16) }} Начать тренировку
             </button>
           {% endif %}
         {% endif %}
@@ -120,7 +121,7 @@
   
   {% if plan.status == 'completed' %}
   <div class="plan-completed">
-    <div class="completed-icon">🎉</div>
+    <div class="completed-icon">{{ icons.icon('trophy', size=64) }}</div>
     <h2>Поздравляем!</h2>
     <p>Вы завершили все тренировки в этом плане!</p>
     <a href="/calls" class="btn btn-primary">Вернуться к истории звонков</a>
@@ -251,7 +252,7 @@
 
 .training-card.completed {
   border-color: #10b981;
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.05), rgba(5, 150, 105, 0.02));
+  background: var(--success);
 }
 
 .training-number {
@@ -259,7 +260,7 @@
   width: 60px;
   height: 60px;
   border-radius: 12px;
-  background: linear-gradient(135deg, var(--primary), #1d4ed8);
+  background: var(--primary);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -269,7 +270,7 @@
 }
 
 .training-card.completed .training-number {
-  background: linear-gradient(135deg, #10b981, #059669);
+  background: var(--success);
 }
 
 .training-card.locked .training-number {
@@ -343,7 +344,7 @@
 
 .training-status-badge.in-progress {
   background: rgba(37, 99, 235, 0.1);
-  color: #2563eb;
+  color: var(--primary);
   border: 1px solid rgba(37, 99, 235, 0.3);
 }
 
@@ -356,7 +357,7 @@
 .plan-completed {
   text-align: center;
   padding: 48px;
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(5, 150, 105, 0.05));
+  background: var(--success);
   border: 2px solid #10b981;
   border-radius: 14px;
   margin-top: 32px;
@@ -395,7 +396,7 @@ document.querySelectorAll('.start-training-btn').forEach(button => {
     e.preventDefault();
     const trainingId = button.dataset.trainingId;
     button.disabled = true;
-    button.textContent = '⏳ Загрузка...';
+    button.textContent = 'Загрузка...';
     
     try {
       const response = await fetch(`/training/${trainingId}/start`, {
@@ -416,7 +417,7 @@ document.querySelectorAll('.start-training-btn').forEach(button => {
       console.error('Ошибка:', error);
       alert('Не удалось начать тренировку. Попробуйте снова.');
       button.disabled = false;
-      button.textContent = button.dataset.originalText || '▶️ Начать тренировку';
+      button.textContent = button.dataset.originalText || 'Начать тренировку';
     }
   });
 });

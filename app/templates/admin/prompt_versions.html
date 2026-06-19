@@ -1,10 +1,11 @@
 {% extends "admin/_layout_admin.html" %}
+{% import "partials/icons.html" as icons %}
 
 {% block content %}
 <!-- Заголовок -->
 <div style="margin-bottom: 32px;">
     <h1 style="font-size: 28px; font-weight: 700; color: var(--text); margin: 0 0 8px 0;">
-        <i class="fas fa-history" style="color: var(--admin-secondary); margin-right: 12px;"></i>
+        <span style="color: var(--admin-secondary); margin-right: 12px; display: inline-flex; vertical-align: middle;">{{ icons.icon('clock', size=24) }}</span>
         История версий промпта
     </h1>
     <p style="color: var(--muted); margin: 0; font-size: 16px;">
@@ -18,12 +19,12 @@
         <div class="admin-card-header">
             <div class="admin-card-title">Всего версий</div>
             <div class="admin-card-icon system">
-                <i class="fas fa-history"></i>
+                {{ icons.icon('clock', size=20) }}
             </div>
         </div>
         <div class="admin-metric">{{ versions|length }}</div>
         <div class="admin-metric-change">
-            <i class="fas fa-archive"></i>
+            {{ icons.icon('file', size=14) }}
             <span>История изменений</span>
         </div>
     </div>
@@ -32,7 +33,7 @@
         <div class="admin-card-header">
             <div class="admin-card-title">Активная версия</div>
             <div class="admin-card-icon users">
-                <i class="fas fa-check-circle"></i>
+                {{ icons.icon('check-circle', size=20) }}
             </div>
         </div>
         <div class="admin-metric">
@@ -43,7 +44,7 @@
             {% endfor %}
         </div>
         <div class="admin-metric-change positive">
-            <i class="fas fa-play"></i>
+            {{ icons.icon('play', size=14) }}
             <span>Используется сейчас</span>
         </div>
     </div>
@@ -52,7 +53,7 @@
         <div class="admin-card-header">
             <div class="admin-card-title">Последнее изменение</div>
             <div class="admin-card-icon conversations">
-                <i class="fas fa-clock"></i>
+                {{ icons.icon('clock', size=20) }}
             </div>
         </div>
         <div class="admin-metric">
@@ -63,7 +64,7 @@
             {% endif %}
         </div>
         <div class="admin-metric-change">
-            <i class="fas fa-calendar"></i>
+            {{ icons.icon('calendar', size=14) }}
             <span>Дата создания</span>
         </div>
     </div>
@@ -73,7 +74,7 @@
 <div class="admin-table-container">
     <div class="admin-table-header">
         <h3 class="admin-table-title">
-            <i class="fas fa-list" style="color: var(--admin-info); margin-right: 8px;"></i>
+            <span style="color: var(--admin-info); margin-right: 8px; display: inline-flex; vertical-align: middle;">{{ icons.icon('menu', size=18) }}</span>
             Все версии промпта
         </h3>
     </div>
@@ -97,11 +98,11 @@
                 <td>
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <span style="display: inline-flex; align-items: center; gap: 4px; background: {% if version.is_active %}var(--admin-success){% else %}#6b7280{% endif %}; color: white; padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 500;">
-                            <i class="fas fa-tag"></i> v{{ version.version }}
+                            {{ icons.icon('file', size=12) }} v{{ version.version }}
                         </span>
                         {% if version.is_active %}
                         <span style="display: inline-flex; align-items: center; gap: 4px; background: var(--admin-success); color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 500;">
-                            <i class="fas fa-check"></i> Активна
+                            {{ icons.icon('check', size=11) }} Активна
                         </span>
                         {% endif %}
                     </div>
@@ -117,7 +118,7 @@
                 <td>
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <div style="width: 24px; height: 24px; background: #e5e7eb; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #6b7280; font-size: 12px;">
-                            <i class="fas fa-user"></i>
+                            {{ icons.icon('user', size=14) }}
                         </div>
                         <span style="font-weight: 500;">{{ version.creator.name if version.creator else 'Неизвестно' }}</span>
                     </div>
@@ -129,12 +130,12 @@
                 <td>
                     {% if version.is_active %}
                     <span style="display: inline-flex; align-items: center; gap: 4px; color: var(--admin-success);">
-                        <i class="fas fa-check-circle"></i>
+                        {{ icons.icon('check-circle', size=14) }}
                         Активна
                     </span>
                     {% else %}
                     <span style="display: inline-flex; align-items: center; gap: 4px; color: var(--muted);">
-                        <i class="fas fa-pause-circle"></i>
+                        {{ icons.icon('x-circle', size=14) }}
                         Неактивна
                     </span>
                     {% endif %}
@@ -149,7 +150,7 @@
                                     onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(16,185,129,0.3)'"
                                     onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'"
                                     onclick="return confirm('Вы уверены, что хотите активировать версию v{{ version.version }}? Текущая активная версия будет деактивирована.')">
-                                <i class="fas fa-play"></i> Активировать
+                                {{ icons.icon('play', size=14) }} Активировать
                             </button>
                         </form>
                         {% endif %}
@@ -159,7 +160,7 @@
                            style="display: inline-flex; align-items: center; gap: 4px; padding: 6px 12px; border: none; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.2s ease; background: var(--admin-info); color: white; text-decoration: none;"
                            onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(59,130,246,0.3)'"
                            onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
-                            <i class="fas fa-edit"></i> Редактировать
+                            {{ icons.icon('edit', size=14) }} Редактировать
                         </a>
                         
                         {% if not version.is_active %}
@@ -170,7 +171,7 @@
                                     onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 12px rgba(220,38,38,0.3)'"
                                     onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'"
                                     onclick="return confirm('Вы уверены, что хотите удалить версию v{{ version.version }}? Это действие нельзя отменить!')">
-                                <i class="fas fa-trash"></i> Удалить
+                                {{ icons.icon('trash', size=14) }} Удалить
                             </button>
                         </form>
                         {% endif %}
@@ -183,7 +184,7 @@
     {% else %}
     <div style="padding: 48px 24px; text-align: center;">
         <div style="width: 80px; height: 80px; background: #f3f4f6; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; color: #9ca3af;">
-            <i class="fas fa-history" style="font-size: 32px;"></i>
+            {{ icons.icon('clock', size=32) }}
         </div>
         <h3 style="color: var(--muted); margin: 0 0 8px 0;">Версии не найдены</h3>
         <p style="color: var(--muted); margin: 0;">Для этого промпта пока нет сохраненных версий.</p>
@@ -197,8 +198,7 @@
        style="display: inline-flex; align-items: center; gap: 8px; padding: 12px 20px; background: #6b7280; color: white; border-radius: 8px; text-decoration: none; font-weight: 500; transition: all 0.2s ease;"
        onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 8px 24px rgba(107,114,128,0.3)'"
        onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
-        <i class="fas fa-arrow-left"></i> Назад к списку промптов
+        {{ icons.icon('arrow-left', size=16) }} Назад к списку промптов
     </a>
 </div>
 {% endblock %}
-

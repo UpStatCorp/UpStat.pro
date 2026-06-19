@@ -1,4 +1,5 @@
 {% extends "_layout_dashboard.html" %}
+{% import "partials/icons.html" as icons %}
 {% block title %}Паспорт продавца — {{ member.user.name or member.user.email }} — UpStat{% endblock %}
 
 {% block extra_head %}
@@ -48,14 +49,14 @@
     background:
       radial-gradient(circle at 0% 0%, rgba(87,220,255,0.25), transparent 32%),
       radial-gradient(circle at 100% 18%, rgba(246,217,123,0.25), transparent 30%),
-      linear-gradient(180deg, var(--sp-bg-1) 0%, var(--sp-bg-2) 54%, var(--sp-bg-3) 100%);
+      var(--surface);
     min-height: 100vh;
   }
   body.dark .sp-page {
     background:
       radial-gradient(circle at 0% 0%, rgba(87,220,255,0.08), transparent 32%),
       radial-gradient(circle at 100% 18%, rgba(246,217,123,0.08), transparent 30%),
-      linear-gradient(180deg, var(--sp-bg-1) 0%, var(--sp-bg-2) 54%, var(--sp-bg-3) 100%);
+      var(--surface);
   }
 
   .sp-wrap {
@@ -66,7 +67,7 @@
   }
 
   .sp-glass {
-    background: linear-gradient(180deg, rgba(255,255,255,0.94), rgba(255,255,255,0.80));
+    background: var(--surface);
     border: 1px solid var(--sp-line);
     box-shadow: var(--sp-shadow-lg);
     backdrop-filter: blur(14px);
@@ -74,7 +75,7 @@
     border-radius: var(--sp-radius-2xl);
   }
   body.dark .sp-glass {
-    background: linear-gradient(180deg, rgba(25,38,60,0.85), rgba(20,30,50,0.7));
+    background: var(--surface);
   }
 
   .sp-hero {
@@ -85,7 +86,7 @@
   .sp-hero::before {
     content: "";
     position: absolute; inset: 0; pointer-events: none;
-    background: linear-gradient(130deg, rgba(20,157,255,0.10) 0%, rgba(20,157,255,0.01) 38%, rgba(216,168,58,0.09) 100%);
+    background: var(--accent);
   }
 
   .sp-hero-top {
@@ -110,7 +111,7 @@
   .sp-eyebrow {
     display: inline-flex; align-items: center; gap: 8px;
     padding: 8px 14px; border-radius: 999px;
-    background: linear-gradient(90deg, rgba(20,157,255,0.12), rgba(216,168,58,0.16));
+    background: var(--accent);
     border: 1px solid rgba(20,157,255,0.14);
     color: var(--sp-blue-deep);
     font-size: 11px; text-transform: uppercase; letter-spacing: 0.22em; font-weight: 800;
@@ -118,7 +119,7 @@
   body.dark .sp-eyebrow { color: var(--sp-blue-soft); }
   .sp-eyebrow .dot {
     width: 9px; height: 9px; border-radius: 999px;
-    background: linear-gradient(180deg, var(--sp-blue), var(--sp-gold));
+    background: var(--primary);
   }
 
   .sp-hero-body { position: relative; z-index: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
@@ -127,7 +128,7 @@
   .sp-avatar-row { display: flex; align-items: center; gap: 18px; }
   .sp-avatar {
     width: 80px; height: 80px; border-radius: 24px;
-    background: linear-gradient(135deg, var(--sp-blue), var(--sp-gold));
+    background: var(--primary);
     display: grid; place-items: center;
     color: white; font-size: 30px; font-weight: 900;
     box-shadow: 0 10px 28px rgba(20,157,255,0.22);
@@ -168,7 +169,7 @@
   }
   .sp-panel::before {
     content: ""; position: absolute; inset: 0; pointer-events: none;
-    background: linear-gradient(160deg, rgba(20,157,255,0.04), rgba(216,168,58,0.04));
+    background: var(--accent);
   }
   .sp-panel > * { position: relative; z-index: 1; }
 
@@ -212,7 +213,7 @@
   }
   .sp-stage-bar-fill {
     height: 100%; border-radius: 999px;
-    background: linear-gradient(90deg, var(--sp-blue), var(--sp-gold));
+    background: var(--primary);
   }
   .sp-stage-val {
     font-size: 14px; font-weight: 900; letter-spacing: -0.02em;

@@ -1,10 +1,11 @@
 {% extends "admin/_layout_admin.html" %}
+{% import "partials/icons.html" as icons %}
 
 {% block content %}
 <!-- Заголовок -->
 <div style="margin-bottom: 20px;">
-    <h1 style="font-size: 22px; font-weight: 700; color: var(--text); margin: 0 0 4px 0;">
-        <i class="fas fa-users" style="color: var(--admin-info); margin-right: 8px;"></i>
+    <h1 style="font-size: 22px; font-weight: 700; color: var(--text); margin: 0 0 4px 0; display: flex; align-items: center; gap: 8px;">
+        <span style="color: var(--admin-info); display: inline-flex;">{{ icons.icon('users', size=22) }}</span>
         Управление пользователями
     </h1>
     <p style="color: var(--muted); margin: 0; font-size: 13px;">
@@ -18,12 +19,12 @@
         <div class="admin-card-header">
             <div class="admin-card-title">Всего пользователей</div>
             <div class="admin-card-icon users">
-                <i class="fas fa-users"></i>
+                {{ icons.icon('users', size=20) }}
             </div>
         </div>
         <div class="admin-metric">{{ users|length }}</div>
         <div class="admin-metric-change positive">
-            <i class="fas fa-arrow-up"></i>
+            {{ icons.icon('trending-up', size=14) }}
             <span>Активные пользователи</span>
         </div>
     </div>
@@ -32,12 +33,12 @@
         <div class="admin-card-header">
             <div class="admin-card-title">Администраторы</div>
             <div class="admin-card-icon system">
-                <i class="fas fa-user-shield"></i>
+                {{ icons.icon('shield', size=20) }}
             </div>
         </div>
         <div class="admin-metric">{{ users|selectattr('role', 'equalto', 'admin')|list|length }}</div>
         <div class="admin-metric-change">
-            <i class="fas fa-shield-alt"></i>
+            {{ icons.icon('shield', size=14) }}
             <span>Права администратора</span>
         </div>
     </div>
@@ -45,13 +46,13 @@
     <div class="admin-card">
         <div class="admin-card-header">
             <div class="admin-card-title">Менеджеры продаж</div>
-            <div class="admin-card-icon" style="background: linear-gradient(135deg, #8b5cf6, #7c3aed);">
-                <i class="fas fa-user-tie"></i>
+            <div class="admin-card-icon" style="background: var(--primary); color: #fff;">
+                {{ icons.icon('user', size=20) }}
             </div>
         </div>
         <div class="admin-metric">{{ users|selectattr('role', 'equalto', 'sale_manager')|list|length }}</div>
         <div class="admin-metric-change">
-            <i class="fas fa-credit-card"></i>
+            {{ icons.icon('card', size=14) }}
             <span>Управление подписками</span>
         </div>
     </div>
@@ -60,12 +61,12 @@
         <div class="admin-card-header">
             <div class="admin-card-title">Обычные пользователи</div>
             <div class="admin-card-icon conversations">
-                <i class="fas fa-user"></i>
+                {{ icons.icon('user', size=20) }}
             </div>
         </div>
         <div class="admin-metric">{{ users|selectattr('role', 'equalto', 'user')|list|length }}</div>
         <div class="admin-metric-change">
-            <i class="fas fa-users"></i>
+            {{ icons.icon('users', size=14) }}
             <span>Стандартные права</span>
         </div>
     </div>
@@ -74,8 +75,8 @@
 <!-- Таблица пользователей -->
 <div class="admin-table-container">
     <div class="admin-table-header">
-        <h3 class="admin-table-title">
-            <i class="fas fa-list" style="color: var(--admin-info); margin-right: 8px;"></i>
+        <h3 class="admin-table-title" style="display: flex; align-items: center; gap: 8px;">
+            <span style="color: var(--admin-info); display: inline-flex;">{{ icons.icon('menu', size=18) }}</span>
             Список пользователей
         </h3>
     </div>
@@ -102,14 +103,14 @@
         </thead>
         <tbody>
             {% for user in users %}
-            <tr{% if user.role == 'admin' %} style="background: rgba(220, 38, 38, 0.02);"{% elif user.role == 'sale_manager' %} style="background: rgba(139, 92, 246, 0.02);"{% endif %}>
+            <tr{% if user.role == 'admin' %} style="background: rgba(220, 38, 38, 0.02);"{% elif user.role == 'sale_manager' %} style="background: rgba(30, 58, 138, 0.03);"{% endif %}>
                 <td>
                     <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
                         {% if user.avatar %}
                         <img src="{{ user.avatar }}" style="width: 28px; height: 28px; border-radius: 50%; object-fit: cover; flex-shrink: 0;" alt="">
                         {% else %}
-                        <div style="width: 28px; height: 28px; background: #e5e7eb; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #6b7280; font-size: 11px; flex-shrink: 0;">
-                            <i class="fas fa-user"></i>
+                        <div style="width: 28px; height: 28px; background: var(--surface-hover); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--muted); flex-shrink: 0;">
+                            {{ icons.icon('user', size=14) }}
                         </div>
                         {% endif %}
                         <div style="min-width: 0; overflow: hidden;">
@@ -124,19 +125,19 @@
                 <td>
                     {% if user.role == 'admin' %}
                     <span class="role-badge admin">
-                        <i class="fas fa-user-shield"></i> Администратор
+                        {{ icons.icon('shield', size=14) }} Администратор
                     </span>
                     {% elif user.role == 'sale_manager' %}
-                    <span class="role-badge" style="background: rgba(139, 92, 246, 0.1); color: #8b5cf6; border: 1px solid rgba(139, 92, 246, 0.2);">
-                        <i class="fas fa-user-tie"></i> Менеджер продаж
+                    <span class="role-badge" style="background: var(--accent); color: var(--primary); border: 1px solid var(--border);">
+                        {{ icons.icon('briefcase', size=14) }} Менеджер продаж
                     </span>
                     {% elif user.role == 'manager' %}
-                    <span class="role-badge" style="background: rgba(59, 130, 246, 0.1); color: #3b82f6; border: 1px solid rgba(59, 130, 246, 0.2);">
-                        <i class="fas fa-user-cog"></i> РОП
+                    <span class="role-badge" style="background: var(--accent); color: var(--primary); border: 1px solid var(--border);">
+                        {{ icons.icon('users', size=14) }} РОП
                     </span>
                     {% else %}
                     <span class="role-badge user">
-                        <i class="fas fa-user"></i> Пользователь
+                        {{ icons.icon('user', size=14) }} Пользователь
                     </span>
                     {% endif %}
                 </td>
@@ -159,18 +160,18 @@
                                 <option value="admin" {% if user.role == 'admin' %}selected{% endif %}>Администратор</option>
                             </select>
                             <button type="submit"
-                                    style="padding: 4px 8px; border: none; border-radius: 6px; font-size: 11px; font-weight: 500; cursor: pointer; background: #6366f1; color: white;"
+                                    style="padding: 4px 8px; border: none; border-radius: 6px; font-size: 11px; font-weight: 500; cursor: pointer; background: var(--primary); color: white;"
                                     onclick="return confirm('Изменить роль пользователя {{ user.name }}?')"
                                     title="Сохранить роль">
-                                <i class="fas fa-save"></i>
+                                {{ icons.icon('save', size=14) }}
                             </button>
                         </form>
                         <form method="post" action="/admin/users/{{ user.id }}/delete" style="margin: 0;">
                             <button type="submit" 
-                                    style="padding: 4px 8px; border: none; border-radius: 6px; font-size: 11px; font-weight: 500; cursor: pointer; background: var(--admin-primary); color: white;"
+                                    style="padding: 4px 8px; border: none; border-radius: 6px; font-size: 11px; font-weight: 500; cursor: pointer; background: #dc2626; color: white;"
                                     onclick="return confirm('Удалить пользователя {{ user.name }}? Это действие нельзя отменить!')"
                                     title="Удалить пользователя">
-                                <i class="fas fa-trash"></i>
+                                {{ icons.icon('trash', size=14) }}
                             </button>
                         </form>
                     </div>
@@ -184,8 +185,8 @@
     </table>
     {% else %}
     <div style="padding: 48px 24px; text-align: center;">
-        <div style="width: 80px; height: 80px; background: #f3f4f6; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; color: #9ca3af;">
-            <i class="fas fa-users" style="font-size: 32px;"></i>
+        <div style="width: 80px; height: 80px; background: var(--surface-hover); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; color: var(--muted);">
+            {{ icons.icon('users', size=32) }}
         </div>
         <h3 style="color: var(--muted); margin: 0 0 8px 0;">Пользователи не найдены</h3>
         <p style="color: var(--muted); margin: 0;">В системе пока нет зарегистрированных пользователей.</p>

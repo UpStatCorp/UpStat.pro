@@ -1,0 +1,235 @@
+{% extends "train/_layout.html" %}
+{% import "partials/icons.html" as icons %}
+
+{% block title %}Отчёт: {{ member.name }} — UpStat Train{% endblock %}
+{% block page_title %}Отчёт по менеджеру{% endblock %}
+
+{% block styles %}
+.mr-back{display:inline-flex;align-items:center;gap:6px;color:var(--muted);text-decoration:none;font-size:13px;margin-bottom:16px;}
+.mr-back:hover{color:var(--text);}
+
+.mr-head{display:flex;align-items:center;gap:14px;margin-bottom:24px;}
+.mr-avatar{width:48px;height:48px;border-radius:50%;background:var(--primary);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;flex-shrink:0;}
+.mr-head .name{font-size:18px;font-weight:700;}
+.mr-head .email{font-size:13px;color:var(--muted);}
+
+.mr-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:28px;}
+.mr-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;box-shadow:var(--shadow);}
+.mr-card .val{font-size:28px;font-weight:800;color:var(--primary);line-height:1.1;}
+.mr-card .lbl{font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px;margin-top:6px;}
+.mr-card .sub{font-size:12px;color:var(--muted);margin-top:2px;}
+
+.mr-section{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
+  padding:22px 24px;box-shadow:var(--shadow);margin-bottom:22px;}
+.mr-section h2{margin:0 0 18px;font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px;}
+
+/* Этапы */
+.stage-row{display:flex;align-items:center;gap:14px;padding:10px 0;border-bottom:1px solid var(--border);}
+.stage-row:last-child{border-bottom:none;}
+.stage-row .nm{width:190px;font-size:14px;font-weight:600;flex-shrink:0;}
+.stage-bar{flex:1;height:8px;border-radius:6px;background:var(--surface-hover);overflow:hidden;}
+.stage-bar > i{display:block;height:100%;border-radius:6px;background:var(--primary);}
+.stage-meta{width:150px;text-align:right;font-size:12px;color:var(--muted);flex-shrink:0;}
+.stage-meta b{color:var(--text);}
+
+/* Тренд */
+.trend-wrap{width:100%;overflow:hidden;}
+.trend-wrap svg{width:100%;height:auto;display:block;}
+.trend-empty{color:var(--muted);font-size:14px;}
+
+/* Heatmap */
+.heatmap{display:flex;flex-wrap:wrap;gap:4px;max-width:520px;}
+.hm-cell{width:14px;height:14px;border-radius:3px;background:var(--surface-hover);}
+.hm-1{background:#bfdbfe;} .hm-2{background:#60a5fa;} .hm-3{background:#3b82f6;} .hm-4{background:#1e3a8a;}
+.hm-legend{display:flex;align-items:center;gap:6px;margin-top:12px;font-size:12px;color:var(--muted);}
+
+/* Дисциплина */
+.disc-grid{display:flex;gap:24px;flex-wrap:wrap;align-items:center;}
+.disc-num{font-size:32px;font-weight:800;color:var(--primary);}
+.missed-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;}
+.missed-chip{background:#fee2e2;color:#dc2626;border-radius:6px;padding:3px 8px;font-size:12px;font-weight:600;}
+
+/* Engagement */
+.eng-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:14px;}
+.eng-item .v{font-size:20px;font-weight:700;}
+.eng-item .l{font-size:12px;color:var(--muted);margin-top:2px;}
+
+/* Сессии */
+.sess{border:1px solid var(--border);border-radius:10px;margin-bottom:10px;overflow:hidden;}
+.sess summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:14px;padding:12px 16px;}
+.sess summary::-webkit-details-marker{display:none;}
+.sess summary:hover{background:var(--surface-hover);}
+.sess .s-date{font-size:13px;color:var(--muted);width:120px;flex-shrink:0;}
+.sess .s-stage{font-weight:600;font-size:14px;flex:1;}
+.sess .s-type{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;}
+.s-pill{display:inline-flex;align-items:center;justify-content:center;min-width:38px;height:30px;padding:0 8px;
+  border-radius:8px;font-weight:800;font-size:13px;}
+.s-high{background:#d1fae5;color:#059669;} .s-mid{background:#fef3c7;color:#d97706;}
+.s-low{background:#fee2e2;color:#dc2626;} .s-none{background:#f1f5f9;color:#94a3b8;}
+.sess .body{padding:0 16px 16px;border-top:1px solid var(--border);}
+.sess .body h4{margin:14px 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);}
+.sess .fb{font-size:14px;line-height:1.5;white-space:pre-wrap;}
+.sess pre{background:var(--surface-hover);border-radius:8px;padding:12px;font-size:12px;overflow:auto;max-height:280px;white-space:pre-wrap;}
+.empty{color:var(--muted);font-size:14px;}
+{% endblock %}
+
+{% macro pill(score) -%}
+  {% if score is none %}<span class="s-pill s-none">—</span>
+  {% elif score >= 75 %}<span class="s-pill s-high">{{ "%.0f"|format(score) }}</span>
+  {% elif score >= 50 %}<span class="s-pill s-mid">{{ "%.0f"|format(score) }}</span>
+  {% else %}<span class="s-pill s-low">{{ "%.0f"|format(score) }}</span>{% endif %}
+{%- endmacro %}
+
+{% block content %}
+<a href="/teams/{{ team.id }}/train-report" class="mr-back">{{ icons.icon('arrow-left', size=15) }} К отчёту команды</a>
+
+<div class="mr-head">
+  <div class="mr-avatar">{{ member.name[0].upper() if member.name else '?' }}</div>
+  <div>
+    <div class="name">{{ member.name }}</div>
+    <div class="email">{{ member.email }}</div>
+  </div>
+</div>
+
+<!-- Ключевые метрики -->
+<div class="mr-cards">
+  <div class="mr-card">
+    <div class="val">{{ stats.avg_score if stats.avg_score is not none else '—' }}</div>
+    <div class="lbl">Средний балл</div>
+  </div>
+  <div class="mr-card">
+    <div class="val">{{ stats.current_streak }}</div>
+    <div class="lbl">Текущий стрик</div>
+    <div class="sub">рекорд {{ stats.best_streak }}</div>
+  </div>
+  <div class="mr-card">
+    <div class="val">{{ stats.total_sessions }}</div>
+    <div class="lbl">Всего сессий</div>
+  </div>
+  <div class="mr-card">
+    <div class="val">{% if stats.adherence is not none %}{{ stats.adherence }}%{% else %}—{% endif %}</div>
+    <div class="lbl">Дисциплина (30 дн)</div>
+    {% if stats.adherence is not none %}<div class="sub">{{ stats.trained_scheduled }}/{{ stats.scheduled_days }} дней</div>{% endif %}
+  </div>
+</div>
+
+<!-- Этапы -->
+<div class="mr-section">
+  <h2>{{ icons.icon('chart', size=16) }} Разбивка по этапам</h2>
+  {% for st in per_stage %}
+  <div class="stage-row">
+    <div class="nm">{{ st.label }}</div>
+    <div class="stage-bar"><i style="width:{{ st.avg if st.avg is not none else 0 }}%;"></i></div>
+    <div class="stage-meta">
+      {% if st.avg is not none %}<b>{{ st.avg }}</b> ср · {{ st.best }} макс · {{ st.attempts }}×{% else %}нет данных{% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- Тренд -->
+<div class="mr-section">
+  <h2>{{ icons.icon('chart', size=16) }} Динамика балла</h2>
+  {% if trend_points %}
+  <div class="trend-wrap">
+    <svg viewBox="0 0 {{ trend_w }} {{ trend_h }}" preserveAspectRatio="none" role="img" aria-label="Динамика балла">
+      <line x1="0" y1="{{ trend_h//2 }}" x2="{{ trend_w }}" y2="{{ trend_h//2 }}" stroke="var(--border)" stroke-width="1" stroke-dasharray="4 4"/>
+      <polyline points="{{ trend_points }}" fill="none" stroke="var(--primary)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+    </svg>
+  </div>
+  {% else %}
+  <p class="trend-empty">Недостаточно данных для графика.</p>
+  {% endif %}
+</div>
+
+<!-- Активность -->
+<div class="mr-section">
+  <h2>{{ icons.icon('calendar', size=16) }} Активность (8 недель)</h2>
+  <div class="heatmap">
+    {% for d in heatmap %}
+    <div class="hm-cell{% if d.level %} hm-{{ d.level }}{% endif %}"
+         title="{{ d.date.strftime('%d.%m.%Y') }}: {{ d.count }} трен."></div>
+    {% endfor %}
+  </div>
+  <div class="hm-legend">
+    меньше
+    <span class="hm-cell"></span><span class="hm-cell hm-1"></span><span class="hm-cell hm-2"></span><span class="hm-cell hm-3"></span><span class="hm-cell hm-4"></span>
+    больше
+  </div>
+</div>
+
+<!-- Дисциплина -->
+{% if stats.adherence is not none %}
+<div class="mr-section">
+  <h2>{{ icons.icon('check', size=16) }} Дисциплина по программе</h2>
+  <div class="disc-grid">
+    <div>
+      <div class="disc-num">{{ stats.adherence }}%</div>
+      <div style="font-size:12px;color:var(--muted);">{{ stats.trained_scheduled }} из {{ stats.scheduled_days }} назначенных дней</div>
+    </div>
+    <div style="flex:1;min-width:200px;">
+      {% if missed_days %}
+      <div style="font-size:13px;font-weight:600;">Пропущенные дни:</div>
+      <div class="missed-chips">
+        {% for d in missed_days %}<span class="missed-chip">{{ d.strftime('%d.%m') }}</span>{% endfor %}
+      </div>
+      {% else %}
+      <div class="empty">Пропусков нет — отличная дисциплина 👏</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Вовлечённость -->
+<div class="mr-section">
+  <h2>{{ icons.icon('users', size=16) }} Вовлечённость</h2>
+  <div class="eng-grid">
+    <div class="eng-item"><div class="v">{{ engagement.voice_count }} / {{ engagement.text_count }}</div><div class="l">Голос / Текст</div></div>
+    <div class="eng-item"><div class="v">{% if engagement.avg_duration %}{{ (engagement.avg_duration//60) }}:{{ '%02d'|format(engagement.avg_duration%60) }}{% else %}—{% endif %}</div><div class="l">Ср. длительность</div></div>
+    <div class="eng-item"><div class="v">{{ engagement.total_responses }}</div><div class="l">Реплик ученика</div></div>
+    <div class="eng-item"><div class="v">{{ engagement.total_questions }}</div><div class="l">Вопросов ИИ</div></div>
+  </div>
+</div>
+
+<!-- История сессий -->
+<div class="mr-section">
+  <h2>{{ icons.icon('book', size=16) }} История сессий</h2>
+  {% if sessions %}
+  {% for s in sessions %}
+  <details class="sess">
+    <summary>
+      <span class="s-date">{{ s.date.strftime('%d.%m.%Y %H:%M') if s.date else '—' }}</span>
+      <span class="s-stage">{{ s.stage_label }}</span>
+      <span class="s-type">{{ 'голос' if s.type == 'voice' else 'текст' }}{% if s.duration %} · {{ (s.duration//60) }}:{{ '%02d'|format(s.duration%60) }}{% endif %}</span>
+      {{ pill(s.score) }}
+    </summary>
+    <div class="body">
+      {% if s.responses is not none or s.questions is not none %}
+      <h4>Активность</h4>
+      <div style="font-size:13px;color:var(--muted);">Реплик ученика: {{ s.responses or 0 }} · Вопросов ИИ: {{ s.questions or 0 }}</div>
+      {% endif %}
+      {% if s.feedback %}
+      <h4>Обратная связь ИИ</h4>
+      <div class="fb">{{ s.feedback }}</div>
+      {% endif %}
+      {% if s.checklist %}
+      <h4>Чеклист</h4>
+      <pre>{{ s.checklist | tojson(indent=2) }}</pre>
+      {% endif %}
+      {% if s.transcript %}
+      <h4>Транскрипт</h4>
+      <pre>{{ s.transcript }}</pre>
+      {% endif %}
+      {% if not s.feedback and not s.transcript and not s.checklist %}
+      <p class="empty" style="margin-top:14px;">Нет дополнительных данных по этой сессии.</p>
+      {% endif %}
+    </div>
+  </details>
+  {% endfor %}
+  {% else %}
+  <p class="empty">Завершённых сессий пока нет.</p>
+  {% endif %}
+</div>
+{% endblock %}

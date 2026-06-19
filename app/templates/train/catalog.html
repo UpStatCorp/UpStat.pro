@@ -1,66 +1,144 @@
 {% extends "train/_layout.html" %}
+{% import "partials/icons.html" as icons %}
 
 {% block title %}Каталог тренировок — UpStat Train{% endblock %}
 {% block page_title %}Каталог тренировок{% endblock %}
 
 {% block styles %}
+.catalog-sub{
+  font-size:14px;color:var(--muted);margin:0 0 28px;
+}
 .catalog-grid{
-  display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px;
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(300px,1fr));
+  gap:14px;
 }
 .stage-card{
-  background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
-  padding:24px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:12px;
-  transition:transform .15s,box-shadow .15s;
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:14px;
+  overflow:hidden;
+  display:flex;
+  flex-direction:column;
+  transition:box-shadow .18s,border-color .18s;
 }
-.stage-card:hover{transform:translateY(-2px);box-shadow:0 6px 24px rgba(14,165,233,.12);}
-.stage-icon{font-size:36px;line-height:1;}
-.stage-name{font-size:17px;font-weight:700;}
-.stage-desc{font-size:13px;color:var(--muted);flex:1;}
-.level-btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px;}
-.btn-level{
-  padding:8px 16px;background:var(--primary);color:#fff;border:none;
-  border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;
-  text-decoration:none;display:inline-flex;align-items:center;gap:6px;
-  transition:background .2s;
+.stage-card:hover{
+  box-shadow:0 6px 24px rgba(15,23,42,.08);
+  border-color:rgba(37,99,235,.25);
 }
-.btn-level:hover{background:var(--primary-hover);}
-.btn-level.secondary{background:transparent;border:1px solid var(--primary);color:var(--primary);}
-.btn-level.secondary:hover{background:var(--primary);color:#fff;}
+.stage-card-body{
+  padding:20px 20px 16px;
+  flex:1;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+.stage-icon-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+}
+.stage-icon{width:38px;height:38px;display:flex;align-items:center;justify-content:center;background:rgba(37,99,235,.07);border-radius:10px;flex-shrink:0;}
+.stage-icon svg{stroke:var(--primary);}
+.stage-multi-badge{
+  font-size:11px;font-weight:600;color:var(--primary);
+  background:rgba(37,99,235,.08);
+  padding:3px 8px;border-radius:20px;
+}
+.stage-name{
+  font-size:15px;font-weight:700;color:var(--text);margin-top:4px;
+}
+.stage-desc{
+  font-size:13px;color:var(--muted);line-height:1.55;flex:1;
+}
+.stage-card-foot{
+  padding:12px 20px;
+  border-top:1px solid var(--border);
+  background:var(--surface-hover);
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+.btn-start{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:7px 14px;
+  background:#fff;
+  border:1px solid var(--border);
+  border-radius:8px;
+  font-size:13px;font-weight:600;color:var(--text);
+  cursor:pointer;
+  transition:background .15s,border-color .15s,color .15s;
+}
+.btn-start:hover{
+  background:var(--primary);
+  border-color:var(--primary);
+  color:#fff;
+}
+.btn-start:hover svg{stroke:#fff;}
+.btn-start svg{stroke:var(--primary);transition:stroke .15s;}
 .badge-soon{
-  display:inline-block;padding:3px 8px;background:#e5e7eb;color:#6b7280;
-  border-radius:6px;font-size:11px;font-weight:600;
+  font-size:12px;font-weight:600;color:var(--muted);
+  background:transparent;
+  border:1px solid var(--border);
+  border-radius:6px;padding:4px 10px;
 }
+.stage-hint{font-size:12px;color:var(--muted);}
+
+/* dark mode */
+body.dark .btn-start{background:var(--surface);border-color:var(--border);color:var(--text);}
+body.dark .stage-card-foot{background:rgba(255,255,255,.03);}
 {% endblock %}
 
 {% block content %}
-<p style="color:var(--muted);font-size:14px;margin:0 0 24px;">
-  Выберите этап продаж и уровень сложности. Тренировка запустится немедленно.
-</p>
+<p class="catalog-sub">Выберите этап продаж — тренировка запустится немедленно.</p>
 
 <div class="catalog-grid">
   {% for stage in stages %}
   <div class="stage-card">
-    <div class="stage-icon">{{ stage.icon }}</div>
-    <div class="stage-name">{{ stage.label }}</div>
-    <div class="stage-desc">{{ stage.description }}</div>
-
-    <div class="level-btns">
-      {% for lvl in range(1, stage.levels + 1) %}
-        {% if lvl in stage.available_levels %}
-        <form method="post" action="/trainings/catalog/start" style="margin:0;">
-          <input type="hidden" name="stage_key" value="{{ stage.key }}"/>
-          <input type="hidden" name="level" value="{{ lvl }}"/>
-          <button type="submit" class="btn-level {% if lvl > 1 %}secondary{% endif %}">
-            <i class="fas fa-microphone"></i>
-            {% if stage.levels > 1 %}Уровень {{ lvl }}{% else %}Начать{% endif %}
-          </button>
-        </form>
-        {% else %}
-        <span class="badge-soon">
-          {% if stage.levels > 1 %}Ур. {{ lvl }}{% else %}Скоро{% endif %}
-        </span>
+    <div class="stage-card-body">
+      <div class="stage-icon-row">
+        <div class="stage-icon">
+          {% if stage.key == 'contact' %}
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          {% elif stage.key == 'needs' %}
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          {% elif stage.key == 'presentation' %}
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+          {% elif stage.key == 'objections' %}
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          {% elif stage.key == 'closing' %}
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          {% else %}
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg>
+          {% endif %}
+        </div>
+        {% if stage.levels > 1 and stage.available_levels %}
+        <span class="stage-multi-badge">{{ stage.available_levels | length }} этапа</span>
         {% endif %}
-      {% endfor %}
+      </div>
+      <div class="stage-name">{{ stage.label }}</div>
+      <div class="stage-desc">{{ stage.description }}</div>
+    </div>
+
+    <div class="stage-card-foot">
+      {% if stage.available_levels %}
+      <form method="post" action="/trainings/catalog/start" style="margin:0;">
+        <input type="hidden" name="stage_key" value="{{ stage.key }}"/>
+        <button type="submit" class="btn-start">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="23"/>
+            <line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+          Начать тренировку
+        </button>
+      </form>
+      {% else %}
+      <span class="badge-soon">Скоро</span>
+      <span class="stage-hint">Нет доступных промптов</span>
+      {% endif %}
     </div>
   </div>
   {% endfor %}

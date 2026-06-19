@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "partials/icons.html" as icons %}
 {% block title %}Встреча {{ meeting.topic }} — UpStat{% endblock %}
 
 {% block content %}
@@ -16,28 +17,28 @@
         <!-- Панель управления -->
         <div class="meeting-controls">
             <button id="mute-audio" class="control-btn audio-btn" title="Отключить микрофон">
-                <span class="btn-icon">🔇</span>
+                <span class="btn-icon">{{ icons.icon('mic', size=20) }}</span>
                 <span class="btn-text">Микрофон</span>
             </button>
             
             <button id="mute-video" class="control-btn video-btn" title="Отключить видео">
-                <span class="btn-icon">📹</span>
+                <span class="btn-icon">{{ icons.icon('video', size=20) }}</span>
                 <span class="btn-text">Видео</span>
             </button>
             
             <button id="start-ai-agent" class="control-btn ai-btn" title="Запустить ИИ-агента">
-                <span class="btn-icon">🤖</span>
+                <span class="btn-icon">{{ icons.icon('zap', size=20) }}</span>
                 <span class="btn-text">Запустить ИИ</span>
             </button>
             
             <!-- Кнопка записи скрыта - используется непрерывное прослушивание -->
             <!-- <button id="voice-message-btn" class="control-btn voice-btn" title="Записать голосовое сообщение ИИ-агенту" style="display: none;" onclick="toggleVoiceRecording()">
-                <span class="btn-icon">🎤</span>
+                <span class="btn-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg></span>
                 <span class="btn-text">Голосовое</span>
             </button> -->
             
             <button id="end-meeting" class="control-btn end-btn" title="Завершить встречу">
-                <span class="btn-icon">📞</span>
+                <span class="btn-icon">{{ icons.icon('phone', size=20) }}</span>
                 <span class="btn-text">Завершить</span>
             </button>
         </div>
@@ -52,8 +53,8 @@
                 <div class="video-overlay">
                     <div class="video-label">Вы</div>
                     <div class="video-status">
-                        <span class="status-indicator audio-status" id="audio-status">🎤</span>
-                        <span class="status-indicator video-status" id="video-status">📹</span>
+                        <span class="status-indicator audio-status" id="audio-status">{{ icons.icon('mic', size=16) }}</span>
+                        <span class="status-indicator video-status" id="video-status">{{ icons.icon('video', size=16) }}</span>
                     </div>
                 </div>
             </div>
@@ -61,7 +62,7 @@
             <!-- Контейнер для удаленных видео -->
             <div id="remote-videos" class="remote-videos-grid">
                 <div class="waiting-message">
-                    <div class="waiting-icon">👥</div>
+                    <div class="waiting-icon">{{ icons.icon('users', size=48) }}</div>
                     <div class="waiting-text">Ожидание участников...</div>
                 </div>
             </div>
@@ -70,7 +71,7 @@
             <div id="ai-agent-video" class="video-container ai-agent-container" style="display: none;">
                 <video id="ai-agent-video-element" autoplay playsinline></video>
                 <div class="video-overlay">
-                    <div class="video-label">🤖 ИИ-Агент</div>
+                    <div class="video-label">{{ icons.icon('zap', size=14) }} ИИ-Агент</div>
                     <div class="ai-status">
                         <span class="ai-indicator">Активен</span>
                     </div>
@@ -121,18 +122,18 @@
     
     <!-- Кнопка чата -->
     <button class="chat-toggle-btn" onclick="toggleChat()" title="Открыть чат">
-        💬
+        {{ icons.icon('chat', size=24) }}
     </button>
     
     <!-- Индикатор записи голосового сообщения (скрыт - используется непрерывное прослушивание) -->
     <div id="voice-recording-indicator" class="voice-recording-indicator" style="display: none;">
         <div class="recording-pulse"></div>
         <div class="recording-text">
-            <span class="recording-icon">🎤</span>
+            <span class="recording-icon">{{ icons.icon('mic', size=24) }}</span>
             <span>Запись голосового сообщения...</span>
         </div>
         <button id="stop-voice-recording" class="stop-recording-btn" onclick="stopVoiceRecording()">
-            <span class="stop-icon">⏹️</span>
+            <span class="stop-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></span>
             <span>Остановить</span>
         </button>
     </div>
@@ -282,19 +283,19 @@ let voiceRecorder = null;
 let voiceRecording = false;
 
 function toggleVoiceRecording() {
-    console.log('🎤 toggleVoiceRecording вызвана, voiceRecording:', voiceRecording);
+    console.log('toggleVoiceRecording вызвана, voiceRecording:', voiceRecording);
     if (voiceRecording) {
-        console.log('🎤 Останавливаем запись...');
+        console.log('Останавливаем запись...');
         stopVoiceRecording();
     } else {
-        console.log('🎤 Начинаем запись...');
+        console.log('Начинаем запись...');
         startVoiceRecording();
     }
 }
 
 async function startVoiceRecording() {
     try {
-        console.log('🎤 Начинаем запись голосового сообщения...');
+        console.log('Начинаем запись голосового сообщения...');
         
         // Проверяем поддержку getUserMedia
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -311,7 +312,7 @@ async function startVoiceRecording() {
             } 
         });
         
-        console.log('🎤 Микрофон получен, создаем MediaRecorder...');
+        console.log('Микрофон получен, создаем MediaRecorder...');
         
         // Проверяем поддержку MediaRecorder
         if (!window.MediaRecorder) {
@@ -328,7 +329,7 @@ async function startVoiceRecording() {
             mimeType = 'audio/ogg;codecs=opus';
         }
         
-        console.log('🎤 Используем MIME тип:', mimeType);
+        console.log('Используем MIME тип:', mimeType);
         
         voiceRecorder = new MediaRecorder(stream, {
             mimeType: mimeType
@@ -337,7 +338,7 @@ async function startVoiceRecording() {
         // Обработчик данных аудио
         voiceRecorder.ondataavailable = (event) => {
             if (event.data.size > 0) {
-                console.log(`🎤 Получены аудио данные: ${event.data.size} байт, тип: ${event.data.type}`);
+                console.log(`Получены аудио данные: ${event.data.size} байт, тип: ${event.data.type}`);
                 // Сохраняем аудио данные для отправки
                 window.recordedAudioData = event.data;
                 window.recordedAudioType = event.data.type;
@@ -346,13 +347,13 @@ async function startVoiceRecording() {
         
         // Обработчик завершения записи
         voiceRecorder.onstop = () => {
-            console.log('🎤 Запись завершена');
+            console.log('Запись завершена');
             sendVoiceMessage();
         };
         
         // Обработчик ошибок MediaRecorder
         voiceRecorder.onerror = (event) => {
-            console.error('❌ Ошибка MediaRecorder:', event.error);
+            console.error('Ошибка MediaRecorder:', event.error);
             stopVoiceRecording();
         };
         
@@ -366,17 +367,17 @@ async function startVoiceRecording() {
         // Обновляем кнопку
         updateVoiceButton();
         
-        console.log('🎤 Запись голосового сообщения запущена');
+        console.log('Запись голосового сообщения запущена');
         
     } catch (error) {
-        console.error('❌ Ошибка запуска записи:', error);
+        console.error('Ошибка запуска записи:', error);
         showNotification(`Ошибка доступа к микрофону: ${error.message}`, 'error');
     }
 }
 
 function stopVoiceRecording() {
     if (voiceRecorder && voiceRecording) {
-        console.log('🎤 Останавливаем запись...');
+        console.log('Останавливаем запись...');
         voiceRecorder.stop();
         voiceRecording = false;
         
@@ -409,30 +410,30 @@ function hideVoiceRecordingIndicator() {
 
 function updateVoiceButton() {
     const button = document.getElementById('voice-message-btn');
-    console.log('🎤 updateVoiceButton вызвана, button:', button, 'voiceRecording:', voiceRecording);
+    console.log('updateVoiceButton вызвана, button:', button, 'voiceRecording:', voiceRecording);
     if (button) {
         if (voiceRecording) {
             button.classList.add('recording');
             button.querySelector('.btn-text').textContent = 'Остановить';
-            console.log('🎤 Кнопка обновлена: режим записи');
+            console.log('Кнопка обновлена: режим записи');
         } else {
             button.classList.remove('recording');
             button.querySelector('.btn-text').textContent = 'Голосовое';
-            console.log('🎤 Кнопка обновлена: обычный режим');
+            console.log('Кнопка обновлена: обычный режим');
         }
     } else {
-        console.error('❌ Кнопка voice-message-btn не найдена!');
+        console.error('Кнопка voice-message-btn не найдена!');
     }
 }
 
 async function sendVoiceMessage() {
     try {
         if (!window.recordedAudioData) {
-            console.error('❌ Нет аудио данных для отправки');
+            console.error('Нет аудио данных для отправки');
             return;
         }
         
-        console.log('🎤 Отправляем голосовое сообщение...');
+        console.log('Отправляем голосовое сообщение...');
         
         // Конвертируем аудио в base64
         const arrayBuffer = await window.recordedAudioData.arrayBuffer();
@@ -448,10 +449,10 @@ async function sendVoiceMessage() {
             };
             
             window.meetingClient.websocket.send(JSON.stringify(message));
-            console.log('🎤 Голосовое сообщение отправлено, тип:', message.audio_type);
+            console.log('Голосовое сообщение отправлено, тип:', message.audio_type);
             showNotification('Голосовое сообщение отправлено ИИ-агенту', 'success');
         } else {
-            console.error('❌ WebSocket не подключен');
+            console.error('WebSocket не подключен');
             showNotification('Ошибка: нет соединения с сервером', 'error');
         }
         
@@ -459,7 +460,7 @@ async function sendVoiceMessage() {
         window.recordedAudioData = null;
         
     } catch (error) {
-        console.error('❌ Ошибка отправки голосового сообщения:', error);
+        console.error('Ошибка отправки голосового сообщения:', error);
         showNotification(`Ошибка отправки: ${error.message}`, 'error');
     }
 }
@@ -489,7 +490,7 @@ function showNotification(message, type = 'info') {
     display: flex;
     flex-direction: column;
     height: 100vh;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: var(--primary);
     color: white;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
@@ -595,7 +596,7 @@ function showNotification(message, type = 'info') {
     bottom: 0;
     left: 0;
     right: 0;
-    background: linear-gradient(transparent, rgba(0, 0, 0, 0.7));
+    background: rgba(0, 0, 0, 0.6);
     padding: 15px;
     display: flex;
     justify-content: space-between;

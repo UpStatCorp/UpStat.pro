@@ -1,13 +1,14 @@
 {% extends "_layout_dashboard.html" %}
+{% import "partials/icons.html" as icons %}
 {% block title %}Статистика плана: {{ plan.title }} — UpStat{% endblock %}
 
 {% block head %}
 <style>
   /* Premium Design System */
   :root {
-    --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    --gradient-success: linear-gradient(135deg, #10b981 0%, #059669 100%);
-    --gradient-info: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    --gradient-primary: var(--primary);
+    --gradient-success: var(--success);
+    --gradient-info: var(--primary);
     --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
     --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
   }
@@ -19,7 +20,7 @@
     gap: 24px;
     margin-bottom: 40px;
     padding: 32px;
-    background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+    background: var(--accent);
     border: 1px solid rgba(102, 126, 234, 0.2);
     border-radius: 20px;
     box-shadow: var(--shadow-lg);
@@ -46,10 +47,7 @@
     font-size: 28px;
     font-weight: 800;
     letter-spacing: -0.5px;
-    background: var(--gradient-primary);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: var(--primary);
   }
   
   .plan-stats-title p {
@@ -160,7 +158,7 @@
   
   .metric-item {
     padding: 20px;
-    background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+    background: var(--accent);
     border-radius: 14px;
     border: 1px solid rgba(102, 126, 234, 0.1);
     transition: all 0.3s ease;
@@ -202,10 +200,7 @@
   .metric-value {
     font-size: 32px;
     font-weight: 800;
-    background: var(--gradient-primary);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: var(--primary);
     letter-spacing: -1px;
     line-height: 1;
   }
@@ -301,7 +296,7 @@
 <div class="dashboard-container">
   <div class="dashboard-header">
     <div class="dashboard-title">
-      <h1>📊 Статистика плана</h1>
+      <h1>{{ icons.icon('analytics', size=22) }} Статистика плана</h1>
       <p class="dashboard-subtitle">Участник: {{ member.user.name }}</p>
     </div>
     <div class="dashboard-actions">
@@ -318,8 +313,8 @@
     </div>
     <div>
       <span class="training-stat-badge {% if plan.status == 'completed' %}completed{% elif plan.status == 'active' %}available{% else %}locked{% endif %}">
-        {% if plan.status == 'completed' %}✅ Завершен
-        {% elif plan.status == 'active' %}🔄 Активен
+        {% if plan.status == 'completed' %}{{ icons.icon('check', size=16) }} Завершен
+        {% elif plan.status == 'active' %}{{ icons.icon('play', size=16) }} Активен
         {% else %}{{ plan.status }}{% endif %}
       </span>
     </div>
@@ -337,9 +332,9 @@
           </div>
         </div>
         <span class="training-stat-badge {% if stat.training.status == 'completed' %}completed{% elif stat.training.status == 'available' or stat.training.status == 'in_progress' %}available{% else %}locked{% endif %}">
-          {% if stat.training.status == 'completed' %}✅ Завершена
-          {% elif stat.training.status == 'available' or stat.training.status == 'in_progress' %}🔄 Доступна
-          {% else %}🔒 Заблокирована{% endif %}
+          {% if stat.training.status == 'completed' %}{{ icons.icon('check', size=16) }} Завершена
+          {% elif stat.training.status == 'available' or stat.training.status == 'in_progress' %}{{ icons.icon('play', size=16) }} Доступна
+          {% else %}{{ icons.icon('lock', size=16) }} Заблокирована{% endif %}
         </span>
       </div>
       

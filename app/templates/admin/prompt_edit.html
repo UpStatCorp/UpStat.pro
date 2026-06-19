@@ -1,10 +1,11 @@
 {% extends "admin/_layout_admin.html" %}
+{% import "partials/icons.html" as icons %}
 
 {% block content %}
 <!-- Заголовок -->
 <div style="margin-bottom: 32px;">
     <h1 style="font-size: 28px; font-weight: 700; color: var(--text); margin: 0 0 8px 0;">
-        <i class="fas fa-edit" style="color: var(--admin-info); margin-right: 12px;"></i>
+        <span style="color: var(--admin-info); margin-right: 12px; display: inline-flex; vertical-align: middle;">{{ icons.icon('edit', size=24) }}</span>
         Редактирование промпта
     </h1>
     <p style="color: var(--muted); margin: 0; font-size: 16px;">
@@ -16,7 +17,7 @@
 <div class="admin-table-container" style="margin-bottom: 24px;">
     <div class="admin-table-header">
         <h3 class="admin-table-title">
-            <i class="fas fa-info-circle" style="color: var(--admin-info); margin-right: 8px;"></i>
+            <span style="color: var(--admin-info); margin-right: 8px; display: inline-flex; vertical-align: middle;">{{ icons.icon('info', size=18) }}</span>
             Текущая версия
         </h3>
     </div>
@@ -30,7 +31,7 @@
                 <div style="font-size: 12px; color: var(--muted); margin-bottom: 4px;">Текущая версия</div>
                 <div style="font-weight: 600;">
                     <span style="display: inline-flex; align-items: center; gap: 4px; background: var(--admin-info); color: white; padding: 4px 8px; border-radius: 6px; font-size: 12px;">
-                        <i class="fas fa-tag"></i> v{{ prompt.version }}
+                        {{ icons.icon('file', size=12) }} v{{ prompt.version }}
                     </span>
                 </div>
             </div>
@@ -50,7 +51,7 @@
 <div class="admin-table-container">
     <div class="admin-table-header">
         <h3 class="admin-table-title">
-            <i class="fas fa-edit" style="color: var(--admin-info); margin-right: 8px;"></i>
+            <span style="color: var(--admin-info); margin-right: 8px; display: inline-flex; vertical-align: middle;">{{ icons.icon('edit', size=18) }}</span>
             Новая версия промпта
         </h3>
     </div>
@@ -60,7 +61,7 @@
             <!-- Человекочитаемое название -->
             <div>
                 <label for="title" style="display: block; font-weight: 600; margin-bottom: 8px; color: var(--text);">
-                    <i class="fas fa-heading" style="margin-right: 8px; color: var(--admin-info);"></i>
+                    <span style="margin-right: 8px; color: var(--admin-info); display: inline-flex; vertical-align: middle;">{{ icons.icon('file-text', size=16) }}</span>
                     Отображаемое название *
                 </label>
                 <input type="text" 
@@ -76,7 +77,7 @@
             <!-- Описание -->
             <div>
                 <label for="description" style="display: block; font-weight: 600; margin-bottom: 8px; color: var(--text);">
-                    <i class="fas fa-info-circle" style="margin-right: 8px; color: var(--admin-info);"></i>
+                    <span style="margin-right: 8px; color: var(--admin-info); display: inline-flex; vertical-align: middle;">{{ icons.icon('info', size=16) }}</span>
                     Описание
                 </label>
                 <textarea id="description" 
@@ -90,7 +91,7 @@
             <!-- Содержимое промпта -->
             <div>
                 <label for="content" style="display: block; font-weight: 600; margin-bottom: 8px; color: var(--text);">
-                    <i class="fas fa-code" style="margin-right: 8px; color: var(--admin-info);"></i>
+                    <span style="margin-right: 8px; color: var(--admin-info); display: inline-flex; vertical-align: middle;">{{ icons.icon('code', size=16) }}</span>
                     Содержимое промпта *
                 </label>
                 <textarea id="content" 
@@ -112,21 +113,21 @@
                     style="display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; background: var(--admin-success); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s ease;"
                     onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 8px 24px rgba(16,185,129,0.3)'"
                     onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
-                <i class="fas fa-save"></i> Сохранить новую версию
+                {{ icons.icon('save', size=16) }} Сохранить новую версию
             </button>
             
             <a href="/admin/prompts/{{ prompt.name }}/versions" 
                style="display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; background: var(--admin-secondary); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; text-decoration: none; transition: all 0.2s ease;"
                onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 8px 24px rgba(245,158,11,0.3)'"
                onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
-                <i class="fas fa-history"></i> История версий
+                {{ icons.icon('clock', size=16) }} История версий
             </a>
             
             <a href="/admin/prompts" 
                style="display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; background: #6b7280; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; text-decoration: none; transition: all 0.2s ease;"
                onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 8px 24px rgba(107,114,128,0.3)'"
                onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
-                <i class="fas fa-arrow-left"></i> Назад к списку
+                {{ icons.icon('arrow-left', size=16) }} Назад к списку
             </a>
         </div>
     </form>
@@ -136,7 +137,7 @@
 <div class="admin-table-container" style="margin-top: 24px; border-left: 4px solid var(--admin-secondary);">
     <div style="padding: 24px;">
         <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
-            <i class="fas fa-exclamation-triangle" style="color: var(--admin-secondary); font-size: 20px;"></i>
+            <span style="color: var(--admin-secondary); display: inline-flex;">{{ icons.icon('warning', size=20) }}</span>
             <h4 style="color: var(--text); margin: 0; font-size: 16px;">Важно!</h4>
         </div>
         <p style="color: var(--muted); margin: 0; line-height: 1.5;">
@@ -146,4 +147,3 @@
     </div>
 </div>
 {% endblock %}
-

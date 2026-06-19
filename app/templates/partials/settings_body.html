@@ -1,0 +1,586 @@
+<style>
+/* ── Settings — modern minimal ──────────────────────────────── */
+.sp-wrap {
+  max-width: 640px;
+  width: 100%;
+}
+
+/* Page header */
+.sp-page-header { margin-bottom: 32px; }
+.sp-page-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 8px;
+  opacity: .7;
+}
+.sp-page-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -.025em;
+  line-height: 1.15;
+  margin: 0 0 6px;
+}
+.sp-page-desc {
+  font-size: 13.5px;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.55;
+}
+
+/* Inline pill tabs */
+.sp-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--surface-hover);
+  border-radius: 10px;
+  width: fit-content;
+  margin-bottom: 28px;
+  border: 1px solid var(--border);
+}
+.sp-tab {
+  padding: 6px 16px;
+  border-radius: 7px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+  border: none;
+  background: none;
+  transition: background .12s, color .12s, box-shadow .12s;
+  white-space: nowrap;
+  user-select: none;
+  font-family: inherit;
+}
+.sp-tab:hover { color: var(--text); }
+.sp-tab.active {
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, .08), 0 0 0 1px rgba(15, 23, 42, .06);
+}
+
+/* Flash */
+.sp-flash {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  font-size: 13px;
+  font-weight: 500;
+  transition: opacity .3s;
+}
+.sp-flash svg { width: 15px; height: 15px; flex-shrink: 0; }
+.sp-flash-ok  { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; }
+.sp-flash-err { background: #fef2f2; border: 1px solid #fecaca; color: #dc2626; }
+
+/* Section */
+.sp-section { display: none; }
+.sp-section.active { display: block; animation: sp-fade .18s ease; }
+@keyframes sp-fade { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+
+/* Card */
+.sp-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+}
+
+/* Card heading — small muted label */
+.sp-card-head {
+  padding: 14px 20px 13px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.sp-card-head h3 {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0;
+  opacity: .8;
+}
+
+/* Row — stacked: label on top, input below */
+.sp-row {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.sp-row:last-child { border-bottom: none; }
+.sp-row-label { margin-bottom: 7px; }
+.sp-row-label span {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: .01em;
+}
+.sp-row-label small {
+  display: inline-block;
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-top: 1px;
+}
+.sp-row-val { min-width: 0; }
+
+/* Input */
+.sp-input {
+  width: 100% !important;
+  padding: 8px 11px !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 7px !important;
+  font-size: 13.5px !important;
+  background: var(--bg) !important;
+  color: var(--text) !important;
+  outline: none !important;
+  box-shadow: none !important;
+  transition: border-color .12s, box-shadow .12s;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+.sp-input::placeholder { color: var(--muted); opacity: .6; }
+.sp-input:hover { border-color: var(--muted) !important; }
+.sp-input:focus {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 3px rgba(30, 58, 138, .1) !important;
+}
+.sp-input.is-invalid {
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, .08) !important;
+}
+
+.sp-hint { display: block; margin-top: 5px; font-size: 11.5px; color: var(--muted); min-height: 14px; }
+.sp-hint.err { color: #ef4444; }
+.sp-hint.ok  { color: #16a34a; }
+
+/* Password */
+.sp-pw-wrap { position: relative; display: flex; align-items: center; }
+.sp-pw-wrap .sp-input { padding-right: 38px !important; }
+.sp-pw-toggle {
+  position: absolute; right: 9px;
+  background: none; border: none; cursor: pointer;
+  font-size: 13px; opacity: .35; padding: 4px; line-height: 1; border-radius: 5px;
+  transition: opacity .12s;
+}
+.sp-pw-toggle:hover { opacity: .7; }
+
+.sp-pw-bar { height: 2px; border-radius: 2px; background: var(--border); margin-top: 8px; overflow: hidden; }
+.sp-pw-bar span { display: block; height: 100%; width: 0; border-radius: 2px; transition: width .25s, background-color .25s; }
+
+/* Avatar */
+.sp-avatar-row { display: flex; align-items: center; gap: 14px; }
+.sp-avatar-img,
+.sp-avatar-ph {
+  width: 52px; height: 52px;
+  border-radius: 50%; flex-shrink: 0;
+  border: 1px solid var(--border);
+  object-fit: cover;
+  transition: border-color .12s;
+  background: var(--surface-hover);
+}
+.sp-avatar-ph { display: flex; align-items: center; justify-content: center; color: var(--muted); }
+.sp-avatar-ph svg { width: 22px; height: 22px; }
+.sp-avatar-img:hover, .sp-avatar-ph:hover { border-color: var(--primary); }
+.sp-avatar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sp-upload-input { display: none; }
+.sp-upload-lbl {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 6px 12px;
+  border: 1px solid var(--border); border-radius: 7px;
+  font-size: 12.5px; font-weight: 500; color: var(--text);
+  background: var(--surface); cursor: pointer;
+  transition: border-color .12s, color .12s, background .12s;
+  font-family: inherit;
+}
+.sp-upload-lbl svg { width: 12px; height: 12px; }
+.sp-upload-lbl:hover { border-color: var(--primary); color: var(--primary); background: var(--surface); }
+
+/* Actions */
+.sp-actions {
+  padding: 14px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  border-top: 1px solid var(--border);
+  background: var(--surface-hover);
+}
+
+/* Buttons */
+.sp-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 18px;
+  border-radius: 7px;
+  font-size: 13px; font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background .12s, border-color .12s, opacity .12s;
+  text-decoration: none;
+  font-family: inherit;
+  letter-spacing: .01em;
+}
+.sp-btn-primary {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+.sp-btn-primary:hover { opacity: .88; }
+.sp-btn-ghost {
+  background: var(--surface);
+  color: var(--text);
+  border-color: var(--border);
+  font-weight: 500;
+}
+.sp-btn-ghost:hover { border-color: var(--muted); }
+
+/* Appearance toggle */
+.sp-toggle-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+.sp-toggle-row:last-child { border-bottom: none; }
+.sp-toggle-info span { font-size: 13.5px; font-weight: 500; color: var(--text); }
+.sp-toggle-info small { display: block; font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+/* Mobile */
+@media (max-width: 600px) {
+  .sp-page-title { font-size: 22px; }
+  .sp-row { padding: 14px 16px; }
+  .sp-card-head { padding-left: 16px; padding-right: 16px; }
+  .sp-actions { padding: 12px 16px; }
+  .sp-toggle-row { padding: 14px 16px; }
+}
+</style>
+
+<div class="sp-wrap">
+
+  <!-- Page header -->
+  <div class="sp-page-header">
+    <div class="sp-page-eyebrow">Настройки</div>
+    <h1 class="sp-page-title">Аккаунт и уведомления</h1>
+    <p class="sp-page-desc">Контакт владельца, настройки безопасности и внешний вид</p>
+  </div>
+
+  <!-- Inline pill tabs -->
+  <div class="sp-tabs" role="tablist">
+    <button class="sp-tab active" data-tab="profile" role="tab" aria-selected="true">Профиль</button>
+    <button class="sp-tab" data-tab="security" role="tab" aria-selected="false">Безопасность</button>
+    <button class="sp-tab" data-tab="appearance" role="tab" aria-selected="false">Внешний вид</button>
+  </div>
+
+  {% if success %}
+  <div class="sp-flash sp-flash-ok" id="sp-flash">
+    <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+    {{ success }}
+  </div>
+  {% endif %}
+  {% if error %}
+  <div class="sp-flash sp-flash-err" id="sp-flash">
+    <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+    {{ error }}
+  </div>
+  {% endif %}
+
+  <!-- ── Профиль ─────────────────────────────── -->
+  <section id="sp-profile" class="sp-section active" role="tabpanel">
+
+    <!-- Avatar -->
+    <form action="/settings/avatar" method="POST" enctype="multipart/form-data">
+      <input type="hidden" name="_tab" value="profile">
+      <div class="sp-card">
+        <div class="sp-card-head"><h3>Фото профиля</h3></div>
+        <div class="sp-row">
+          <div class="sp-row-label">
+            <span>Аватар</span>
+            <small>JPG, PNG, GIF · до 5 МБ</small>
+          </div>
+          <div class="sp-row-val">
+            <div class="sp-avatar-row">
+              {% if user.avatar %}
+                <img src="{{ user.avatar }}" alt="Аватар" class="sp-avatar-img" id="avatar-preview-img">
+              {% else %}
+                <div class="sp-avatar-ph" id="avatar-placeholder">
+                  <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd"/></svg>
+                </div>
+              {% endif %}
+              <div class="sp-avatar-actions">
+                <input type="file" id="avatar" name="avatar" class="sp-upload-input" accept="image/*" onchange="previewAvatar(this)">
+                <label for="avatar" class="sp-upload-lbl">
+                  <svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd"/></svg>
+                  Выбрать файл
+                </label>
+                <button type="submit" class="sp-btn sp-btn-ghost">Загрузить</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </form>
+
+    <!-- Profile info -->
+    <form action="/settings/profile" method="POST" id="profile-form">
+      <input type="hidden" name="_tab" value="profile">
+      <div class="sp-card">
+        <div class="sp-card-head"><h3>Личные данные</h3></div>
+        <div class="sp-row">
+          <div class="sp-row-label"><span>Имя</span></div>
+          <div class="sp-row-val">
+            <input type="text" name="name" value="{{ user.name }}" required class="sp-input">
+          </div>
+        </div>
+        <div class="sp-row">
+          <div class="sp-row-label"><span>Email</span></div>
+          <div class="sp-row-val">
+            <input type="email" name="email" value="{{ user.email }}" required class="sp-input">
+          </div>
+        </div>
+        <div class="sp-row">
+          <div class="sp-row-label">
+            <span>Телефон</span>
+            <small>Необязательно</small>
+          </div>
+          <div class="sp-row-val">
+            <input type="tel" id="phone" name="phone" value="{{ user.phone or '' }}"
+                   placeholder="+7 (999) 123-45-67"
+                   pattern="^\+?[0-9 ()\-]{7,20}$"
+                   class="sp-input">
+            <span id="phone-hint" class="sp-hint"></span>
+          </div>
+        </div>
+        <div class="sp-actions">
+          <button type="submit" class="sp-btn sp-btn-primary">Сохранить изменения</button>
+        </div>
+      </div>
+    </form>
+
+  </section>
+
+  <!-- ── Безопасность ────────────────────────── -->
+  <section id="sp-security" class="sp-section" role="tabpanel">
+    <form action="/settings/password" method="POST" id="pw-form" novalidate>
+      <input type="hidden" name="_tab" value="security">
+      <div class="sp-card">
+        <div class="sp-card-head"><h3>Изменение пароля</h3></div>
+        <div class="sp-row">
+          <div class="sp-row-label"><span>Текущий пароль</span></div>
+          <div class="sp-row-val">
+            <div class="sp-pw-wrap">
+              <input type="password" id="current_password" name="current_password" required autocomplete="current-password" class="sp-input">
+              <button type="button" class="sp-pw-toggle" data-target="current_password">👁</button>
+            </div>
+          </div>
+        </div>
+        <div class="sp-row">
+          <div class="sp-row-label">
+            <span>Новый пароль</span>
+            <small>Минимум 6 символов</small>
+          </div>
+          <div class="sp-row-val">
+            <div class="sp-pw-wrap">
+              <input type="password" id="new_password" name="new_password" required minlength="6" autocomplete="new-password" class="sp-input">
+              <button type="button" class="sp-pw-toggle" data-target="new_password">👁</button>
+            </div>
+            <div class="sp-pw-bar"><span id="pw-bar"></span></div>
+            <span id="pw-strength" class="sp-hint"></span>
+          </div>
+        </div>
+        <div class="sp-row">
+          <div class="sp-row-label"><span>Подтвердите пароль</span></div>
+          <div class="sp-row-val">
+            <div class="sp-pw-wrap">
+              <input type="password" id="confirm_password" name="confirm_password" required minlength="6" autocomplete="new-password" class="sp-input">
+              <button type="button" class="sp-pw-toggle" data-target="confirm_password">👁</button>
+            </div>
+            <span id="pw-match" class="sp-hint"></span>
+          </div>
+        </div>
+        <div class="sp-actions">
+          <button type="submit" class="sp-btn sp-btn-primary">Изменить пароль</button>
+        </div>
+      </div>
+    </form>
+  </section>
+
+  <!-- ── Внешний вид ─────────────────────────── -->
+  <section id="sp-appearance" class="sp-section" role="tabpanel">
+    <div class="sp-card">
+      <div class="sp-card-head"><h3>Тема интерфейса</h3></div>
+      <div class="sp-toggle-row">
+        <div class="sp-toggle-info">
+          <span>Тёмная тема</span>
+          <small>Переключает интерфейс на тёмное оформление</small>
+        </div>
+        <label class="ts-label">
+          <input id="theme-switch" class="ts-input" type="checkbox" aria-label="Переключить тему">
+          <span class="ts-track"></span>
+          <span class="ts-thumb"></span>
+          <svg class="ts-icon ts-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"></path></svg>
+          <svg class="ts-icon ts-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"></path></svg>
+        </label>
+      </div>
+    </div>
+  </section>
+
+
+</div>
+
+<script>
+// ── Tab switching ──────────────────────────────────────────────
+(function() {
+  const NAV_KEY = 'settingsTab';
+
+  function activate(tab) {
+    document.querySelectorAll('.sp-tab').forEach(btn => {
+      const active = btn.dataset.tab === tab;
+      btn.classList.toggle('active', active);
+      btn.setAttribute('aria-selected', active);
+    });
+    document.querySelectorAll('.sp-section').forEach(s => {
+      s.classList.toggle('active', s.id === 'sp-' + tab);
+    });
+    localStorage.setItem(NAV_KEY, tab);
+  }
+
+  document.querySelectorAll('.sp-tab[data-tab]').forEach(btn => {
+    btn.addEventListener('click', () => activate(btn.dataset.tab));
+  });
+
+  {% if success or error %}
+  activate(localStorage.getItem(NAV_KEY) || 'profile');
+  {% else %}
+  activate(localStorage.getItem(NAV_KEY) || 'profile');
+  {% endif %}
+
+  document.querySelectorAll('form input[name="_tab"]').forEach(inp => {
+    inp.closest('form').addEventListener('submit', () => {
+      localStorage.setItem(NAV_KEY, inp.value);
+    });
+  });
+})();
+
+// ── Avatar preview ─────────────────────────────────────────────
+function previewAvatar(input) {
+  if (!input.files || !input.files[0]) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    let img = document.getElementById('avatar-preview-img');
+    const ph = document.getElementById('avatar-placeholder');
+    if (img) {
+      img.src = e.target.result;
+    } else {
+      img = document.createElement('img');
+      img.src = e.target.result;
+      img.alt = 'Аватар';
+      img.id = 'avatar-preview-img';
+      img.className = 'sp-avatar-img';
+      if (ph) ph.parentNode.replaceChild(img, ph);
+    }
+  };
+  reader.readAsDataURL(input.files[0]);
+}
+
+// ── Flash auto-hide ────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+  const flash = document.getElementById('sp-flash');
+  if (flash) setTimeout(() => { flash.style.opacity = '0'; setTimeout(() => flash.remove(), 300); }, 5000);
+
+  document.querySelectorAll('.sp-pw-toggle').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const inp = document.getElementById(btn.dataset.target);
+      if (!inp) return;
+      inp.type = inp.type === 'password' ? 'text' : 'password';
+    });
+  });
+
+  const phone = document.getElementById('phone');
+  const phoneHint = document.getElementById('phone-hint');
+  if (phone && phoneHint) {
+    phone.addEventListener('input', () => {
+      if (phone.value.trim() && !phone.checkValidity()) {
+        phone.classList.add('is-invalid');
+        phoneHint.textContent = 'Допустимы цифры, пробелы, +, () и дефис.';
+        phoneHint.className = 'sp-hint err';
+      } else {
+        phone.classList.remove('is-invalid');
+        phoneHint.textContent = '';
+        phoneHint.className = 'sp-hint';
+      }
+    });
+  }
+
+  const newPw     = document.getElementById('new_password');
+  const confirmPw = document.getElementById('confirm_password');
+  const bar       = document.getElementById('pw-bar');
+  const strHint   = document.getElementById('pw-strength');
+  const matchHint = document.getElementById('pw-match');
+  const pwForm    = document.getElementById('pw-form');
+
+  function score(pw) {
+    let s = 0;
+    if (pw.length >= 6)  s++;
+    if (pw.length >= 10) s++;
+    if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) s++;
+    if (/\d/.test(pw))   s++;
+    if (/[^A-Za-z0-9]/.test(pw)) s++;
+    return Math.min(s, 4);
+  }
+
+  function renderStr() {
+    if (!newPw || !bar) return;
+    const pw = newPw.value;
+    if (!pw) { bar.style.width = '0'; strHint.textContent = ''; return; }
+    const lvls = [
+      { w:'25%', c:'#ef4444', t:'Слабый' },
+      { w:'50%', c:'#f59e0b', t:'Средний' },
+      { w:'75%', c:'#3b82f6', t:'Хороший' },
+      { w:'100%', c:'#16a34a', t:'Надёжный' },
+    ];
+    const l = lvls[Math.max(0, score(pw) - 1)];
+    bar.style.width = l.w;
+    bar.style.backgroundColor = l.c;
+    strHint.textContent = l.t;
+  }
+
+  function renderMatch() {
+    if (!confirmPw || !matchHint) return true;
+    if (!confirmPw.value) { matchHint.textContent = ''; matchHint.className = 'sp-hint'; confirmPw.classList.remove('is-invalid'); return true; }
+    if (newPw.value !== confirmPw.value) {
+      matchHint.textContent = 'Пароли не совпадают.';
+      matchHint.className = 'sp-hint err';
+      confirmPw.classList.add('is-invalid');
+      return false;
+    }
+    matchHint.textContent = 'Совпадают.';
+    matchHint.className = 'sp-hint ok';
+    confirmPw.classList.remove('is-invalid');
+    return true;
+  }
+
+  if (newPw)     newPw.addEventListener('input', () => { renderStr(); renderMatch(); });
+  if (confirmPw) confirmPw.addEventListener('input', renderMatch);
+
+  if (pwForm) {
+    pwForm.addEventListener('submit', e => {
+      if (newPw.value.length < 6) {
+        e.preventDefault();
+        strHint.textContent = 'Минимум 6 символов.';
+        strHint.className = 'sp-hint err';
+        newPw.focus();
+        return;
+      }
+      if (!renderMatch()) { e.preventDefault(); confirmPw.focus(); }
+    });
+  }
+});
+</script>

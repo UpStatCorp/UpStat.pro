@@ -1,4 +1,5 @@
 {% extends "_layout_dashboard.html" %}
+{% import "partials/icons.html" as icons %}
 {% block title %}Записи из CRM — UpStat{% endblock %}
 {% block content %}
 
@@ -311,7 +312,7 @@
 .stat-mini:hover { border-color: rgba(37,99,235,.15); }
 .stat-mini-val { font-size: 26px; font-weight: 700; color: var(--text); }
 .stat-mini-lbl { font-size: 12px; color: var(--muted); margin-top: 2px; }
-.stat-mini-blue .stat-mini-val { color: #3b82f6; }
+.stat-mini-blue .stat-mini-val { color: var(--primary); }
 .stat-mini-green .stat-mini-val { color: #10b981; }
 .stat-mini-amber .stat-mini-val { color: #f59e0b; }
 
@@ -320,7 +321,7 @@
 .batch-bar-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 14px; }
 .badge-primary { background: var(--primary); color: #fff; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
 .progress-track { height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; }
-.progress-fill { height: 100%; background: linear-gradient(90deg, var(--primary), #8b5cf6); border-radius: 3px; transition: width .5s; }
+.progress-fill { height: 100%; background: var(--primary); border-radius: 3px; transition: width .5s; }
 .batch-text { font-size: 12px; color: var(--muted); margin-top: 6px; display: block; }
 
 /* Filters */
@@ -357,7 +358,7 @@ body.dark .rec-row:hover { background: rgba(59,130,246,.05); }
 /* Type badges */
 .type-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 6px; font-size: 12px; font-weight: 500; }
 .type-call { background: rgba(100,116,139,.1); color: #64748b; }
-.type-chat { background: rgba(139,92,246,.1); color: #8b5cf6; }
+.type-chat { background: var(--accent); color: var(--primary); }
 
 /* Date */
 .date-main { display: block; font-weight: 500; }
@@ -368,12 +369,12 @@ body.dark .rec-row:hover { background: rgba(59,130,246,.05); }
 
 /* Direction */
 .dir-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 6px; }
-.dir-in { background: rgba(59,130,246,.1); color: #3b82f6; }
+.dir-in { background: rgba(59,130,246,.1); color: var(--primary); }
 .dir-out { background: rgba(16,185,129,.1); color: #10b981; }
 
 /* Status */
 .status-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 500; padding: 3px 10px; border-radius: 20px; }
-.tag-blue { background: rgba(59,130,246,.1); color: #3b82f6; }
+.tag-blue { background: rgba(59,130,246,.1); color: var(--primary); }
 .tag-green { background: rgba(16,185,129,.1); color: #059669; }
 body.dark .tag-green { color: #34d399; }
 .tag-amber { background: rgba(245,158,11,.1); color: #d97706; }
@@ -391,8 +392,8 @@ body.dark .tag-green { color: #34d399; }
 .btn-icon-sm:hover { background: var(--primary); color: #fff; border-color: var(--primary); transform: scale(1.05); }
 .btn-icon-green { color: #059669; border-color: rgba(16,185,129,.2); }
 .btn-icon-green:hover { background: #059669; color: #fff; border-color: #059669; }
-.btn-icon-purple { color: #8b5cf6; border-color: rgba(139,92,246,.2); }
-.btn-icon-purple:hover { background: #8b5cf6; color: #fff; border-color: #8b5cf6; }
+.btn-icon-purple { color: var(--primary); border-color: var(--border); }
+.btn-icon-purple:hover { background: var(--primary); color: #fff; border-color: var(--primary); }
 .btn-icon-amber { color: #d97706; border-color: rgba(245,158,11,.2); }
 .btn-icon-amber:hover { background: #d97706; color: #fff; border-color: #d97706; }
 
@@ -400,14 +401,14 @@ body.dark .tag-green { color: #34d399; }
 .btn-analyze {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 5px 12px; border-radius: 8px; font-size: 12px; font-weight: 600;
-  background: linear-gradient(135deg, #3b82f6, #2563eb); color: #fff;
+  background: var(--primary); color: #fff;
   border: none; cursor: pointer; transition: all .2s; white-space: nowrap;
 }
 .btn-analyze:hover { box-shadow: 0 4px 12px rgba(37,99,235,.35); transform: translateY(-1px); }
 .btn-retry {
   display: inline-flex; align-items: center; gap: 5px;
   padding: 5px 12px; border-radius: 8px; font-size: 12px; font-weight: 600;
-  background: linear-gradient(135deg, #f59e0b, #d97706); color: #fff;
+  background: #f59e0b; color: #fff;
   border: none; cursor: pointer; transition: all .2s; white-space: nowrap;
 }
 .btn-retry:hover { box-shadow: 0 4px 12px rgba(245,158,11,.35); transform: translateY(-1px); }

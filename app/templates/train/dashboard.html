@@ -1,4 +1,5 @@
 {% extends "train/_layout.html" %}
+{% import "partials/icons.html" as icons %}
 
 {% block title %}Главная — UpStat Train{% endblock %}
 {% block page_title %}Тренировки{% endblock %}
@@ -16,7 +17,7 @@
 
 .streak-badge{
   display:inline-flex;align-items:center;gap:6px;
-  background:linear-gradient(135deg,#f59e0b,#f97316);
+  background:#f59e0b;
   color:#fff;padding:4px 12px;border-radius:20px;font-size:13px;font-weight:700;
 }
 
@@ -36,8 +37,8 @@
 .training-item .stage-name{font-weight:600;font-size:14px;}
 .training-item .meta{font-size:12px;color:var(--muted);margin-top:2px;}
 .btn-start{
-  padding:8px 20px;background:var(--primary);color:#fff;border:none;
-  border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;
+  padding:9px 20px;background:var(--primary);color:#fff;border:1px solid transparent;
+  border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;
   text-decoration:none;display:inline-flex;align-items:center;gap:6px;transition:background .2s;
 }
 .btn-start:hover{background:var(--primary-hover);}
@@ -80,10 +81,10 @@
     <span class="value">
       {{ streak }}
       {% if streak > 0 %}
-      <span class="streak-badge"><i class="fas fa-fire"></i> {{ streak }}д</span>
+      <span class="streak-badge">{{ icons.icon('zap', size=14) }} {{ streak }}д</span>
       {% endif %}
     </span>
-    <span class="sub">дней подряд</span>
+    <span class="sub">дней подряд{% if best_streak %} · рекорд {{ best_streak }}{% endif %}</span>
   </div>
   <div class="stat-card">
     <span class="label">Всего сессий</span>
@@ -104,21 +105,28 @@
 
 <!-- Тренировка на сегодня / программа -->
 <div class="today-card">
-  <h2><i class="fas fa-calendar-day" style="color:var(--primary)"></i> Тренировка на сегодня</h2>
+  <h2><span style="color:var(--primary);display:inline-flex;">{{ icons.icon('calendar', size=18) }}</span> Тренировка на сегодня</h2>
   {% if today_training %}
   <div class="training-item">
     <div class="info">
       <div class="stage-name">{{ today_training.stage_label }}</div>
       <div class="meta">Этап {{ today_training.stage_num }} · По программе</div>
     </div>
-    <a href="/voice-training/start/{{ today_training.training_id }}" class="btn-start">
-      <i class="fas fa-microphone"></i> Начать
-    </a>
+    <form method="post" action="/trainings/program/start-today" style="margin:0;">
+      <button type="submit" class="btn-start">
+        {{ icons.icon('mic', size=15) }} Начать
+      </button>
+    </form>
   </div>
+  {% elif program_rest_day %}
+  <p class="empty">
+    Сегодня выходной по программе — этап не назначен.
+    Можно потренироваться из <a href="/trainings/catalog">каталога</a>.
+  </p>
   {% else %}
   <p class="empty">
-    Программа не назначена или сегодня выходной.
-    Можете выбрать тренировку из <a href="/trainings/catalog">каталога</a>.
+    Программа не назначена.
+    Выберите тренировку из <a href="/trainings/catalog">каталога</a>.
   </p>
   {% endif %}
 </div>
@@ -126,15 +134,15 @@
 <!-- Каталог -->
 <div class="today-card" style="display:flex;align-items:center;justify-content:space-between;gap:16px;">
   <div>
-    <h2 style="margin:0"><i class="fas fa-book-open" style="color:var(--accent)"></i> Каталог тренировок</h2>
+    <h2 style="margin:0"><span style="color:var(--primary);display:inline-flex;">{{ icons.icon('book', size=18) }}</span> Каталог тренировок</h2>
     <p style="margin:6px 0 0;font-size:14px;color:var(--muted);">Выберите этап продаж и начните тренировку в любое время</p>
   </div>
-  <a href="/trainings/catalog" class="btn-catalog"><i class="fas fa-arrow-right"></i> Открыть каталог</a>
+  <a href="/trainings/catalog" class="btn-catalog">{{ icons.icon('arrow-right', size=16) }} Открыть каталог</a>
 </div>
 
 <!-- Последние сессии -->
 <div class="recent-card">
-  <h2><i class="fas fa-history" style="color:var(--muted)"></i> Последние тренировки</h2>
+  <h2><span style="color:var(--muted);display:inline-flex;">{{ icons.icon('clock', size=18) }}</span> Последние тренировки</h2>
   {% if recent_sessions %}
   {% for sess in recent_sessions %}
   <div class="session-row">

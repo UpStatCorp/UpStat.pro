@@ -1,10 +1,11 @@
 {% extends "admin/_layout_admin.html" %}
+{% import "partials/icons.html" as icons %}
 
 {% block content %}
 <!-- Заголовок -->
 <div style="margin-bottom: 32px;">
-    <h1 style="font-size: 28px; font-weight: 700; color: var(--text); margin: 0 0 8px 0;">
-        <i class="fas fa-tachometer-alt" style="color: var(--admin-primary); margin-right: 12px;"></i>
+    <h1 style="font-size: 28px; font-weight: 700; color: var(--text); margin: 0 0 8px 0; display: flex; align-items: center; gap: 12px;">
+        <span style="color: var(--primary); display: inline-flex;">{{ icons.icon('dashboard', size=26) }}</span>
         Админ-дашборд
     </h1>
     <p style="color: var(--muted); margin: 0; font-size: 16px;">
@@ -18,12 +19,12 @@
         <div class="admin-card-header">
             <div class="admin-card-title">Пользователи</div>
             <div class="admin-card-icon users">
-                <i class="fas fa-users"></i>
+                {{ icons.icon('users', size=20) }}
             </div>
         </div>
         <div class="admin-metric">{{ stats.total_users }}</div>
         <div class="admin-metric-change positive">
-            <i class="fas fa-arrow-up"></i>
+            {{ icons.icon('trending-up', size=14) }}
             <span>+{{ stats.new_users_today or 0 }} за сегодня</span>
         </div>
     </div>
@@ -32,12 +33,12 @@
         <div class="admin-card-header">
             <div class="admin-card-title">Диалоги</div>
             <div class="admin-card-icon conversations">
-                <i class="fas fa-comments"></i>
+                {{ icons.icon('chat', size=20) }}
             </div>
         </div>
         <div class="admin-metric">{{ stats.total_conversations }}</div>
         <div class="admin-metric-change positive">
-            <i class="fas fa-arrow-up"></i>
+            {{ icons.icon('trending-up', size=14) }}
             <span>+{{ stats.new_conversations_today or 0 }} за сегодня</span>
         </div>
     </div>
@@ -46,12 +47,12 @@
         <div class="admin-card-header">
             <div class="admin-card-title">Zoom встречи</div>
             <div class="admin-card-icon meetings">
-                <i class="fas fa-video"></i>
+                {{ icons.icon('video', size=20) }}
             </div>
         </div>
         <div class="admin-metric">{{ stats.total_meetings }}</div>
         <div class="admin-metric-change positive">
-            <i class="fas fa-arrow-up"></i>
+            {{ icons.icon('trending-up', size=14) }}
             <span>+{{ stats.new_meetings_today or 0 }} за сегодня</span>
         </div>
     </div>
@@ -60,12 +61,12 @@
         <div class="admin-card-header">
             <div class="admin-card-title">Активные сессии</div>
             <div class="admin-card-icon system">
-                <i class="fas fa-user-check"></i>
+                {{ icons.icon('check-circle', size=20) }}
             </div>
         </div>
         <div class="admin-metric">{{ stats.active_sessions or 0 }}</div>
         <div class="admin-metric-change">
-            <i class="fas fa-circle" style="color: #10b981; font-size: 8px;"></i>
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--success); display: inline-block;"></span>
             <span>Система работает</span>
         </div>
     </div>
@@ -75,16 +76,16 @@
 <div style="margin-bottom: 32px;">
     <div class="admin-table-container">
         <div class="admin-table-header">
-            <h3 class="admin-table-title">
-                <i class="fas fa-bolt" style="color: var(--admin-secondary); margin-right: 8px;"></i>
+            <h3 class="admin-table-title" style="display: flex; align-items: center; gap: 8px;">
+                <span style="color: var(--admin-secondary); display: inline-flex;">{{ icons.icon('zap', size=18) }}</span>
                 Быстрые действия
             </h3>
         </div>
         <div style="padding: 24px;">
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px;">
                 <a href="/admin/users" style="display: flex; align-items: center; gap: 12px; padding: 16px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 12px; text-decoration: none; color: var(--text); transition: all 0.2s ease;">
-                    <div style="width: 40px; height: 40px; background: linear-gradient(135deg, var(--admin-info), #2563eb); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: white;">
-                        <i class="fas fa-users"></i>
+                    <div style="width: 40px; height: 40px; background: var(--primary); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: white;">
+                        {{ icons.icon('users', size=20) }}
                     </div>
                     <div>
                         <div style="font-weight: 600; margin-bottom: 4px;">Управление пользователями</div>
@@ -93,8 +94,8 @@
                 </a>
 
                 <a href="/admin/analytics" style="display: flex; align-items: center; gap: 12px; padding: 16px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 12px; text-decoration: none; color: var(--text); transition: all 0.2s ease;">
-                    <div style="width: 40px; height: 40px; background: linear-gradient(135deg, var(--admin-success), #059669); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: white;">
-                        <i class="fas fa-chart-line"></i>
+                    <div style="width: 40px; height: 40px; background: var(--success); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: white;">
+                        {{ icons.icon('chart', size=20) }}
                     </div>
                     <div>
                         <div style="font-weight: 600; margin-bottom: 4px;">Аналитика</div>
@@ -103,8 +104,8 @@
                 </a>
 
                 <a href="/admin/settings" style="display: flex; align-items: center; gap: 12px; padding: 16px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 12px; text-decoration: none; color: var(--text); transition: all 0.2s ease;">
-                    <div style="width: 40px; height: 40px; background: linear-gradient(135deg, #8b5cf6, #7c3aed); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: white;">
-                        <i class="fas fa-cog"></i>
+                    <div style="width: 40px; height: 40px; background: var(--primary); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: white;">
+                        {{ icons.icon('settings', size=20) }}
                     </div>
                     <div>
                         <div style="font-weight: 600; margin-bottom: 4px;">Настройки системы</div>
@@ -113,8 +114,8 @@
                 </a>
 
                 <a href="/admin/logs" style="display: flex; align-items: center; gap: 12px; padding: 16px; background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 12px; text-decoration: none; color: var(--text); transition: all 0.2s ease;">
-                    <div style="width: 40px; height: 40px; background: linear-gradient(135deg, var(--admin-secondary), #d97706); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: white;">
-                        <i class="fas fa-file-alt"></i>
+                    <div style="width: 40px; height: 40px; background: #f59e0b; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: white;">
+                        {{ icons.icon('file-text', size=20) }}
                     </div>
                     <div>
                         <div style="font-weight: 600; margin-bottom: 4px;">Логи системы</div>
@@ -129,8 +130,8 @@
 <!-- Последние пользователи -->
 <div class="admin-table-container">
     <div class="admin-table-header">
-        <h3 class="admin-table-title">
-            <i class="fas fa-user-clock" style="color: var(--admin-info); margin-right: 8px;"></i>
+        <h3 class="admin-table-title" style="display: flex; align-items: center; gap: 8px;">
+            <span style="color: var(--admin-info); display: inline-flex;">{{ icons.icon('clock', size=18) }}</span>
             Последние пользователи
         </h3>
     </div>
@@ -152,8 +153,8 @@
                         {% if user.avatar %}
                         <img src="{{ user.avatar }}" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;" alt="Avatar">
                         {% else %}
-                        <div style="width: 32px; height: 32px; background: #e5e7eb; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #6b7280;">
-                            <i class="fas fa-user"></i>
+                        <div style="width: 32px; height: 32px; background: var(--surface-hover); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--muted);">
+                            {{ icons.icon('user', size=16) }}
                         </div>
                         {% endif %}
                         <div>
@@ -165,18 +166,18 @@
                 <td>
                     {% if user.role == 'admin' %}
                     <span class="role-badge admin">
-                        <i class="fas fa-user-shield"></i> Администратор
+                        {{ icons.icon('shield', size=14) }} Администратор
                     </span>
                     {% else %}
                     <span class="role-badge user">
-                        <i class="fas fa-user"></i> Пользователь
+                        {{ icons.icon('user', size=14) }} Пользователь
                     </span>
                     {% endif %}
                 </td>
                 <td>{{ user.created_at.strftime('%d.%m.%Y %H:%M') if user.created_at else '-' }}</td>
                 <td>
-                    <span style="display: inline-flex; align-items: center; gap: 4px; color: #10b981;">
-                        <i class="fas fa-circle" style="font-size: 8px;"></i>
+                    <span style="display: inline-flex; align-items: center; gap: 4px; color: var(--success);">
+                        <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--success); display: inline-block;"></span>
                         Активен
                     </span>
                 </td>

@@ -3,196 +3,36 @@
 
 {% block extra_head %}
 <style>
-  .ow-root {
-    --bg-1: #f6fcff;
-    --bg-2: #eaf8ff;
-    --bg-3: #d8efff;
-    --panel: rgba(255,255,255,0.84);
-    --panel-strong: rgba(255,255,255,0.94);
-    --line: rgba(11, 95, 169, 0.12);
-    --line-strong: rgba(11, 95, 169, 0.18);
-    --text-o: #0a2340;
-    --muted-o: #4b6f92;
-    --blue-o: #149dff;
-    --blue-deep: #0a5ea8;
-    --blue-soft: #84d7ff;
-    --cyan-o: #57dcff;
-    --gold-o: #d8a83a;
-    --gold-deep: #b88414;
-    --gold-soft: #f6d97b;
-    --mint-o: #17a87a;
-    --danger-o: #d95d73;
-    --danger-soft: #ffe8ed;
-    --warn-o: #f2aa3d;
-    --warn-soft: #fff3df;
-    --success-soft: #e9fff5;
-    --shadow-xl: 0 28px 80px rgba(10,95,168,0.14);
-    --shadow-lg: 0 18px 46px rgba(10,95,168,0.10);
-    --radius-2xl: 34px;
-    --radius-xl: 26px;
-    --radius-lg: 20px;
-    --radius-md: 16px;
-    --max: 1480px;
-    --font-o: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  }
+  .ow-page { padding: 20px 24px; max-width: 1400px; }
+  .ow-wrap { display: grid; gap: 14px; }
 
-  body.dark .ow-root {
-    --bg-1: #0a1828;
-    --bg-2: #0c1f33;
-    --bg-3: #0e2640;
-    --panel: rgba(20, 30, 50, 0.7);
-    --panel-strong: rgba(25, 38, 60, 0.9);
-    --line: rgba(132, 215, 255, 0.14);
-    --line-strong: rgba(132, 215, 255, 0.22);
-    --text-o: #e8f3ff;
-    --muted-o: #93b3d6;
-    --shadow-xl: 0 28px 80px rgba(0,0,0,0.5);
-    --shadow-lg: 0 18px 46px rgba(0,0,0,0.35);
-  }
-
-  .ow-root { font-family: var(--font-o); color: var(--text-o); }
-  .ow-root *, .ow-root *::before, .ow-root *::after { box-sizing: border-box; }
-
-  .ow-page {
-    position: relative;
-    overflow: hidden;
-    padding: 20px 12px 40px;
-    background:
-      radial-gradient(circle at 0% 0%, rgba(87,220,255,0.30), transparent 32%),
-      radial-gradient(circle at 100% 18%, rgba(246,217,123,0.30), transparent 30%),
-      linear-gradient(180deg, var(--bg-1) 0%, var(--bg-2) 54%, var(--bg-3) 100%);
-    min-height: 100vh;
-  }
-  body.dark .ow-page {
-    background:
-      radial-gradient(circle at 0% 0%, rgba(87,220,255,0.10), transparent 32%),
-      radial-gradient(circle at 100% 18%, rgba(246,217,123,0.10), transparent 30%),
-      linear-gradient(180deg, var(--bg-1) 0%, var(--bg-2) 54%, var(--bg-3) 100%);
-  }
-
-  .ow-page::before,
-  .ow-page::after {
-    content: "";
-    position: absolute;
-    border-radius: 999px;
-    filter: blur(24px);
-    pointer-events: none;
-  }
-  .ow-page::before {
-    width: 400px; height: 400px; right: -80px; top: 50px;
-    background: radial-gradient(circle, rgba(216,168,58,0.22) 0%, rgba(216,168,58,0.05) 58%, transparent 76%);
-  }
-  .ow-page::after {
-    width: 440px; height: 440px; left: -110px; bottom: -130px;
-    background: radial-gradient(circle, rgba(20,157,255,0.18) 0%, rgba(20,157,255,0.05) 58%, transparent 76%);
-  }
-
-  .ow-wrap {
-    max-width: var(--max);
-    margin: 0 auto;
-    position: relative;
-    z-index: 1;
-    display: grid;
-    gap: 18px;
-  }
-
-  .ow-glass {
-    background: linear-gradient(180deg, rgba(255,255,255,0.94), rgba(255,255,255,0.80));
-    border: 1px solid var(--line);
-    box-shadow: var(--shadow-lg);
-    backdrop-filter: blur(14px);
-    -webkit-backdrop-filter: blur(14px);
-    border-radius: var(--radius-2xl);
-  }
-  body.dark .ow-glass {
-    background: linear-gradient(180deg, rgba(25,38,60,0.85), rgba(20,30,50,0.7));
-  }
-
-  .ow-hero {
-    display: grid;
-    grid-template-columns: minmax(0, 1.18fr) minmax(330px, 0.82fr);
-    gap: 18px;
-  }
-  .ow-hero-main {
-    padding: 28px 28px 24px;
-    position: relative;
-    overflow: hidden;
-  }
-  .ow-hero-main::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(130deg, rgba(20,157,255,0.10) 0%, rgba(20,157,255,0.01) 38%, rgba(216,168,58,0.09) 100%);
-    pointer-events: none;
-  }
+  /* ─── Hero ─── */
+  .ow-hero { display: grid; grid-template-columns: minmax(0,1.2fr) minmax(280px,0.8fr); gap: 14px; }
+  .ow-glass { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; }
+  .ow-hero-main { padding: 20px 22px; }
+  .ow-hero-side { padding: 16px; display: grid; gap: 10px; align-content: start; }
 
   .ow-eyebrow {
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 10px 16px; border-radius: 999px;
-    background: linear-gradient(90deg, rgba(20,157,255,0.12), rgba(216,168,58,0.16));
-    border: 1px solid rgba(20,157,255,0.14);
-    color: var(--blue-deep);
-    font-size: 11px; text-transform: uppercase; letter-spacing: 0.24em; font-weight: 800;
-    position: relative; z-index: 1; width: fit-content;
+    display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
+    border-radius: 999px; background: var(--accent); color: var(--primary);
+    font-size: 11px; text-transform: uppercase; letter-spacing: .08em; font-weight: 700;
   }
-  body.dark .ow-eyebrow { color: var(--blue-soft); }
-  .ow-eyebrow .dot {
-    width: 10px; height: 10px; border-radius: 999px;
-    background: linear-gradient(180deg, var(--blue-o), var(--gold-o));
-    box-shadow: 0 0 0 5px rgba(20,157,255,0.10);
-  }
+  .ow-eyebrow .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--primary); flex-shrink: 0; }
 
   .ow-hero-title {
-    position: relative; z-index: 1; margin: 18px 0 0;
-    font-size: clamp(28px, 4vw, 52px);
-    line-height: 0.98; letter-spacing: -0.045em; font-weight: 900;
-    max-width: 900px;
-    color: var(--text-o);
+    margin: 12px 0 0; font-size: 22px; font-weight: 800;
+    letter-spacing: -0.03em; line-height: 1.2; color: var(--text);
   }
-  .ow-hero-title .gold {
-    background: linear-gradient(180deg, var(--gold-deep), #ebbf57);
-    -webkit-background-clip: text; background-clip: text; color: transparent;
-  }
+  .ow-hero-title .gold { color: var(--primary); }
+  .ow-hero-text { margin-top: 8px; color: var(--muted); font-size: 13px; line-height: 1.6; max-width: 680px; }
 
-  .ow-hero-text {
-    position: relative; z-index: 1; margin-top: 16px;
-    max-width: 860px; color: var(--muted-o);
-    font-size: 14px; line-height: 1.8;
-  }
-
-  .ow-hero-badges {
-    position: relative; z-index: 1;
-    display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px;
-  }
+  .ow-hero-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
   .ow-hero-badge {
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 10px 14px; border-radius: 999px;
-    background: rgba(255,255,255,0.78);
-    border: 1px solid rgba(20,157,255,0.10);
-    color: #205786; font-size: 12px; font-weight: 700;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.68);
+    display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px;
+    border-radius: 999px; background: var(--accent); border: 1px solid var(--border);
+    color: var(--primary); font-size: 11px; font-weight: 600;
   }
-  body.dark .ow-hero-badge {
-    background: rgba(25, 38, 60, 0.6);
-    color: var(--blue-soft);
-    border-color: rgba(132, 215, 255, 0.15);
-  }
-  .ow-hero-badge::before {
-    content: ""; width: 9px; height: 9px; border-radius: 999px;
-    background: linear-gradient(180deg, var(--blue-o), var(--gold-o));
-    flex: 0 0 auto;
-  }
-
-  .ow-hero-side {
-    padding: 24px;
-    display: grid; gap: 14px; align-content: start;
-    background:
-      linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,0.84)),
-      linear-gradient(145deg, rgba(20,157,255,0.08), rgba(216,168,58,0.10));
-  }
-  body.dark .ow-hero-side {
-    background: linear-gradient(180deg, rgba(25,38,60,0.9), rgba(20,30,50,0.75));
-  }
+  .ow-hero-badge::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--primary); flex-shrink: 0; }
 
   .ow-hero-kpi .label,
   .ow-mini-kpi .label,
@@ -200,555 +40,359 @@
   .ow-panel-label,
   .ow-switch-label,
   .ow-ai-box .t {
-    font-size: 11px;
-    text-transform: uppercase; letter-spacing: 0.22em;
-    color: var(--muted-o); font-weight: 800;
+    font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); font-weight: 700;
   }
 
   .ow-hero-kpi .value {
-    margin-top: 10px;
-    font-size: clamp(32px, 4vw, 56px);
-    line-height: 0.92; font-weight: 900; letter-spacing: -0.05em;
-    color: var(--blue-deep);
+    margin-top: 6px; font-size: 26px; font-weight: 800;
+    letter-spacing: -0.04em; line-height: 1; color: var(--text);
   }
-  body.dark .ow-hero-kpi .value { color: var(--blue-soft); }
-  .ow-hero-kpi .value span { color: var(--gold-deep); }
-  body.dark .ow-hero-kpi .value span { color: var(--gold-soft); }
-  .ow-hero-kpi .sub { margin-top: 10px; color: var(--muted-o); font-size: 13px; line-height: 1.7; }
+  .ow-hero-kpi .sub { margin-top: 5px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+  .ow-hero-kpi-bar { margin-top: 8px; height: 5px; border-radius: 3px; background: var(--border); overflow: hidden; }
+  .ow-hero-kpi-fill { height: 100%; border-radius: 3px; background: var(--primary); transition: width .35s ease; }
 
-  .ow-hero-kpi-bar {
-    margin-top: 14px; height: 10px; border-radius: 999px;
-    background: rgba(20,157,255,0.08); overflow: hidden;
-  }
-  .ow-hero-kpi-fill {
-    height: 100%; border-radius: 999px;
-    background: linear-gradient(90deg, var(--blue-o), var(--cyan-o), var(--gold-soft));
-    transition: width .35s ease;
-  }
+  .ow-side-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 8px; }
+  .ow-mini-kpi { padding: 10px 12px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); }
+  .ow-mini-kpi .value { margin-top: 4px; font-size: 18px; font-weight: 800; letter-spacing: -0.03em; line-height: 1; color: var(--text); }
+  .ow-mini-kpi .sub { margin-top: 3px; color: var(--muted); font-size: 11px; line-height: 1.4; }
 
-  .ow-side-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 12px;
-  }
-  .ow-mini-kpi {
-    padding: 16px;
-    border-radius: 18px;
-    background: rgba(255,255,255,0.80);
-    border: 1px solid var(--line);
-  }
-  body.dark .ow-mini-kpi { background: rgba(25,38,60,0.65); }
-  .ow-mini-kpi .value {
-    margin-top: 8px;
-    font-size: 26px; line-height: 1; font-weight: 900; letter-spacing: -0.04em;
-    color: #0b2f58;
-  }
-  body.dark .ow-mini-kpi .value { color: var(--blue-soft); }
-  .ow-mini-kpi .sub { margin-top: 8px; color: var(--muted-o); font-size: 12px; line-height: 1.6; }
+  /* ─── Mode strip ─── */
+  .ow-mode-strip { padding: 14px 16px; display: grid; gap: 10px; }
+  .ow-switch-top { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .ow-mode-title { margin-top: 4px; font-size: 13px; font-weight: 700; color: var(--text); }
 
-  .ow-mode-strip {
-    padding: 16px 18px;
-    display: grid; gap: 12px;
-  }
-  .ow-switch-top {
-    display: flex; justify-content: space-between; align-items: center;
-    gap: 12px; flex-wrap: wrap;
-  }
-  .ow-mode-title {
-    margin-top: 8px; font-size: 20px; font-weight: 900;
-    letter-spacing: -0.04em; color: var(--text-o);
-  }
-  .ow-mode-buttons { display: flex; flex-wrap: wrap; gap: 10px; }
+  .ow-mode-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
   .ow-mode-btn {
-    border: 1px solid rgba(20,157,255,0.12);
-    background: rgba(255,255,255,0.82);
-    color: #235b8f;
-    border-radius: 999px;
-    padding: 11px 16px;
-    font-size: 13px; font-weight: 800;
-    cursor: pointer;
-    transition: all .22s ease;
+    border: 1px solid var(--border); background: var(--surface); color: var(--muted);
+    border-radius: 999px; padding: 6px 14px; font-size: 12px; font-weight: 600;
+    cursor: pointer; transition: border-color .15s, background .15s, color .15s; font-family: inherit;
   }
-  body.dark .ow-mode-btn {
-    background: rgba(25,38,60,0.65);
-    color: var(--blue-soft);
-    border-color: rgba(132, 215, 255, 0.15);
-  }
-  .ow-mode-btn:hover { transform: translateY(-1px); box-shadow: 0 10px 20px rgba(20,157,255,0.08); }
-  .ow-mode-btn.active {
-    color: white;
-    background: linear-gradient(90deg, var(--blue-o) 0%, #31b4ff 50%, var(--gold-o) 100%);
-    border-color: transparent;
-    box-shadow: 0 14px 28px rgba(20,157,255,0.18);
-  }
+  .ow-mode-btn:hover { border-color: var(--primary); color: var(--text); }
+  .ow-mode-btn.active { background: var(--primary); color: #fff; border-color: transparent; }
 
-  .ow-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+  .ow-filters { display: flex; flex-wrap: wrap; gap: 6px; }
   .ow-filter {
-    border-radius: 14px;
-    border: 1px solid var(--line);
-    background: rgba(255,255,255,0.82);
-    color: #285b8d;
-    font-size: 13px; font-weight: 700;
-    padding: 9px 12px;
-    cursor: pointer;
-    transition: all .2s ease;
+    border-radius: 999px; border: 1px solid var(--border); background: var(--surface);
+    color: var(--muted); font-size: 12px; font-weight: 600; padding: 5px 12px;
+    cursor: pointer; transition: border-color .15s, color .15s, background .15s; font-family: inherit;
   }
-  body.dark .ow-filter {
-    background: rgba(25,38,60,0.65);
-    color: var(--blue-soft);
-  }
-  .ow-filter.active {
-    background: linear-gradient(90deg, var(--blue-o), var(--gold-o));
-    color: white; border-color: transparent;
-  }
-  .ow-filter:not(.active):hover { background: rgba(20,157,255,0.08); }
-
-  .ow-dashboard {
-    display: grid;
-    grid-template-columns: minmax(0, 1.16fr) minmax(360px, 0.84fr);
-    gap: 18px;
-  }
-  .ow-left-stack, .ow-right-stack { display: grid; gap: 18px; }
-
-  .ow-panel {
-    padding: 22px;
-    position: relative;
-    overflow: hidden;
-  }
-  .ow-panel::before {
-    content: ""; position: absolute; inset: 0; pointer-events: none;
-    background: linear-gradient(160deg, rgba(20,157,255,0.04), rgba(216,168,58,0.04));
-  }
-  .ow-panel > * { position: relative; z-index: 1; }
-
-  .ow-panel-head {
-    display: flex; justify-content: space-between; align-items: flex-start;
-    gap: 16px; flex-wrap: wrap; margin-bottom: 14px;
-  }
-  .ow-panel-title {
-    margin-top: 8px;
-    font-size: clamp(20px, 2.5vw, 30px);
-    line-height: 1.05; letter-spacing: -0.04em; font-weight: 900;
-    color: var(--text-o);
-  }
-  .ow-panel-copy { color: var(--muted-o); font-size: 14px; line-height: 1.78; max-width: 760px; }
-
-  .ow-rank-list { display: grid; gap: 12px; margin-top: 14px; }
-  .ow-rank-item {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    gap: 14px; align-items: center;
-    padding: 16px;
-    background: rgba(255,255,255,0.82);
-    border: 1px solid var(--line);
-    border-radius: 20px;
-    transition: transform .2s ease, box-shadow .2s ease;
-  }
-  body.dark .ow-rank-item { background: rgba(25,38,60,0.65); }
-  .ow-rank-item:hover { transform: translateY(-1px); box-shadow: 0 12px 28px rgba(20,157,255,0.08); }
-  .ow-rank-num {
-    width: 36px; height: 36px; border-radius: 12px;
-    display: grid; place-items: center;
-    background: linear-gradient(180deg, var(--blue-o), var(--gold-o));
-    color: white; font-weight: 900; font-size: 14px;
-    box-shadow: 0 10px 18px rgba(20,157,255,0.14);
-  }
-  .ow-rank-item .name { font-size: 16px; font-weight: 800; color: #0b2c52; }
-  body.dark .ow-rank-item .name { color: var(--text-o); }
-  .ow-rank-item .reason { margin-top: 4px; font-size: 13px; line-height: 1.65; color: var(--muted-o); }
-  .ow-rank-loss { text-align: right; }
-  .ow-rank-loss .value { font-size: 22px; line-height: 1; font-weight: 900; letter-spacing: -0.04em; color: var(--blue-deep); }
-  body.dark .ow-rank-loss .value { color: var(--blue-soft); }
-  .ow-rank-loss .tag {
-    margin-top: 8px; font-size: 11px; font-weight: 800;
-    color: #8f6120; background: rgba(216,168,58,0.14);
-    padding: 7px 10px; border-radius: 999px; display: inline-block;
-  }
-
-  .ow-viz-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 14px; margin-top: 14px;
-  }
-  .ow-viz-card {
-    padding: 18px; border-radius: 22px;
-    background: rgba(255,255,255,0.82);
-    border: 1px solid var(--line);
-    display: grid; gap: 12px;
-  }
-  body.dark .ow-viz-card { background: rgba(25,38,60,0.65); }
-  .ow-viz-title { font-size: 12px; font-weight: 800; color: #24598c; text-transform: uppercase; letter-spacing: 0.14em; }
-  body.dark .ow-viz-title { color: var(--blue-soft); }
-  .ow-viz-value { font-size: 30px; line-height: 1; font-weight: 900; letter-spacing: -0.04em; color: #0d2d54; }
-  body.dark .ow-viz-value { color: var(--text-o); }
-  .ow-viz-sub { font-size: 12px; line-height: 1.6; color: var(--muted-o); }
-  .ow-ring-wrap { display: grid; grid-template-columns: auto 1fr; gap: 14px; align-items: center; }
-  .ow-ring {
-    width: 76px; height: 76px; border-radius: 50%;
-    display: grid; place-items: center;
-    box-shadow: inset 0 0 0 1px rgba(20,157,255,0.08);
-  }
-  .ow-ring::after {
-    content: attr(data-value);
-    width: 54px; height: 54px; border-radius: 50%;
-    background: rgba(255,255,255,0.96);
-    display: grid; place-items: center;
-    font-size: 14px; font-weight: 900; color: var(--blue-deep);
-  }
-  body.dark .ow-ring::after { background: rgba(20,30,50,0.95); color: var(--blue-soft); }
-
-  .ow-cause-grid { display: grid; gap: 12px; margin-top: 14px; }
-  .ow-cause-card {
-    padding: 16px 16px 14px;
-    border-radius: 20px;
-    border: 1px solid var(--line);
-    background: rgba(255,255,255,0.82);
-    position: relative;
-    overflow: hidden;
-  }
-  body.dark .ow-cause-card { background: rgba(25,38,60,0.65); }
-  .ow-cause-card::before {
-    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px;
-    background: linear-gradient(180deg, var(--blue-o), var(--gold-o));
-    border-radius: 10px;
-  }
-  .ow-cause-head { display: flex; justify-content: space-between; gap: 14px; align-items: flex-start; }
-  .ow-cause-title { padding-left: 10px; font-size: 15px; font-weight: 800; color: #0a2b52; }
-  body.dark .ow-cause-title { color: var(--text-o); }
-  .ow-cause-desc { padding-left: 10px; margin-top: 8px; font-size: 13px; line-height: 1.7; color: var(--muted-o); }
-  .ow-cause-impact {
-    font-size: 11px; font-weight: 800; color: #946313;
-    background: rgba(216,168,58,0.14);
-    padding: 7px 10px; border-radius: 999px; white-space: nowrap;
-  }
-
-  .ow-ai-panel {
-    padding: 22px;
-    background:
-      linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,0.84)),
-      linear-gradient(150deg, rgba(20,157,255,0.08), rgba(216,168,58,0.10));
-    display: grid; gap: 14px; align-content: start;
-  }
-  body.dark .ow-ai-panel {
-    background: linear-gradient(180deg, rgba(25,38,60,0.9), rgba(20,30,50,0.75));
-  }
-  .ow-ai-title {
-    margin-top: 8px;
-    font-size: clamp(18px, 2.4vw, 26px);
-    line-height: 1.1; font-weight: 900; letter-spacing: -0.04em;
-    color: #0a2b53;
-  }
-  body.dark .ow-ai-title { color: var(--text-o); }
-
-  .ow-ai-box {
-    border-radius: 20px;
-    padding: 16px;
-    background: rgba(255,255,255,0.82);
-    border: 1px solid var(--line);
-  }
-  body.dark .ow-ai-box { background: rgba(25,38,60,0.65); }
-  .ow-ai-box .v { margin-top: 10px; font-size: 14px; line-height: 1.7; color: #11365f; font-weight: 600; }
-  body.dark .ow-ai-box .v { color: var(--text-o); }
-
-  .ow-recommendation-list { display: grid; gap: 10px; }
-  .ow-recommendation {
-    padding: 14px; border-radius: 18px;
-    background: rgba(255,255,255,0.84);
-    border: 1px solid var(--line);
-    display: grid; gap: 6px;
-  }
-  body.dark .ow-recommendation { background: rgba(25,38,60,0.7); }
-  .ow-recommendation .title { font-size: 13px; font-weight: 800; color: #0d3159; }
-  body.dark .ow-recommendation .title { color: var(--text-o); }
-  .ow-recommendation .desc { font-size: 12px; line-height: 1.65; color: var(--muted-o); }
-  .ow-recommendation .roi { font-size: 11px; font-weight: 800; color: #946313; }
-
-  .ow-cta-stack { display: grid; gap: 10px; }
-  .ow-cta-btn {
-    appearance: none; border: 0; cursor: pointer; width: 100%;
-    padding: 14px 18px; border-radius: 18px; font-size: 14px; font-weight: 900;
-    transition: transform .2s ease, box-shadow .2s ease, opacity .2s ease;
-  }
-  .ow-cta-btn:hover { transform: translateY(-1px); }
-  .ow-cta-primary {
-    color: white;
-    background: linear-gradient(90deg, var(--blue-o) 0%, #31b4ff 48%, var(--gold-o) 100%);
-    box-shadow: 0 16px 30px rgba(20,157,255,0.22);
-  }
-  .ow-cta-secondary {
-    color: #123f6a;
-    background: rgba(255,255,255,0.84);
-    border: 1px solid var(--line);
-  }
-  body.dark .ow-cta-secondary { background: rgba(25,38,60,0.65); color: var(--blue-soft); }
-
-  .ow-social-card {
-    padding: 16px; border-radius: 22px;
-    background: linear-gradient(135deg, rgba(20,157,255,0.10), rgba(216,168,58,0.12));
-    border: 1px solid rgba(20,157,255,0.12);
-  }
-  .ow-social-card .title { font-size: 14px; font-weight: 900; color: #0d2f57; }
-  body.dark .ow-social-card .title { color: var(--text-o); }
-  .ow-social-card .desc { margin-top: 8px; font-size: 12px; line-height: 1.7; color: #456b90; }
-  body.dark .ow-social-card .desc { color: var(--muted-o); }
-  .ow-share-preview {
-    margin-top: 10px; padding: 12px; border-radius: 16px;
-    background: rgba(255,255,255,0.84);
-    border: 1px solid var(--line);
-    font-size: 12px; line-height: 1.65; color: #1d4775;
-  }
-  body.dark .ow-share-preview { background: rgba(20,30,50,0.7); color: var(--text-o); }
-
-  .ow-footer-line {
-    padding: 14px 16px;
-    border-radius: 16px;
-    background: linear-gradient(90deg, rgba(20,157,255,0.10), rgba(216,168,58,0.10));
-    border: 1px solid rgba(20,157,255,0.10);
-    color: #2b5d8f;
-    font-size: 12px; line-height: 1.7;
-  }
-  body.dark .ow-footer-line { color: var(--muted-o); }
-
-  .ow-toast {
-    position: fixed; right: 16px; bottom: 16px;
-    max-width: 380px;
-    padding: 16px 18px;
-    border-radius: 18px;
-    background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(255,255,255,0.88));
-    border: 1px solid var(--line-strong);
-    box-shadow: var(--shadow-xl);
-    color: #0f345c;
-    font-size: 13px; line-height: 1.6;
-    transform: translateY(20px); opacity: 0; pointer-events: none;
-    transition: all .25s ease;
-    z-index: 20;
-  }
-  body.dark .ow-toast { background: rgba(25,38,60,0.95); color: var(--text-o); }
-  .ow-toast.show { transform: translateY(0); opacity: 1; }
-  .ow-toast strong { display: block; margin-bottom: 6px; font-size: 14px; }
+  .ow-filter:not(.active):hover { border-color: var(--primary); color: var(--text); }
+  .ow-filter.active { background: var(--primary); color: #fff; border-color: transparent; }
 
   .ow-team-switcher {
-    padding: 8px 14px; border-radius: 999px;
-    border: 1px solid var(--line);
-    background: rgba(255,255,255,0.82);
-    color: var(--text-o);
-    font-size: 13px; font-weight: 700;
+    padding: 5px 10px; border-radius: 999px; border: 1px solid var(--border);
+    background: var(--surface); color: var(--text); font-size: 12px; font-weight: 600;
+    outline: none; cursor: pointer; transition: border-color .15s;
   }
-  body.dark .ow-team-switcher { background: rgba(25,38,60,0.65); color: var(--text-o); }
+  .ow-team-switcher:focus { border-color: var(--primary); }
 
+  /* ─── Dashboard grid ─── */
+  .ow-dashboard { display: grid; grid-template-columns: minmax(0,1.16fr) minmax(300px,0.84fr); gap: 14px; }
+  .ow-left-stack, .ow-right-stack { display: grid; gap: 14px; align-content: start; }
+  .ow-panel { padding: 18px 20px; }
+
+  .ow-panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .ow-panel-title { margin-top: 4px; font-size: 15px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.2; color: var(--text); }
+  .ow-panel-copy { color: var(--muted); font-size: 13px; line-height: 1.6; }
+
+  /* ─── Rank list ─── */
+  .ow-rank-list { display: grid; gap: 8px; margin-top: 12px; }
+  .ow-rank-item {
+    display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center;
+    padding: 12px 14px; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; transition: border-color .15s;
+  }
+  .ow-rank-item:hover { border-color: var(--primary); }
+  .ow-rank-num {
+    width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center;
+    background: var(--primary); color: #fff; font-weight: 800; font-size: 12px; flex-shrink: 0;
+  }
+  .ow-rank-item .name { font-size: 13px; font-weight: 700; color: var(--text); }
+  .ow-rank-item .reason { margin-top: 2px; font-size: 12px; line-height: 1.4; color: var(--muted); }
+  .ow-rank-loss { text-align: right; flex-shrink: 0; }
+  .ow-rank-loss .value { font-size: 15px; font-weight: 800; letter-spacing: -0.03em; color: var(--text); }
+  .ow-rank-loss .tag {
+    margin-top: 4px; font-size: 10px; font-weight: 700; color: var(--primary);
+    background: var(--accent); padding: 3px 8px; border-radius: 999px; display: inline-block;
+  }
+
+  /* ─── Viz grid ─── */
+  .ow-viz-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 8px; margin-top: 12px; }
+  .ow-viz-card { padding: 12px 14px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); display: grid; gap: 3px; }
+  .ow-viz-title { font-size: 10px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .ow-viz-value { font-size: 20px; font-weight: 800; letter-spacing: -0.04em; color: var(--text); line-height: 1.1; }
+  .ow-viz-sub { font-size: 11px; line-height: 1.4; color: var(--muted); }
+  .ow-ring-wrap { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: center; }
+  .ow-ring { width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center; }
+  .ow-ring::after {
+    content: attr(data-value); width: 34px; height: 34px; border-radius: 50%;
+    background: var(--bg); display: grid; place-items: center;
+    font-size: 10px; font-weight: 800; color: var(--primary);
+  }
+
+  /* ─── Cause grid ─── */
+  .ow-cause-grid { display: grid; gap: 8px; margin-top: 12px; }
+  .ow-cause-card {
+    padding: 12px 12px 12px 14px; border-radius: 8px;
+    border: 1px solid var(--border); border-left: 3px solid var(--primary);
+    background: var(--bg);
+  }
+  .ow-cause-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+  .ow-cause-title { font-size: 13px; font-weight: 700; color: var(--text); }
+  .ow-cause-desc { margin-top: 4px; font-size: 12px; line-height: 1.5; color: var(--muted); }
+  .ow-cause-impact {
+    font-size: 10px; font-weight: 700; color: var(--primary); background: var(--accent);
+    padding: 3px 8px; border-radius: 999px; white-space: nowrap; flex-shrink: 0;
+  }
+
+  /* ─── AI panel ─── */
+  .ow-ai-panel { padding: 18px 20px; display: grid; gap: 10px; align-content: start; }
+  .ow-ai-title { margin-top: 4px; font-size: 14px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.2; color: var(--text); }
+  .ow-ai-box { border-radius: 8px; padding: 12px 14px; background: var(--bg); border: 1px solid var(--border); }
+  .ow-ai-box .v { margin-top: 5px; font-size: 13px; line-height: 1.6; color: var(--text); }
+
+  /* ─── Recommendations ─── */
+  .ow-recommendation-list { display: grid; gap: 6px; margin-top: 6px; }
+  .ow-recommendation { padding: 10px 12px; border-radius: 6px; background: var(--surface-hover); border: 1px solid var(--border); display: grid; gap: 2px; }
+  .ow-recommendation .title { font-size: 12px; font-weight: 700; color: var(--text); }
+  .ow-recommendation .desc { font-size: 11px; line-height: 1.5; color: var(--muted); }
+  .ow-recommendation .roi { font-size: 11px; font-weight: 700; color: var(--primary); }
+
+  /* ─── CTA buttons ─── */
+  .ow-cta-stack { display: grid; gap: 8px; }
+  .ow-cta-btn {
+    appearance: none; cursor: pointer; width: 100%;
+    padding: 10px 16px; border-radius: 999px; font-size: 13px; font-weight: 700;
+    transition: background .15s, border-color .15s; font-family: inherit;
+  }
+  .ow-cta-primary { color: #fff; background: var(--primary); border: 1px solid var(--primary); }
+  .ow-cta-primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+  .ow-cta-secondary { color: var(--text); background: var(--surface); border: 1px solid var(--border); }
+  .ow-cta-secondary:hover { border-color: var(--primary); }
+
+  /* ─── Share card ─── */
+  .ow-social-card { padding: 12px 14px; border-radius: 8px; background: var(--accent); border: 1px solid var(--border); }
+  .ow-social-card .title { font-size: 12px; font-weight: 700; color: var(--text); }
+  .ow-social-card .desc { margin-top: 4px; font-size: 11px; line-height: 1.5; color: var(--muted); }
+  .ow-share-preview {
+    margin-top: 8px; padding: 10px 12px; border-radius: 6px;
+    background: var(--surface); border: 1px solid var(--border);
+    font-size: 11px; line-height: 1.5; color: var(--muted);
+  }
+
+  /* ─── Footer note ─── */
+  .ow-footer-line {
+    padding: 10px 14px; border-radius: 8px; background: var(--accent); border: 1px solid var(--border);
+    color: var(--muted); font-size: 12px; line-height: 1.5; margin-top: 10px;
+  }
+
+  /* ─── Context chip ─── */
+  #ow-main-context {
+    cursor: default; font-size: 11px; padding: 4px 10px; border-radius: 999px;
+    border: 1px solid var(--border); background: var(--accent); color: var(--primary); font-weight: 700;
+  }
+
+  /* ─── Empty / Toast ─── */
   .ow-empty-state {
-    padding: 40px 22px;
-    text-align: center;
-    background: rgba(255,255,255,0.6);
-    border-radius: 22px;
-    border: 1px dashed var(--line-strong);
-    color: var(--muted-o);
-    font-size: 14px; line-height: 1.7;
+    padding: 28px 20px; text-align: center; background: var(--bg);
+    border-radius: 8px; border: 1px dashed var(--border); color: var(--muted); font-size: 13px; line-height: 1.6;
   }
-  body.dark .ow-empty-state { background: rgba(25,38,60,0.4); }
+  .ow-toast {
+    position: fixed; right: 16px; bottom: 16px; max-width: 320px;
+    padding: 12px 14px; border-radius: 10px;
+    background: var(--surface); border: 1px solid var(--border);
+    box-shadow: 0 4px 20px rgba(0,0,0,.1);
+    color: var(--text); font-size: 13px; line-height: 1.5;
+    transform: translateY(12px); opacity: 0; pointer-events: none;
+    transition: all .2s ease; z-index: 20;
+  }
+  .ow-toast.show { transform: translateY(0); opacity: 1; }
+  .ow-toast strong { display: block; margin-bottom: 3px; font-size: 13px; font-weight: 700; }
 
-  @media (max-width: 1180px) {
-    .ow-hero, .ow-dashboard { grid-template-columns: 1fr; }
-  }
-  @media (max-width: 900px) {
+  @media (max-width: 1100px) { .ow-hero, .ow-dashboard { grid-template-columns: 1fr; } }
+  @media (max-width: 760px) {
+    .ow-page { padding: 12px 14px; }
     .ow-viz-grid, .ow-side-grid { grid-template-columns: 1fr; }
-    .ow-hero-main, .ow-hero-side, .ow-panel, .ow-ai-panel { padding: 18px; }
-    .ow-hero-title { font-size: 32px; }
     .ow-rank-item { grid-template-columns: auto 1fr; }
     .ow-rank-loss { grid-column: 2; text-align: left; }
-  }
-  @media (max-width: 640px) {
-    .ow-page { padding: 10px 8px 26px; }
-    .ow-hero-title { font-size: 28px; line-height: 1; }
-    .ow-hero-text, .ow-panel-copy { font-size: 13px; }
-    .ow-hero-badges, .ow-filters, .ow-mode-buttons { gap: 8px; }
-    .ow-mode-btn, .ow-filter, .ow-hero-badge { width: 100%; justify-content: center; }
-    .ow-switch-top { align-items: stretch; }
-    .ow-panel-title, .ow-ai-title, .ow-mode-title { font-size: 22px; }
-    .ow-mini-kpi .value, .ow-rank-loss .value, .ow-viz-value { font-size: 22px; }
-    .ow-toast { left: 8px; right: 8px; max-width: none; }
   }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="ow-root">
-  <section class="ow-page">
-    <div class="ow-wrap">
+<div class="ow-page">
+  <div class="ow-wrap">
 
-      <div class="ow-hero">
-        <div class="ow-glass ow-hero-main">
-          <div class="ow-eyebrow">
-            <span class="dot"></span>UPSTAT · OWNER COMMAND CENTER · {{ team.name }}
-          </div>
-          <h1 class="ow-hero-title">
-            Где именно <span class="gold">текут деньги</span><br>
-            в продажах — и что даст<br>
-            максимум возврата <span class="gold">быстрее всего</span>
-          </h1>
-          <div class="ow-hero-text">
-            Центр управления выручкой для владельца: где компания теряет деньги, почему это происходит,
-            кто именно создаёт риск, что нужно сделать сейчас и какой возврат это даст.
-          </div>
-          <div class="ow-hero-badges">
-            <div class="ow-hero-badge">Показывает утечки денег по реальным звонкам</div>
-            <div class="ow-hero-badge">Объясняет причины, а не только цифры</div>
-            <div class="ow-hero-badge">Предлагает действия и просит разрешение действовать</div>
-          </div>
+    <!-- ─── Hero ─── -->
+    <div class="ow-hero">
+      <div class="ow-glass ow-hero-main">
+        <div class="ow-eyebrow">
+          <span class="dot"></span>Owner Command Center · {{ team.name }}
         </div>
-
-        <div class="ow-glass ow-hero-side">
-          <div class="ow-hero-kpi">
-            <div class="label">Потенциально спасаемая выручка · <span id="ow-kpi-period">30 дней</span></div>
-            <div class="value" id="ow-kpi-salvageable">₸ —</div>
-            <div class="sub" id="ow-kpi-sub">Загрузка данных…</div>
-            <div class="ow-hero-kpi-bar"><div class="ow-hero-kpi-fill" id="ow-kpi-bar" style="width:0%"></div></div>
-          </div>
-          <div class="ow-side-grid">
-            <div class="ow-mini-kpi">
-              <div class="label">Индекс управляемости дохода</div>
-              <div class="value" id="ow-mini-index">— / 100</div>
-              <div class="sub" id="ow-mini-index-sub">Средний балл команды.</div>
-            </div>
-            <div class="ow-mini-kpi">
-              <div class="label">Потенциал роста конверсии</div>
-              <div class="value" id="ow-mini-uplift">—</div>
-              <div class="sub" id="ow-mini-uplift-sub">Если добить слабые зоны до уровня лучших.</div>
-            </div>
-            <div class="ow-mini-kpi">
-              <div class="label">Менеджеры в зоне риска</div>
-              <div class="value" id="ow-mini-risk">— / —</div>
-              <div class="sub" id="ow-mini-risk-sub">Создают непропорционально высокий риск потерь.</div>
-            </div>
-            <div class="ow-mini-kpi">
-              <div class="label">Новый шанс за период</div>
-              <div class="value" id="ow-mini-chance">₸ —</div>
-              <div class="sub" id="ow-mini-chance-sub">Если исправить следующий шаг и цену.</div>
-            </div>
-          </div>
+        <h1 class="ow-hero-title">
+          Где именно <span class="gold">текут деньги</span> в продажах —<br>
+          и что даст максимум возврата <span class="gold">быстрее всего</span>
+        </h1>
+        <div class="ow-hero-text">
+          Центр управления выручкой: где компания теряет деньги, почему это происходит,
+          кто создаёт риск и что нужно сделать прямо сейчас.
+        </div>
+        <div class="ow-hero-badges">
+          <div class="ow-hero-badge">Утечки по реальным звонкам</div>
+          <div class="ow-hero-badge">Причины, а не только цифры</div>
+          <div class="ow-hero-badge">Конкретные действия и ROI</div>
         </div>
       </div>
 
-      <div class="ow-glass ow-mode-strip">
-        <div class="ow-switch-top">
-          <div>
-            <div class="ow-switch-label">Режим владельца</div>
-            <div class="ow-mode-title">Переключайся между метриками как между режимами управления бизнесом</div>
-          </div>
-          <div class="ow-filters" id="ow-period-filters">
-            <button type="button" class="ow-filter {% if days == 1 %}active{% endif %}" data-days="1">1 день</button>
-            <button type="button" class="ow-filter {% if days == 7 %}active{% endif %}" data-days="7">7 дней</button>
-            <button type="button" class="ow-filter {% if days == 30 %}active{% endif %}" data-days="30">30 дней</button>
-            {% if teams and teams|length > 1 %}
-            <select class="ow-team-switcher" onchange="if(this.value)window.location.href='/owner/'+this.value+'?days={{ days }}';">
-              {% for t in teams %}
-              <option value="{{ t.id }}" {% if t.id == team.id %}selected{% endif %}>{{ t.name }}</option>
-              {% endfor %}
-            </select>
-            {% endif %}
-          </div>
+      <div class="ow-glass ow-hero-side">
+        <div class="ow-hero-kpi">
+          <div class="label">Спасаемая выручка · <span id="ow-kpi-period">30 дней</span></div>
+          <div class="value" id="ow-kpi-salvageable">₸ —</div>
+          <div class="sub" id="ow-kpi-sub">Загрузка данных…</div>
+          <div class="ow-hero-kpi-bar"><div class="ow-hero-kpi-fill" id="ow-kpi-bar" style="width:0%"></div></div>
         </div>
-        <div class="ow-mode-buttons" id="ow-mode-buttons">
-          <button type="button" class="ow-mode-btn active" data-mode="money">Деньги</button>
-          <button type="button" class="ow-mode-btn" data-mode="conversion">Конверсия</button>
-          <button type="button" class="ow-mode-btn" data-mode="risk">Риск плана</button>
-          <button type="button" class="ow-mode-btn" data-mode="speed">Скорость сделки</button>
-          <button type="button" class="ow-mode-btn" data-mode="team">Команда</button>
-          <button type="button" class="ow-mode-btn" data-mode="forecast">Прогноз</button>
-        </div>
-      </div>
-
-      <div class="ow-dashboard">
-        <div class="ow-left-stack">
-          <div class="ow-glass ow-panel">
-            <div class="ow-panel-head">
-              <div>
-                <div class="ow-panel-label" id="ow-main-label">Money Leak Map</div>
-                <div class="ow-panel-title" id="ow-main-title">Карта утечек денег: где именно выручка сейчас распадается</div>
-              </div>
-              <div class="ow-filter" id="ow-main-context" style="cursor:default;">Режим: Деньги</div>
-            </div>
-            <div class="ow-panel-copy" id="ow-main-copy">Загрузка данных…</div>
-            <div class="ow-rank-list" id="ow-rank-list"></div>
-            <div class="ow-viz-grid" id="ow-viz-grid"></div>
+        <div class="ow-side-grid">
+          <div class="ow-mini-kpi">
+            <div class="label">Индекс управляемости</div>
+            <div class="value" id="ow-mini-index">— / 100</div>
+            <div class="sub" id="ow-mini-index-sub">Средний балл команды.</div>
           </div>
-
-          <div class="ow-glass ow-panel">
-            <div class="ow-panel-head">
-              <div>
-                <div class="ow-panel-label">Причины → действия → почему именно это</div>
-                <div class="ow-panel-title">Что провалено, почему это опасно и во что надо бить первым</div>
-              </div>
-            </div>
-            <div class="ow-cause-grid" id="ow-cause-grid"></div>
+          <div class="ow-mini-kpi">
+            <div class="label">Потенциал конверсии</div>
+            <div class="value" id="ow-mini-uplift">—</div>
+            <div class="sub" id="ow-mini-uplift-sub">До уровня лучших.</div>
           </div>
-        </div>
-
-        <div class="ow-right-stack">
-          <div class="ow-glass ow-ai-panel">
-            <div>
-              <div class="ow-section-label">AI-штаб владельца</div>
-              <div class="ow-ai-title">Я вижу, где вы теряете деньги. Разрешите действовать?</div>
-            </div>
-            <div class="ow-ai-box">
-              <div class="t">Что я вижу</div>
-              <div class="v" id="ow-ai-see">—</div>
-            </div>
-            <div class="ow-ai-box">
-              <div class="t">Почему это важно</div>
-              <div class="v" id="ow-ai-why">—</div>
-            </div>
-            <div class="ow-ai-box">
-              <div class="t">Что я предлагаю сделать</div>
-              <div class="ow-recommendation-list" id="ow-ai-recommendations"></div>
-            </div>
-            <div class="ow-ai-box">
-              <div class="t">Почему именно это</div>
-              <div class="v" id="ow-ai-because">—</div>
-            </div>
-            <div class="ow-cta-stack">
-              <button class="ow-cta-btn ow-cta-primary" id="ow-primary-action" type="button">Запустить исправление</button>
-              <button class="ow-cta-btn ow-cta-secondary" id="ow-secondary-action" type="button">Сначала показать прогноз эффекта</button>
-            </div>
-            <div class="ow-social-card">
-              <div class="title">Вау-режим для шеринга</div>
-              <div class="desc">
-                Делись не «плохими показателями», а новым статусом управления:
-                «мы теперь видим, где реально течёт выручка».
-              </div>
-              <div class="ow-share-preview" id="ow-share-preview">—</div>
-            </div>
+          <div class="ow-mini-kpi">
+            <div class="label">Менеджеры в зоне риска</div>
+            <div class="value" id="ow-mini-risk">— / —</div>
+            <div class="sub" id="ow-mini-risk-sub">Непропорциональный риск.</div>
           </div>
-
-          <div class="ow-glass ow-panel">
-            <div class="ow-panel-head">
-              <div>
-                <div class="ow-panel-label">Самое цепляющее сегодня</div>
-                <div class="ow-panel-title" style="font-size:24px;">Самая дорогая ошибка периода</div>
-              </div>
-            </div>
-            <div class="ow-cause-card" id="ow-top-mistake" style="margin-top:4px;">
-              <div class="ow-cause-head">
-                <div>
-                  <div class="ow-cause-title" id="ow-top-mistake-title">—</div>
-                  <div class="ow-cause-desc" id="ow-top-mistake-desc">—</div>
-                </div>
-                <div class="ow-cause-impact" id="ow-top-mistake-impact">—</div>
-              </div>
-            </div>
-            <div class="ow-footer-line" style="margin-top:14px;">
-              Это не просто «неидеальный звонок». Это визуализация самой дорогой ошибки периода.
-              Именно такие блоки делают дашборд живым и заставляют возвращаться ежедневно.
-            </div>
+          <div class="ow-mini-kpi">
+            <div class="label">Новый шанс за период</div>
+            <div class="value" id="ow-mini-chance">₸ —</div>
+            <div class="sub" id="ow-mini-chance-sub">Топ-2 утечки.</div>
           </div>
         </div>
       </div>
-
     </div>
-  </section>
 
-  <div class="ow-toast" id="ow-toast"></div>
+    <!-- ─── Mode strip ─── -->
+    <div class="ow-glass ow-mode-strip">
+      <div class="ow-switch-top">
+        <div>
+          <div class="ow-switch-label">Режим владельца</div>
+          <div class="ow-mode-title">Переключайся между режимами управления бизнесом</div>
+        </div>
+        <div class="ow-filters" id="ow-period-filters">
+          <button type="button" class="ow-filter {% if days == 1 %}active{% endif %}" data-days="1">1 день</button>
+          <button type="button" class="ow-filter {% if days == 7 %}active{% endif %}" data-days="7">7 дней</button>
+          <button type="button" class="ow-filter {% if days == 30 %}active{% endif %}" data-days="30">30 дней</button>
+          {% if teams and teams|length > 1 %}
+          <select class="ow-team-switcher" onchange="if(this.value)window.location.href='/owner/'+this.value+'?days={{ days }}';">
+            {% for t in teams %}
+            <option value="{{ t.id }}" {% if t.id == team.id %}selected{% endif %}>{{ t.name }}</option>
+            {% endfor %}
+          </select>
+          {% endif %}
+        </div>
+      </div>
+      <div class="ow-mode-buttons" id="ow-mode-buttons">
+        <button type="button" class="ow-mode-btn active" data-mode="money">Деньги</button>
+        <button type="button" class="ow-mode-btn" data-mode="conversion">Конверсия</button>
+        <button type="button" class="ow-mode-btn" data-mode="risk">Риск плана</button>
+        <button type="button" class="ow-mode-btn" data-mode="speed">Скорость сделки</button>
+        <button type="button" class="ow-mode-btn" data-mode="team">Команда</button>
+        <button type="button" class="ow-mode-btn" data-mode="forecast">Прогноз</button>
+      </div>
+    </div>
+
+    <!-- ─── Dashboard ─── -->
+    <div class="ow-dashboard">
+      <div class="ow-left-stack">
+        <div class="ow-glass ow-panel">
+          <div class="ow-panel-head">
+            <div>
+              <div class="ow-panel-label" id="ow-main-label">Money Leak Map</div>
+              <div class="ow-panel-title" id="ow-main-title">Карта утечек денег</div>
+            </div>
+            <div id="ow-main-context">Режим: Деньги</div>
+          </div>
+          <div class="ow-panel-copy" id="ow-main-copy">Загрузка данных…</div>
+          <div class="ow-rank-list" id="ow-rank-list"></div>
+          <div class="ow-viz-grid" id="ow-viz-grid"></div>
+        </div>
+
+        <div class="ow-glass ow-panel">
+          <div class="ow-panel-head">
+            <div>
+              <div class="ow-panel-label">Причины → действия</div>
+              <div class="ow-panel-title">Что провалено и во что бить первым</div>
+            </div>
+          </div>
+          <div class="ow-cause-grid" id="ow-cause-grid"></div>
+        </div>
+      </div>
+
+      <div class="ow-right-stack">
+        <div class="ow-glass ow-ai-panel">
+          <div>
+            <div class="ow-section-label">AI-штаб владельца</div>
+            <div class="ow-ai-title">Я вижу, где вы теряете деньги. Разрешите действовать?</div>
+          </div>
+          <div class="ow-ai-box">
+            <div class="t">Что я вижу</div>
+            <div class="v" id="ow-ai-see">—</div>
+          </div>
+          <div class="ow-ai-box">
+            <div class="t">Почему это важно</div>
+            <div class="v" id="ow-ai-why">—</div>
+          </div>
+          <div class="ow-ai-box">
+            <div class="t">Что предлагаю сделать</div>
+            <div class="ow-recommendation-list" id="ow-ai-recommendations"></div>
+          </div>
+          <div class="ow-ai-box">
+            <div class="t">Почему именно это</div>
+            <div class="v" id="ow-ai-because">—</div>
+          </div>
+          <div class="ow-cta-stack">
+            <button class="ow-cta-btn ow-cta-primary" id="ow-primary-action" type="button">Запустить исправление</button>
+            <button class="ow-cta-btn ow-cta-secondary" id="ow-secondary-action" type="button">Показать прогноз эффекта</button>
+          </div>
+          <div class="ow-social-card">
+            <div class="title">Режим шеринга</div>
+            <div class="desc">Делись статусом управления: «мы видим, где реально течёт выручка».</div>
+            <div class="ow-share-preview" id="ow-share-preview">—</div>
+          </div>
+        </div>
+
+        <div class="ow-glass ow-panel">
+          <div class="ow-panel-head">
+            <div>
+              <div class="ow-panel-label">Самое цепляющее сегодня</div>
+              <div class="ow-panel-title">Самая дорогая ошибка периода</div>
+            </div>
+          </div>
+          <div class="ow-cause-card" id="ow-top-mistake">
+            <div class="ow-cause-head">
+              <div>
+                <div class="ow-cause-title" id="ow-top-mistake-title">—</div>
+                <div class="ow-cause-desc" id="ow-top-mistake-desc">—</div>
+              </div>
+              <div class="ow-cause-impact" id="ow-top-mistake-impact">—</div>
+            </div>
+          </div>
+          <div class="ow-footer-line">
+            Не просто «неидеальный звонок» — визуализация самой дорогой ошибки периода.
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
 </div>
+
+<div class="ow-toast" id="ow-toast"></div>
 
 <script>
 (function(){
@@ -765,27 +409,18 @@
     if (n >= 1_000)     return '₸ ' + Math.round(n / 1_000) + ' тыс';
     return '₸ ' + n;
   }
-  function formatMoneyDelta(amount){
-    const n = Math.round(Number(amount || 0));
-    if (n === 0) return '₸ 0';
-    const sign = n > 0 ? '+' : '−';
-    const abs = Math.abs(n);
-    if (abs >= 1_000_000) return sign + '₸ ' + (abs / 1_000_000).toFixed(1) + ' млн';
-    if (abs >= 1_000)     return sign + '₸ ' + Math.round(abs / 1_000) + ' тыс';
-    return sign + '₸ ' + abs;
-  }
-  function formatNum(n, digits=1){
-    return Number(n || 0).toFixed(digits);
-  }
+  function formatNum(n, digits=1){ return Number(n || 0).toFixed(digits); }
   function clampPct(v){ return Math.max(0, Math.min(100, Number(v || 0))); }
 
   function ringStyle(value){
     const pct = clampPct(parseFloat(String(value).replace(/[^\d.\-]/g, '')) || 0);
     const deg = pct * 3.6;
-    return `background: conic-gradient(var(--blue-o) 0deg ${deg}deg, var(--gold-soft) ${deg}deg ${Math.min(360, deg + 80)}deg, rgba(20,157,255,0.10) ${Math.min(360, deg + 80)}deg 360deg);`;
+    const isDark = document.body.classList.contains('dark');
+    const fill = isDark ? '#3b5bdb' : '#1e3a8a';
+    const bg = isDark ? '#1e2a44' : '#e6e9ef';
+    return `background: conic-gradient(${fill} 0deg ${deg}deg, ${bg} ${deg}deg 360deg);`;
   }
 
-  // ── Маппинг бэкенд → структура dashboardData ──
   function buildDashboardData(api){
     const ml = api.money_leaks || {};
     const leaks = (ml.leaks || []);
@@ -801,106 +436,51 @@
 
     // ── MONEY ──
     const moneyItems = leaks.slice(0, 3).map(l => ({
-      name: l.name,
-      reason: l.description,
-      value: formatMoney(l.leak_amount),
-      tag: l.tag,
+      name: l.name, reason: l.description,
+      value: formatMoney(l.leak_amount), tag: l.tag,
     }));
     const moneyViz = [
-      {
-        title: 'Проиграно сделок',
-        value: formatMoney(deals.lost || 0),
-        sub: (deals.lost_count || 0) + ' проигранных сделок за период',
-      },
-      {
-        title: 'Открытый pipeline',
-        value: formatMoney(deals.open || 0),
-        sub: (deals.open_count || 0) + ' открытых сделок в работе',
-      },
-      {
-        title: 'Звонков за период',
-        value: String(totalCalls),
-        sub: 'Проанализированных разговоров команды',
-      },
-      {
-        title: 'Сделок всего',
-        value: String(deals.count || 0),
-        sub: 'Won: ' + (deals.won_count || 0) + ' · Lost: ' + (deals.lost_count || 0),
-      },
+      { title: 'Проиграно сделок', value: formatMoney(deals.lost || 0), sub: (deals.lost_count || 0) + ' проигранных сделок' },
+      { title: 'Открытый pipeline', value: formatMoney(deals.open || 0), sub: (deals.open_count || 0) + ' открытых сделок' },
+      { title: 'Звонков за период', value: String(totalCalls), sub: 'Проанализировано разговоров' },
+      { title: 'Сделок всего', value: String(deals.count || 0), sub: 'Won: ' + (deals.won_count || 0) + ' · Lost: ' + (deals.lost_count || 0) },
     ];
-    // ring для топ-утечки
     if (leaks.length > 0) {
       const gap = clampPct(leaks[0].gap || 0);
-      moneyViz[0] = {
-        title: 'Топ-утечка: ' + leaks[0].name,
-        value: gap.toFixed(0) + '%',
-        sub: 'Разрыв до эталона — основная утечка выручки.',
-        ring: gap.toFixed(0) + '%',
-      };
+      moneyViz[0] = { title: 'Топ-утечка: ' + leaks[0].name, value: gap.toFixed(0) + '%', sub: 'Разрыв до эталона.', ring: gap.toFixed(0) + '%' };
     }
 
     // ── CONVERSION ──
     const factors = (conv.factors || []).slice();
     const convItems = factors.slice(0, 3).map(f => ({
-      name: f.name,
-      reason: 'Средний показатель команды: ' + formatNum(f.value, 1) + '%. Чем выше — тем сильнее звонки.',
-      value: formatNum(f.value, 1) + '%',
-      tag: f.value < 40 ? 'Слабое звено' : (f.value < 60 ? 'Зона роста' : 'Сильная сторона'),
+      name: f.name, reason: 'Средний показатель: ' + formatNum(f.value, 1) + '%.',
+      value: formatNum(f.value, 1) + '%', tag: f.value < 40 ? 'Слабое звено' : (f.value < 60 ? 'Зона роста' : 'Сильная сторона'),
     }));
     const convViz = [
-      {
-        title: 'Конверсия команды',
-        value: formatNum(conv.conversion_rate || 0, 1) + '%',
-        sub: 'Won-сделки за период.',
-        ring: formatNum(conv.conversion_rate || 0, 0),
-      },
-      ...(factors.slice(0, 3).map(f => ({
-        title: f.name,
-        value: formatNum(f.value, 1) + '%',
-        sub: 'По ' + f.count + ' измерениям.',
-      }))),
+      { title: 'Конверсия команды', value: formatNum(conv.conversion_rate || 0, 1) + '%', sub: 'Won-сделки за период.', ring: formatNum(conv.conversion_rate || 0, 0) },
+      ...(factors.slice(0, 3).map(f => ({ title: f.name, value: formatNum(f.value, 1) + '%', sub: 'По ' + f.count + ' измерениям.' }))),
     ].slice(0, 4);
 
     // ── RISK ──
     const riskParams = risk.risk_params || [];
     const riskItems = riskParams.slice(0, 3).map(r => ({
-      name: r.name,
-      reason: 'Средний уровень по команде: ' + formatNum(r.value, 1) + '%. Слабые сигналы повышают риск плана.',
-      value: formatNum(r.value, 1) + '%',
-      tag: r.value < 40 ? 'Скрытый риск' : (r.value < 60 ? 'Под наблюдением' : 'Под контролем'),
+      name: r.name, reason: 'Средний уровень: ' + formatNum(r.value, 1) + '%.',
+      value: formatNum(r.value, 1) + '%', tag: r.value < 40 ? 'Скрытый риск' : (r.value < 60 ? 'Под наблюдением' : 'Под контролем'),
     }));
     const riskViz = [
-      {
-        title: 'Риск плана',
-        value: formatMoney(risk.plan_risk_amount || 0),
-        sub: 'Денежный риск недовыполнения по открытому pipeline.',
-      },
-      {
-        title: 'Avg Win Probability',
-        value: formatNum(risk.avg_win_probability || 0, 1) + '%',
-        sub: 'Средняя вероятность закрытия по WinProbability.',
-        ring: formatNum(risk.avg_win_probability || 0, 0),
-      },
-      ...(riskParams.slice(0, 2).map(p => ({
-        title: p.name,
-        value: formatNum(p.value, 1) + '%',
-        sub: 'По ' + p.count + ' измерениям команды.',
-      }))),
+      { title: 'Риск плана', value: formatMoney(risk.plan_risk_amount || 0), sub: 'Денежный риск недовыполнения.' },
+      { title: 'Avg Win Probability', value: formatNum(risk.avg_win_probability || 0, 1) + '%', sub: 'Средняя вероятность закрытия.', ring: formatNum(risk.avg_win_probability || 0, 0) },
+      ...(riskParams.slice(0, 2).map(p => ({ title: p.name, value: formatNum(p.value, 1) + '%', sub: 'По ' + p.count + ' измерениям.' }))),
     ].slice(0, 4);
 
     // ── SPEED ──
     const speedFactors = speed.speed_factors || [];
     const speedItems = speedFactors.slice(0, 3).map(s => ({
-      name: s.name,
-      reason: 'Сейчас по команде: ' + formatNum(s.value, 1) + '%. Влияет на скорость движения сделки.',
-      value: formatNum(s.value, 1) + '%',
-      tag: s.value < 40 ? 'Убивает momentum' : (s.value < 60 ? 'Замедляет цикл' : 'В норме'),
+      name: s.name, reason: 'Сейчас по команде: ' + formatNum(s.value, 1) + '%.',
+      value: formatNum(s.value, 1) + '%', tag: s.value < 40 ? 'Убивает momentum' : (s.value < 60 ? 'Замедляет цикл' : 'В норме'),
     }));
     const speedViz = speedFactors.slice(0, 4).map(s => ({
-      title: s.name,
-      value: formatNum(s.value, 1) + '%',
-      sub: 'По ' + s.count + ' измерениям.',
-      ring: formatNum(s.value, 0),
+      title: s.name, value: formatNum(s.value, 1) + '%', sub: 'По ' + s.count + ' измерениям.', ring: formatNum(s.value, 0),
     }));
 
     // ── TEAM ──
@@ -910,259 +490,99 @@
     const top = sorted.slice(0, 2);
     const bottom = sorted.length > 2 ? sorted[sorted.length - 1] : null;
     const teamItems = [];
-    top.forEach((m, i) => {
-      teamItems.push({
-        name: m.user_name || m.user_email || ('Менеджер #' + (i+1)),
-        reason: 'Сильный паттерн: общий балл ' + formatNum(m.overall_score, 1) + '%, звонков: ' + (m.total_calls || 0) + '.',
-        value: formatNum(m.overall_score, 1) + '%',
-        tag: i === 0 ? 'Эталон команды' : 'Сильный менеджер',
-      });
+    top.forEach((m, i) => teamItems.push({
+      name: m.user_name || m.user_email || ('Менеджер #' + (i+1)),
+      reason: 'Балл ' + formatNum(m.overall_score, 1) + '%, звонков: ' + (m.total_calls || 0) + '.',
+      value: formatNum(m.overall_score, 1) + '%', tag: i === 0 ? 'Эталон команды' : 'Сильный менеджер',
+    }));
+    if (bottom && !top.includes(bottom)) teamItems.push({
+      name: bottom.user_name || bottom.user_email || 'Менеджер',
+      reason: 'Низкий балл: ' + formatNum(bottom.overall_score, 1) + '%.',
+      value: formatNum(bottom.overall_score, 1) + '%', tag: 'Зона риска',
     });
-    if (bottom && (!top.includes(bottom))) {
-      teamItems.push({
-        name: bottom.user_name || bottom.user_email || 'Менеджер',
-        reason: 'Низкий балл: ' + formatNum(bottom.overall_score, 1) + '%. Здесь концентрация утечек.',
-        value: formatNum(bottom.overall_score, 1) + '%',
-        tag: 'Зона риска',
-      });
-    }
     const teamViz = [
-      {
-        title: 'Лучший балл',
-        value: formatNum(stats.best_score || 0, 1),
-        sub: 'Топ-менеджер команды.',
-        ring: formatNum(stats.best_score || 0, 0),
-      },
-      {
-        title: 'Худший балл',
-        value: formatNum(stats.worst_score || 0, 1),
-        sub: 'Здесь утечки концентрируются.',
-        ring: formatNum(stats.worst_score || 0, 0),
-      },
-      {
-        title: 'Средний балл',
-        value: formatNum(stats.avg_score || 0, 1),
-        sub: 'Среднее по ' + (stats.total_members || 0) + ' менеджерам.',
-      },
-      {
-        title: 'В зоне риска',
-        value: (stats.risk_count || 0) + ' из ' + (stats.total_members || 0),
-        sub: 'Балл ниже 40%.',
-      },
+      { title: 'Лучший балл', value: formatNum(stats.best_score || 0, 1), sub: 'Топ-менеджер.', ring: formatNum(stats.best_score || 0, 0) },
+      { title: 'Худший балл', value: formatNum(stats.worst_score || 0, 1), sub: 'Концентрация утечек.', ring: formatNum(stats.worst_score || 0, 0) },
+      { title: 'Средний балл', value: formatNum(stats.avg_score || 0, 1), sub: 'По ' + (stats.total_members || 0) + ' менеджерам.' },
+      { title: 'В зоне риска', value: (stats.risk_count || 0) + ' из ' + (stats.total_members || 0), sub: 'Балл ниже 40%.' },
     ];
 
-    // ── FORECAST (фронт-вычисление из money_leaks.leaks) ──
+    // ── FORECAST ──
     const forecastTop = leaks.slice(0, 3);
     const forecastTotal = forecastTop.reduce((s, l) => s + (l.leak_amount || 0), 0);
     const forecastItems = forecastTop.map(l => ({
       name: 'Дотянуть «' + l.name + '» до эталона',
-      reason: 'Если поднять параметр до 80% — устраняем основную долю текущей утечки. Сейчас разрыв: ' + clampPct(l.gap).toFixed(0) + '%.',
-      value: '+' + formatMoney(l.leak_amount),
-      tag: 'Сценарий',
+      reason: 'Разрыв: ' + clampPct(l.gap).toFixed(0) + '%. Устраняем основную долю утечки.',
+      value: '+' + formatMoney(l.leak_amount), tag: 'Сценарий',
     }));
     const forecastViz = forecastTop.slice(0, 3).map(l => ({
-      title: 'Сценарий: ' + l.name,
-      value: '+' + formatMoney(l.leak_amount),
-      sub: 'Возврат при доведении до уровня лучших практик.',
+      title: 'Сценарий: ' + l.name, value: '+' + formatMoney(l.leak_amount),
+      sub: 'Возврат при доведении до уровня лучших.',
     })).concat([{
-      title: 'Риск без действий',
-      value: formatMoney(forecastTotal * 1.5),
-      sub: 'Потенциальная потеря за период, если ничего не менять.',
+      title: 'Риск без действий', value: formatMoney(forecastTotal * 1.5),
+      sub: 'Потенциальная потеря за период.',
     }]).slice(0, 4);
 
-    // ── CAUSES для каждого режима ──
+    // ── CAUSES ──
     const causes = {
       money: [
-        {
-          title: 'Что провалено',
-          desc: leaks.slice(0, 3).map(l => l.name + ' — ' + formatNum(l.value, 1) + '%').join(', ') || 'Недостаточно данных.',
-          impact: 'Фактическая причина потерь',
-        },
-        {
-          title: 'Что это вызывает',
-          desc: 'Сделки остывают после сильных разговоров, маржа проседает, клиент уходит «подумать», прогноз искажается.',
-          impact: 'Удар по выручке',
-        },
-        {
-          title: 'Во что бить первым',
-          desc: 'Стандарт next step, тренировка по распаковке возражений, разбор 10 самых дорогих звонков периода.',
-          impact: 'Самый быстрый возврат',
-        },
+        { title: 'Что провалено', desc: leaks.slice(0, 3).map(l => l.name + ' — ' + formatNum(l.value, 1) + '%').join(', ') || 'Недостаточно данных.', impact: 'Причина потерь' },
+        { title: 'Что это вызывает', desc: 'Сделки остывают, маржа проседает, клиент уходит «подумать», прогноз искажается.', impact: 'Удар по выручке' },
+        { title: 'Во что бить первым', desc: 'Стандарт next step, тренировка по возражениям, разбор 10 самых дорогих звонков.', impact: 'Быстрый возврат' },
       ],
       conversion: [
-        {
-          title: 'Что провалено',
-          desc: factors.slice(0, 3).map(f => f.name + ': ' + formatNum(f.value, 1) + '%').join(', ') || 'Недостаточно данных.',
-          impact: 'Размывает ценность',
-        },
-        {
-          title: 'Что это вызывает',
-          desc: 'Презентация становится «про продукт», а не про клиента. Решение не присваивается клиентом как своё.',
-          impact: 'Конверсия проседает',
-        },
-        {
-          title: 'Во что бить первым',
-          desc: 'Усилить диагностическую дугу, глубину вопросов, перевод характеристик в эффект для клиента.',
-          impact: 'Формула победы',
-        },
+        { title: 'Что провалено', desc: factors.slice(0, 3).map(f => f.name + ': ' + formatNum(f.value, 1) + '%').join(', ') || 'Недостаточно данных.', impact: 'Размывает ценность' },
+        { title: 'Что это вызывает', desc: 'Презентация «про продукт», а не про клиента. Решение не присваивается клиентом.', impact: 'Конверсия проседает' },
+        { title: 'Во что бить первым', desc: 'Диагностическая дуга, глубина вопросов, перевод характеристик в эффект для клиента.', impact: 'Формула победы' },
       ],
       risk: [
-        {
-          title: 'Что провалено',
-          desc: riskParams.slice(0, 3).map(r => r.name + ': ' + formatNum(r.value, 1) + '%').join(', ') || 'Недостаточно данных.',
-          impact: 'Подрывает доверие к forecast',
-        },
-        {
-          title: 'Что это вызывает',
-          desc: 'Pipeline выглядит большим, но часть сделок не имеет носителя решения, реального срока или next step.',
-          impact: 'Ложное чувство контроля',
-        },
-        {
-          title: 'Во что бить первым',
-          desc: 'Подтянуть квалификацию по ЛПР, процессу решения и обязательным признакам живой сделки.',
-          impact: 'Укрепляет прогноз',
-        },
+        { title: 'Что провалено', desc: riskParams.slice(0, 3).map(r => r.name + ': ' + formatNum(r.value, 1) + '%').join(', ') || 'Недостаточно данных.', impact: 'Подрывает forecast' },
+        { title: 'Что это вызывает', desc: 'Pipeline выглядит большим, но часть сделок не имеет носителя решения или next step.', impact: 'Ложный контроль' },
+        { title: 'Во что бить первым', desc: 'Квалификация по ЛПР, процессу решения и признакам живой сделки.', impact: 'Укрепляет прогноз' },
       ],
       speed: [
-        {
-          title: 'Что провалено',
-          desc: speedFactors.slice(0, 3).map(s => s.name + ': ' + formatNum(s.value, 1) + '%').join(', ') || 'Недостаточно данных.',
-          impact: 'Скорость денег падает',
-        },
-        {
-          title: 'Что это вызывает',
-          desc: 'Нормальные разговоры не дают быстрого движения. Клиент уходит в размышление, сделка зависает.',
-          impact: 'Удлиняет цикл',
-        },
-        {
-          title: 'Во что бить первым',
-          desc: 'Дисциплина next step, корректный тайминг закрытия, создание срочности без давления.',
-          impact: 'Ускоряет сделки',
-        },
+        { title: 'Что провалено', desc: speedFactors.slice(0, 3).map(s => s.name + ': ' + formatNum(s.value, 1) + '%').join(', ') || 'Недостаточно данных.', impact: 'Скорость денег падает' },
+        { title: 'Что это вызывает', desc: 'Разговоры не дают движения. Клиент уходит в размышление, сделка зависает.', impact: 'Удлиняет цикл' },
+        { title: 'Во что бить первым', desc: 'Дисциплина next step, тайминг закрытия, срочность без давления.', impact: 'Ускоряет сделки' },
       ],
       team: [
-        {
-          title: 'Что провалено',
-          desc: 'Разрыв между лучшим и худшим менеджером: ' + formatNum(stats.gap || 0, 1) + ' балла. В зоне риска: ' + (stats.risk_count || 0) + '.',
-          impact: 'Неравномерность',
-        },
-        {
-          title: 'Что это вызывает',
-          desc: 'Бизнес живёт на отдельных сильных людях вместо системного уровня команды.',
-          impact: 'Риск для масштаба',
-        },
-        {
-          title: 'Во что бить первым',
-          desc: 'Масштабировать паттерн лидеров, точечно дотягивать аутсайдеров.',
-          impact: 'Системный рост',
-        },
+        { title: 'Что провалено', desc: 'Разрыв лучший–худший: ' + formatNum(stats.gap || 0, 1) + ' балла. В зоне риска: ' + (stats.risk_count || 0) + '.', impact: 'Неравномерность' },
+        { title: 'Что это вызывает', desc: 'Бизнес держится на отдельных сильных людях, а не на системе.', impact: 'Риск масштаба' },
+        { title: 'Во что бить первым', desc: 'Масштабировать паттерн лидеров, точечно тянуть аутсайдеров.', impact: 'Системный рост' },
       ],
       forecast: [
-        {
-          title: 'Что провалено',
-          desc: 'Несколько параметров одновременно дают наибольшую долю текущих потерь и сравнительно быстро исправляются.',
-          impact: 'Точка приложения силы',
-        },
-        {
-          title: 'Почему именно эти действия',
-          desc: 'Они дают максимум ROI на коротком цикле без долгой перестройки отдела.',
-          impact: 'Максимум ROI',
-        },
-        {
-          title: 'Что получится',
-          desc: 'Сильнее конверсия, надёжнее forecast, выше маржа, быстрее движение к деньгам.',
-          impact: 'Эффект на уровне бизнеса',
-        },
+        { title: 'Что провалено', desc: 'Несколько параметров одновременно дают наибольшую долю потерь и быстро исправляются.', impact: 'Точка приложения силы' },
+        { title: 'Почему именно это', desc: 'Максимум ROI на коротком цикле без долгой перестройки отдела.', impact: 'Максимум ROI' },
+        { title: 'Что получится', desc: 'Сильнее конверсия, надёжнее forecast, выше маржа, быстрее движение к деньгам.', impact: 'Эффект на бизнес' },
       ],
     };
 
     const aiSee = ai.see || 'Пока недостаточно данных для анализа.';
     const aiWhy = ai.why || 'Загрузите больше звонков для глубоких выводов.';
     const aiBecause = ai.because || 'Система начнёт давать рекомендации после накопления данных.';
-    const recsBackend = (ai.recommendations || []).map(r => ({
-      title: r.title, desc: r.desc, roi: r.roi,
-    }));
+    const recsBackend = (ai.recommendations || []).map(r => ({ title: r.title, desc: r.desc, roi: r.roi }));
 
     const share = {
-      money: 'Мы впервые видим карту реальных утечек выручки: где деньги теряются, почему и что даст максимум возврата.',
-      conversion: 'Теперь мы видим формулу успеха внутри нашего бизнеса: какие элементы разговора дают выигрыш.',
-      risk: 'Мы видим не только объём pipeline, но и его реальную прочность.',
-      speed: 'Мы видим, где сделки замедляются. Это контроль скорости денег.',
-      team: 'Мы видим команду через карту сильных и слабых паттернов, влияющих на деньги.',
-      forecast: 'Мы видим прогноз: что именно изменится, если поправить конкретные элементы отдела продаж.',
+      money: 'Видим карту реальных утечек выручки: где деньги теряются, почему и что даст возврат.',
+      conversion: 'Видим формулу успеха: какие элементы разговора дают выигрыш.',
+      risk: 'Видим не только объём pipeline, но и его реальную прочность.',
+      speed: 'Видим, где сделки замедляются — это контроль скорости денег.',
+      team: 'Видим команду через карту сильных и слабых паттернов.',
+      forecast: 'Видим прогноз: что изменится, если поправить конкретные элементы отдела.',
     };
 
     return {
-      money: {
-        label: 'Money Leak Map',
-        title: 'Карта утечек денег: где именно выручка сейчас распадается',
-        copy: 'Ранжированные утечки денег по реальным паттернам звонков. Нажми на любой блок, чтобы увидеть причину и действие с максимальным возвратом.',
-        context: 'Режим: Деньги',
-        items: moneyItems, viz: moneyViz, causes: causes.money,
-        aiSee, aiWhy, aiBecause, recommendations: recsBackend,
-        share: share.money,
-        primaryText: 'Запустить исправление',
-        secondaryText: 'Сначала показать прогноз эффекта',
-      },
-      conversion: {
-        label: 'Winning Pattern Engine',
-        title: 'Что отличает успешные звонки от провальных в вашем бизнесе',
-        copy: 'Формула успеха внутри вашей компании: какие параметры сильнее всего отделяют выигранные разговоры от проигранных.',
-        context: 'Режим: Конверсия',
-        items: convItems, viz: convViz, causes: causes.conversion,
-        aiSee, aiWhy, aiBecause, recommendations: recsBackend,
-        share: share.conversion,
-        primaryText: 'Запустить усиление конверсии',
-        secondaryText: 'Показать прогноз роста',
-      },
-      risk: {
-        label: 'Plan Risk Radar',
-        title: 'Сколько ожидаемой выручки может оказаться миражом',
-        copy: 'Насколько pipeline опирается на реальные признаки сделки, а насколько — на вежливый интерес и слабую квалификацию.',
-        context: 'Режим: Риск плана',
-        items: riskItems, viz: riskViz, causes: causes.risk,
-        aiSee, aiWhy, aiBecause, recommendations: recsBackend,
-        share: share.risk,
-        primaryText: 'Запустить укрепление прогноза',
-        secondaryText: 'Показать скрытые риски плана',
-      },
-      speed: {
-        label: 'Momentum & Velocity Control',
-        title: 'Где бизнес теряет скорость сделки',
-        copy: 'Места, где сделка замедляется: поздняя цена, слабая срочность, провал тайминга закрытия.',
-        context: 'Режим: Скорость сделки',
-        items: speedItems, viz: speedViz, causes: causes.speed,
-        aiSee, aiWhy, aiBecause, recommendations: recsBackend,
-        share: share.speed,
-        primaryText: 'Запустить ускорение сделки',
-        secondaryText: 'Показать точки торможения',
-      },
-      team: {
-        label: 'Team Performance Map',
-        title: 'Кто в команде тянет бизнес вверх, а кто создаёт утечку',
-        copy: 'Карта команды через деньги: кто даёт лучший паттерн, кто в зоне риска и что общего у лучших и худших.',
-        context: 'Режим: Команда',
-        items: teamItems, viz: teamViz, causes: causes.team,
-        aiSee, aiWhy, aiBecause, recommendations: recsBackend,
-        share: share.team,
-        primaryText: 'Запустить выравнивание команды',
-        secondaryText: 'Показать разницу лучших и худших',
-      },
+      money: { label: 'Money Leak Map', title: 'Карта утечек денег: где выручка распадается', copy: 'Ранжированные утечки по реальным паттернам звонков.', context: 'Режим: Деньги', items: moneyItems, viz: moneyViz, causes: causes.money, aiSee, aiWhy, aiBecause, recommendations: recsBackend, share: share.money, primaryText: 'Запустить исправление', secondaryText: 'Показать прогноз эффекта' },
+      conversion: { label: 'Winning Pattern Engine', title: 'Что отличает успешные звонки от провальных', copy: 'Формула успеха: какие параметры отделяют выигранные разговоры от проигранных.', context: 'Режим: Конверсия', items: convItems, viz: convViz, causes: causes.conversion, aiSee, aiWhy, aiBecause, recommendations: recsBackend, share: share.conversion, primaryText: 'Запустить усиление конверсии', secondaryText: 'Показать прогноз роста' },
+      risk: { label: 'Plan Risk Radar', title: 'Сколько ожидаемой выручки может оказаться миражом', copy: 'Насколько pipeline опирается на реальные признаки, а не на вежливый интерес.', context: 'Режим: Риск плана', items: riskItems, viz: riskViz, causes: causes.risk, aiSee, aiWhy, aiBecause, recommendations: recsBackend, share: share.risk, primaryText: 'Запустить укрепление прогноза', secondaryText: 'Показать скрытые риски' },
+      speed: { label: 'Momentum & Velocity', title: 'Где бизнес теряет скорость сделки', copy: 'Места, где сделка замедляется: поздняя цена, слабая срочность, провал тайминга.', context: 'Режим: Скорость', items: speedItems, viz: speedViz, causes: causes.speed, aiSee, aiWhy, aiBecause, recommendations: recsBackend, share: share.speed, primaryText: 'Запустить ускорение', secondaryText: 'Показать точки торможения' },
+      team: { label: 'Team Performance Map', title: 'Кто тянет бизнес вверх, а кто создаёт утечку', copy: 'Карта команды через деньги: лучший паттерн, зоны риска, что общего у лучших и худших.', context: 'Режим: Команда', items: teamItems, viz: teamViz, causes: causes.team, aiSee, aiWhy, aiBecause, recommendations: recsBackend, share: share.team, primaryText: 'Запустить выравнивание', secondaryText: 'Показать разницу лучших и худших' },
       forecast: {
-        label: 'What If Forecast Engine',
-        title: 'Если исправить 2–3 узких места, что это даст по деньгам',
-        copy: 'Что будет с выручкой, если исправить конкретный параметр до уровня лучших практик внутри компании.',
-        context: 'Режим: Прогноз',
-        items: forecastItems, viz: forecastViz, causes: causes.forecast,
-        aiSee, aiWhy, aiBecause: 'Эти шаги одновременно дают высокий ожидаемый эффект и самую короткую дистанцию до результата в вашей текущей системе.',
-        recommendations: forecastTop.map(l => ({
-          title: 'Дотянуть «' + l.name + '» до 80%',
-          desc: 'Поднять параметр до уровня лучших — устраняет долю утечки выручки.',
-          roi: 'Потенциальный возврат: ' + formatMoney(l.leak_amount) + ' / ' + period + ' дней',
-        })),
-        share: share.forecast,
-        primaryText: 'Запустить выполнение',
-        secondaryText: 'Сначала показать сценарий эффекта',
+        label: 'What If Forecast', title: 'Если исправить 2–3 узких места, что это даст', copy: 'Что будет с выручкой, если исправить параметр до уровня лучших практик внутри компании.',
+        context: 'Режим: Прогноз', items: forecastItems, viz: forecastViz, causes: causes.forecast,
+        aiSee, aiWhy, aiBecause: 'Эти шаги дают высокий ожидаемый эффект и самую короткую дистанцию до результата.',
+        recommendations: forecastTop.map(l => ({ title: 'Дотянуть «' + l.name + '» до 80%', desc: 'Поднять до уровня лучших — устраняет долю утечки.', roi: 'Потенциал: ' + formatMoney(l.leak_amount) + ' / ' + period + ' дн.' })),
+        share: share.forecast, primaryText: 'Запустить выполнение', secondaryText: 'Показать сценарий эффекта',
       },
       _meta: { totalCalls, period, leaks, deals, stats, ml, conv, risk, speed },
     };
@@ -1173,51 +593,36 @@
     const ml = meta.ml || {};
     const stats = meta.stats || {};
     const leaks = meta.leaks || [];
-
     $('ow-kpi-period').textContent = meta.period + ' дн.';
-
     if (meta.totalCalls === 0) {
       $('ow-kpi-salvageable').textContent = '₸ —';
       $('ow-kpi-sub').textContent = 'Загрузите звонки для расчёта.';
       $('ow-kpi-bar').style.width = '0%';
-      $('ow-mini-index').textContent = '— / 100';
-      $('ow-mini-uplift').textContent = '—';
-      $('ow-mini-risk').textContent = '— / —';
-      $('ow-mini-chance').textContent = '₸ —';
+      ['ow-mini-index','ow-mini-uplift','ow-mini-risk','ow-mini-chance'].forEach(id => $(id).textContent = '—');
       return;
     }
-
     const salvageable = ml.total_salvageable || 0;
     $('ow-kpi-salvageable').textContent = formatMoney(salvageable);
-    $('ow-kpi-sub').textContent = 'Оценка по утечкам: возражения, next step, квалификация, тайминг закрытия.';
+    $('ow-kpi-sub').textContent = 'Возражения, next step, квалификация, тайминг.';
     const pipeline = (ml.deals && ml.deals.total_pipeline) || 0;
-    const pct = pipeline > 0 ? Math.min(95, Math.round(salvageable / pipeline * 100)) : 50;
-    $('ow-kpi-bar').style.width = pct + '%';
-
+    $('ow-kpi-bar').style.width = (pipeline > 0 ? Math.min(95, Math.round(salvageable / pipeline * 100)) : 50) + '%';
     $('ow-mini-index').textContent = (stats.avg_score || 0).toFixed(0) + ' / 100';
-    $('ow-mini-index-sub').textContent = (stats.total_members || 0) + ' менеджеров в команде.';
-
-    // Потенциал роста конверсии — оценка через сумму gap топ-3 параметров (среднее), масштабируем
+    $('ow-mini-index-sub').textContent = (stats.total_members || 0) + ' менеджеров.';
     const top3Gap = leaks.slice(0, 3).reduce((s, l) => s + (l.gap || 0), 0) / 3;
     const low = Math.max(0, Math.round(top3Gap / 6));
     const high = Math.max(low + 3, Math.round(top3Gap / 3));
     $('ow-mini-uplift').textContent = '+' + low + '–' + high + '%';
-    $('ow-mini-uplift-sub').textContent = 'Если добить слабые зоны до уровня лучших.';
-
     $('ow-mini-risk').textContent = (stats.risk_count || 0) + ' из ' + (stats.total_members || 0);
-    $('ow-mini-risk-sub').textContent = 'Балл ниже 40%.';
-
-    // Шанс за период = сумма top-2 утечек
     const chance = leaks.slice(0, 2).reduce((s, l) => s + (l.leak_amount || 0), 0);
     $('ow-mini-chance').textContent = formatMoney(chance);
-    $('ow-mini-chance-sub').textContent = 'Если исправить две самые большие утечки.';
+    $('ow-mini-chance-sub').textContent = 'Топ-2 утечки исправить.';
   }
 
   function renderTopMistake(dashboardData){
     const leaks = dashboardData._meta.leaks || [];
-    if (leaks.length === 0) {
+    if (!leaks.length) {
       $('ow-top-mistake-title').textContent = 'Недостаточно данных';
-      $('ow-top-mistake-desc').textContent = 'Загрузите звонки для выявления самой дорогой ошибки периода.';
+      $('ow-top-mistake-desc').textContent = 'Загрузите звонки для выявления самой дорогой ошибки.';
       $('ow-top-mistake-impact').textContent = '—';
       return;
     }
@@ -1231,7 +636,6 @@
     currentMode = mode;
     const data = dashboardData[mode];
     if (!data) return;
-
     $('ow-main-label').textContent = data.label;
     $('ow-main-title').textContent = data.title;
     $('ow-main-copy').textContent = data.copy;
@@ -1244,8 +648,8 @@
     $('ow-secondary-action').textContent = data.secondaryText;
 
     const rankList = $('ow-rank-list');
-    if (!data.items || data.items.length === 0) {
-      rankList.innerHTML = '<div class="ow-empty-state">Пока недостаточно данных для этого режима. Загрузите больше звонков.</div>';
+    if (!data.items || !data.items.length) {
+      rankList.innerHTML = '<div class="ow-empty-state">Пока недостаточно данных. Загрузите больше звонков.</div>';
     } else {
       rankList.innerHTML = data.items.map((item, i) => `
         <div class="ow-rank-item">
@@ -1262,8 +666,7 @@
       `).join('');
     }
 
-    const vizGrid = $('ow-viz-grid');
-    vizGrid.innerHTML = (data.viz || []).map(card => `
+    $('ow-viz-grid').innerHTML = (data.viz || []).map(card => `
       <div class="ow-viz-card">
         <div class="ow-viz-title">${escapeHtml(card.title)}</div>
         ${card.ring ? `
@@ -1293,29 +696,24 @@
       </div>
     `).join('');
 
-    const recsBox = $('ow-ai-recommendations');
     const recs = data.recommendations || [];
-    if (recs.length === 0) {
-      recsBox.innerHTML = '<div class="ow-recommendation"><div class="title">Загрузите звонки</div><div class="desc">После анализа первых разговоров здесь появятся конкретные рекомендации.</div></div>';
-    } else {
-      recsBox.innerHTML = recs.map(r => `
-        <div class="ow-recommendation">
-          <div class="title">${escapeHtml(r.title)}</div>
-          <div class="desc">${escapeHtml(r.desc)}</div>
-          ${r.roi ? `<div class="roi">${escapeHtml(r.roi)}</div>` : ''}
-        </div>
-      `).join('');
-    }
+    $('ow-ai-recommendations').innerHTML = recs.length === 0
+      ? '<div class="ow-recommendation"><div class="title">Загрузите звонки</div><div class="desc">После анализа первых разговоров появятся рекомендации.</div></div>'
+      : recs.map(r => `
+          <div class="ow-recommendation">
+            <div class="title">${escapeHtml(r.title)}</div>
+            <div class="desc">${escapeHtml(r.desc)}</div>
+            ${r.roi ? `<div class="roi">${escapeHtml(r.roi)}</div>` : ''}
+          </div>
+        `).join('');
 
-    document.querySelectorAll('.ow-mode-btn').forEach(b => {
-      b.classList.toggle('active', b.dataset.mode === mode);
-    });
+    document.querySelectorAll('.ow-mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
   }
 
   function escapeHtml(s){
     return String(s == null ? '' : s)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   }
 
   function showToast(title, body){
@@ -1328,9 +726,7 @@
 
   async function loadData(days){
     try {
-      const resp = await fetch('/api/owner/' + TEAM_ID + '/data?days=' + days, {
-        credentials: 'same-origin',
-      });
+      const resp = await fetch('/api/owner/' + TEAM_ID + '/data?days=' + days, { credentials: 'same-origin' });
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       const json = await resp.json();
       currentApi = json;
@@ -1341,14 +737,12 @@
       renderMode(currentMode, dd);
     } catch (e) {
       console.error('Owner dashboard load failed:', e);
-      showToast('Ошибка загрузки', 'Не удалось получить данные владельца. Попробуйте обновить страницу.');
+      showToast('Ошибка загрузки', 'Не удалось получить данные. Попробуйте обновить страницу.');
     }
   }
 
   document.querySelectorAll('.ow-mode-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      if (window._owDashboardData) renderMode(btn.dataset.mode, window._owDashboardData);
-    });
+    btn.addEventListener('click', () => { if (window._owDashboardData) renderMode(btn.dataset.mode, window._owDashboardData); });
   });
 
   document.querySelectorAll('#ow-period-filters .ow-filter').forEach(f => {
@@ -1363,19 +757,12 @@
   });
 
   $('ow-primary-action').addEventListener('click', () => {
-    const titles = {
-      money: 'Запускаю контур возврата денег',
-      conversion: 'Запускаю усиление конверсии',
-      risk: 'Запускаю укрепление прогноза',
-      speed: 'Запускаю ускорение сделки',
-      team: 'Запускаю выравнивание команды',
-      forecast: 'Запускаю выполнение приоритетного плана',
-    };
-    showToast(titles[currentMode] || 'Запуск', 'Поставлены задачи на коррекцию и сформирован пакет действий для команды.');
+    const titles = { money:'Запускаю контур возврата денег', conversion:'Запускаю усиление конверсии', risk:'Запускаю укрепление прогноза', speed:'Запускаю ускорение сделки', team:'Запускаю выравнивание команды', forecast:'Запускаю приоритетный план' };
+    showToast(titles[currentMode] || 'Запуск', 'Поставлены задачи на коррекцию для команды.');
   });
 
   $('ow-secondary-action').addEventListener('click', () => {
-    showToast('Прогноз эффекта', 'Открываю сценарий «что будет, если исправить именно эти 2–3 зоны».');
+    showToast('Прогноз эффекта', 'Открываю сценарий: что изменится при исправлении этих зон.');
   });
 
   loadData(currentDays);

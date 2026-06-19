@@ -1,14 +1,37 @@
 {% extends "train/_layout.html" %}
+{% import "partials/icons.html" as icons %}
 
-{% block title %}Программа тренировок — {{ team.name }}{% endblock %}
-{% block page_title %}Программа тренировок: {{ team.name }}{% endblock %}
+{% block title %}{{ _('Программа тренировок') }} — {{ team.name }}{% endblock %}
+{% block page_title %}{{ _('Программа тренировок') }}: {{ team.name }}{% endblock %}
 
 {% block styles %}
 .program-form{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:28px;box-shadow:var(--shadow);}
+
+/* Верхние поля (название / цикл) — аккуратная сетка, выровнены по верху */
+.pf-top{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;margin-bottom:24px;}
+.pf-field{display:flex;flex-direction:column;gap:6px;}
+.pf-label{font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:700;}
+.pf-input{padding:10px 14px;border:1px solid var(--border);border-radius:10px;font-size:14px;
+  background:var(--surface);color:var(--text);transition:border-color .15s ease,box-shadow .15s ease;}
+.pf-input:hover{border-color:var(--ring);}
+.pf-input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--ring);}
+.pf-hint{font-size:12px;min-height:14px;color:#ef4444;}
+
 .day-row{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);}
 .day-row:last-child{border-bottom:none;}
 .day-num{width:32px;height:32px;border-radius:50%;background:var(--primary);color:#fff;font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
-.day-row select{flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg);}
+/* background-color (не shorthand!), чтобы глобальная стрелка-chevron не затёрлась */
+.day-row select{flex:1;padding:10px 38px 10px 14px;border:1px solid var(--border);border-radius:10px;font-size:14px;
+  background-color:var(--surface);color:var(--text);cursor:pointer;
+  -webkit-appearance:none;-moz-appearance:none;appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 12px center;background-size:16px 16px;
+  transition:border-color .15s ease,box-shadow .15s ease;}
+.day-row select:hover{border-color:var(--ring);}
+.day-row select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px var(--ring);}
+.day-del{background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:20px;line-height:1;
+  padding:4px 8px;border-radius:8px;flex-shrink:0;transition:color .15s ease,background-color .15s ease;}
+.day-del:hover{color:#ef4444;background:rgba(239,68,68,.08);}
 .add-day-btn{
   display:inline-flex;align-items:center;gap:6px;padding:10px 18px;
   background:transparent;border:1px dashed var(--border);color:var(--muted);
@@ -25,22 +48,23 @@
 
 {% block content %}
 <p style="color:var(--muted);font-size:14px;margin:0 0 20px;">
-  Назначьте последовательность этапов. Менеджеры увидят «тренировку на сегодня» по расписанию.
+  {{ _('Назначьте последовательность этапов. Менеджеры увидят «тренировку на сегодня» по расписанию.') }}
 </p>
 
 <div class="program-form">
   <form method="post" action="/teams/{{ team.id }}/program" id="program-form">
-    <div style="display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-bottom:20px;">
-      <div>
-        <label style="font-size:12px;color:var(--muted);font-weight:600;display:block;margin-bottom:4px;">НАЗВАНИЕ ПРОГРАММЫ</label>
-        <input type="text" name="name" value="{{ program.name if program else 'Программа тренировок' }}"
-               style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;min-width:240px;background:var(--bg);">
+    <div class="pf-top">
+      <div class="pf-field" style="flex:1;min-width:260px;">
+        <label class="pf-label" for="program-name">{{ _('НАЗВАНИЕ ПРОГРАММЫ') }}</label>
+        <input class="pf-input" type="text" name="name" id="program-name" required minlength="3" maxlength="80"
+               value="{{ program.name if program else 'Программа тренировок' }}"
+               aria-describedby="name-hint">
+        <small class="pf-hint" id="name-hint" aria-live="polite"></small>
       </div>
-      <div>
-        <label style="font-size:12px;color:var(--muted);font-weight:600;display:block;margin-bottom:4px;">ЦИКЛ (дней)</label>
-        <input type="number" name="cycle_days" min="1" max="30"
-               value="{{ program.cycle_days if program else 5 }}"
-               style="padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;width:80px;background:var(--bg);">
+      <div class="pf-field" style="width:140px;">
+        <label class="pf-label">{{ _('ЦИКЛ (дней)') }}</label>
+        <input class="pf-input" type="number" name="cycle_days" min="1" max="30"
+               value="{{ program.cycle_days if program else 5 }}" style="width:100%;">
       </div>
     </div>
 
@@ -56,8 +80,7 @@
             </option>
             {% endfor %}
           </select>
-          <button type="button" onclick="this.closest('.day-row').remove();reindexDays()"
-                  style="background:transparent;border:none;color:#ef4444;cursor:pointer;font-size:18px;" title="Удалить">×</button>
+          <button type="button" class="day-del" onclick="this.closest('.day-row').remove();reindexDays()" title="Удалить">×</button>
         </div>
         {% endfor %}
       {% else %}
@@ -69,19 +92,18 @@
             <option value="{{ s.key }}" {% if s.key == stage.key %}selected{% endif %}>{{ s.label }}</option>
             {% endfor %}
           </select>
-          <button type="button" onclick="this.closest('.day-row').remove();reindexDays()"
-                  style="background:transparent;border:none;color:#ef4444;cursor:pointer;font-size:18px;" title="Удалить">×</button>
+          <button type="button" class="day-del" onclick="this.closest('.day-row').remove();reindexDays()" title="Удалить">×</button>
         </div>
         {% endfor %}
       {% endif %}
     </div>
 
     <button type="button" class="add-day-btn" onclick="addDay()">
-      <i class="fas fa-plus"></i> Добавить день
+      {{ icons.icon('plus', size=16) }} {{ _('Добавить день') }}
     </button>
 
     <br/>
-    <button type="submit" class="save-btn"><i class="fas fa-save"></i> Сохранить программу</button>
+    <button type="submit" class="save-btn">{{ icons.icon('save', size=16) }} {{ _('Сохранить программу') }}</button>
   </form>
 </div>
 
@@ -95,8 +117,7 @@ function addDay(){
   row.className = 'day-row';
   row.innerHTML = `<div class="day-num">${idx}</div>
     <select name="stage_key_${idx}">${options}</select>
-    <button type="button" onclick="this.closest('.day-row').remove();reindexDays()"
-      style="background:transparent;border:none;color:#ef4444;cursor:pointer;font-size:18px">×</button>`;
+    <button type="button" class="day-del" onclick="this.closest('.day-row').remove();reindexDays()" title="Удалить">×</button>`;
   container.appendChild(row);
 }
 function reindexDays(){
@@ -105,5 +126,36 @@ function reindexDays(){
     row.querySelector('select').name = `stage_key_${i+1}`;
   });
 }
+
+// --- Client-side validation ---
+(function(){
+  const form = document.getElementById('program-form');
+  const nameInput = document.getElementById('program-name');
+  const nameHint = document.getElementById('name-hint');
+  if (!form) return;
+
+  function validateName(){
+    const v = nameInput.value.trim();
+    if (v.length < 3) { nameHint.textContent = {{ _('Минимум 3 символа.') | tojson }}; nameInput.style.borderColor = '#ef4444'; return false; }
+    if (v.length > 80) { nameHint.textContent = {{ _('Максимум 80 символов.') | tojson }}; nameInput.style.borderColor = '#ef4444'; return false; }
+    nameHint.textContent = ''; nameInput.style.borderColor = '';
+    return true;
+  }
+
+  nameInput.addEventListener('input', validateName);
+
+  form.addEventListener('submit', function(e){
+    let ok = validateName();
+    const dayCount = document.querySelectorAll('#days-container .day-row').length;
+    if (dayCount < 1) {
+      ok = false;
+      alert({{ _('Добавьте хотя бы один день в программу.') | tojson }});
+    }
+    if (!ok) {
+      e.preventDefault();
+      if (!validateName()) nameInput.focus();
+    }
+  });
+})();
 </script>
 {% endblock %}

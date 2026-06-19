@@ -1,0 +1,7 @@
+{% extends "train/_layout.html" %}
+{% import "partials/icons.html" as icons %}
+{% block title %}Участники — {{ team.name }} — UpStat Train{% endblock %}
+{% block page_title %}{{ team.name }}{% endblock %}
+{% block content %}
+{% include "partials/team_members_body.html" %}
+{% endblock %}

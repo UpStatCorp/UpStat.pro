@@ -1,4 +1,5 @@
 {% extends "train/_layout.html" %}
+{% import "partials/icons.html" as icons %}
 
 {% block title %}Отчёт команды — {{ team.name }}{% endblock %}
 {% block page_title %}Отчёт команды: {{ team.name }}{% endblock %}
@@ -76,24 +77,26 @@
       <th>Стрик</th>
       <th>Всего сессий</th>
       <th>Последний этап</th>
+      <th></th>
     </tr>
   </thead>
   <tbody>
     {% for row in report_rows %}
     <tr>
       <td>
-        <div style="font-weight:600;">{{ row.user.name }}</div>
+        <a href="/teams/{{ team.id }}/member/{{ row.user.id }}/train-report"
+           style="font-weight:600;color:var(--primary);text-decoration:none;">{{ row.user.name }}</a>
         <div style="font-size:12px;color:var(--muted);">{{ row.user.email }}</div>
       </td>
       <td>
         {% if row.trained_today %}
         <span class="trained-badge trained-yes">
-          <i class="fas fa-check-circle"></i>
+          {{ icons.icon('check', size=13) }}
           Да ({{ row.today_sessions_count }}× )
         </span>
         {% else %}
         <span class="trained-badge trained-no">
-          <i class="fas fa-clock"></i> Нет
+          {{ icons.icon('clock', size=13) }} Нет
         </span>
         {% endif %}
       </td>
@@ -113,14 +116,19 @@
       </td>
       <td>
         {% if row.streak > 0 %}
-        <span class="streak-flame"><i class="fas fa-fire"></i></span>
+        <span class="streak-flame">{{ icons.icon('zap', size=14) }}</span>
         <strong>{{ row.streak }}</strong>д
         {% else %}
         <span style="color:var(--muted);">0</span>
         {% endif %}
+        {% if row.best_streak %}<div style="font-size:11px;color:var(--muted);">рекорд {{ row.best_streak }}</div>{% endif %}
       </td>
       <td>{{ row.total_sessions }}</td>
       <td style="font-size:13px;color:var(--muted);">{{ row.last_stage }}</td>
+      <td>
+        <a href="/teams/{{ team.id }}/member/{{ row.user.id }}/train-report"
+           style="color:var(--primary);text-decoration:none;font-size:13px;font-weight:600;">Детали →</a>
+      </td>
     </tr>
     {% endfor %}
   </tbody>

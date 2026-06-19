@@ -1,8 +1,9 @@
 {% extends "base.html" %}
+{% import "partials/icons.html" as icons %}
 {% block content %}
 <div style="min-height:70vh;display:flex;align-items:center;justify-content:center;padding:2rem">
   <div style="max-width:480px;text-align:center">
-    <div style="font-size:4rem;margin-bottom:1.5rem">🔒</div>
+    <div style="margin-bottom:1.5rem;color:var(--primary)">{{ icons.icon('lock', size=56) }}</div>
     <h1 style="font-size:1.75rem;font-weight:700;margin-bottom:1rem">Доступ не активирован</h1>
     <p style="color:var(--text-secondary,#666);margin-bottom:2rem;line-height:1.6">
       Ваш аккаунт зарегистрирован, но доступ к функциям платформы

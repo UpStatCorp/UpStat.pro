@@ -1,10 +1,11 @@
 {% extends "admin/_layout_admin.html" %}
+{% import "partials/icons.html" as icons %}
 
 {% block content %}
 <!-- Заголовок -->
 <div style="margin-bottom: 32px;">
     <h1 style="font-size: 28px; font-weight: 700; color: var(--text); margin: 0 0 8px 0;">
-        <i class="fas fa-edit" style="color: var(--admin-info); margin-right: 12px;"></i>
+        <span style="color: var(--admin-info); margin-right: 12px; display: inline-flex; vertical-align: middle;">{{ icons.icon('edit', size=24) }}</span>
         Редактирование финального промпта
     </h1>
     <p style="color: var(--muted); margin: 0; font-size: 16px;">
@@ -20,7 +21,7 @@
 <div class="admin-table-container">
     <div class="admin-table-header">
         <h3 class="admin-table-title">
-            <i class="fas fa-edit" style="color: var(--admin-info); margin-right: 8px;"></i>
+            <span style="color: var(--admin-info); margin-right: 8px; display: inline-flex; vertical-align: middle;">{{ icons.icon('edit', size=18) }}</span>
             Параметры промпта
         </h3>
     </div>
@@ -30,7 +31,7 @@
             <!-- Человекочитаемое название -->
             <div>
                 <label for="title" style="display: block; font-weight: 600; margin-bottom: 8px; color: var(--text);">
-                    <i class="fas fa-heading" style="margin-right: 8px; color: var(--admin-info);"></i>
+                    <span style="margin-right: 8px; color: var(--admin-info); display: inline-flex; vertical-align: middle;">{{ icons.icon('file-text', size=16) }}</span>
                     Отображаемое название *
                 </label>
                 <input type="text" 
@@ -49,7 +50,7 @@
             <!-- Описание -->
             <div>
                 <label for="description" style="display: block; font-weight: 600; margin-bottom: 8px; color: var(--text);">
-                    <i class="fas fa-info-circle" style="margin-right: 8px; color: var(--admin-info);"></i>
+                    <span style="margin-right: 8px; color: var(--admin-info); display: inline-flex; vertical-align: middle;">{{ icons.icon('info', size=16) }}</span>
                     Описание
                 </label>
                 <textarea id="description" 
@@ -66,7 +67,7 @@
             <!-- Содержимое промпта -->
             <div>
                 <label for="content" style="display: block; font-weight: 600; margin-bottom: 8px; color: var(--text);">
-                    <i class="fas fa-code" style="margin-right: 8px; color: var(--admin-info);"></i>
+                    <span style="margin-right: 8px; color: var(--admin-info); display: inline-flex; vertical-align: middle;">{{ icons.icon('code', size=16) }}</span>
                     Содержимое промпта *
                 </label>
                 <textarea id="content" 
@@ -88,14 +89,14 @@
                     style="display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; background: var(--admin-success); color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; cursor: pointer; transition: all 0.2s ease;"
                     onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 8px 24px rgba(16,185,129,0.3)'"
                     onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
-                    <i class="fas fa-save"></i> {% if current_prompt %}Сохранить новую версию{% else %}Создать финальный промпт{% endif %}
+                    {{ icons.icon('save', size=16) }} {% if current_prompt %}Сохранить новую версию{% else %}Создать финальный промпт{% endif %}
             </button>
             
             <a href="/admin/prompts" 
                style="display: inline-flex; align-items: center; gap: 8px; padding: 12px 24px; background: #6b7280; color: white; border: none; border-radius: 8px; font-size: 14px; font-weight: 500; text-decoration: none; transition: all 0.2s ease;"
                onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 8px 24px rgba(107,114,128,0.3)'"
                onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='none'">
-                <i class="fas fa-arrow-left"></i> Отмена
+                {{ icons.icon('arrow-left', size=16) }} Отмена
             </a>
         </div>
     </form>
@@ -105,7 +106,7 @@
 <div class="admin-table-container" style="margin-top: 24px;">
     <div class="admin-table-header">
         <h3 class="admin-table-title">
-            <i class="fas fa-question-circle" style="color: var(--admin-secondary); margin-right: 8px;"></i>
+            <span style="color: var(--admin-secondary); margin-right: 8px; display: inline-flex; vertical-align: middle;">{{ icons.icon('info', size=18) }}</span>
             Справка по созданию промптов
         </h3>
     </div>
@@ -113,7 +114,7 @@
         <div style="display: grid; gap: 16px;">
             <div>
                 <h4 style="color: var(--text); margin: 0 0 8px 0; font-size: 16px;">
-                    <i class="fas fa-lightbulb" style="color: var(--admin-secondary); margin-right: 8px;"></i>
+                    <span style="color: var(--admin-secondary); margin-right: 8px; display: inline-flex; vertical-align: middle;">{{ icons.icon('zap', size=16) }}</span>
                     Советы по написанию промптов
                 </h4>
                 <ul style="color: var(--muted); margin: 0; padding-left: 20px;">
@@ -126,7 +127,7 @@
             
             <div>
                 <h4 style="color: var(--text); margin: 0 0 8px 0; font-size: 16px;">
-                    <i class="fas fa-code" style="color: var(--admin-info); margin-right: 8px;"></i>
+                    <span style="color: var(--admin-info); margin-right: 8px; display: inline-flex; vertical-align: middle;">{{ icons.icon('code', size=16) }}</span>
                     Переменные в промптах
                 </h4>
                 <div style="background: #f8fafc; padding: 12px; border-radius: 8px; font-family: monospace; font-size: 12px; color: var(--text);">

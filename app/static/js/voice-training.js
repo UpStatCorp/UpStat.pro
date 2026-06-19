@@ -44,6 +44,7 @@ class VoiceTraining {
         this.heartbeatTimeoutMs = 30000;
         this.manualClose = false;          // true — закрытие инициировано клиентом (не реконнект)
         this.pendingAudioBuffer = [];      // буфер аудио чанков, пока соединение не восстановлено
+        this.postTrainingUrl = window.postTrainingUrl || '/dashboard';
 
         // Статистика
         this.stats = {
@@ -64,21 +65,64 @@ class VoiceTraining {
     
     async init() {
         console.log('🎤 Инициализация голосовой тренировки...');
-        
+
+        this._showInitOverlay();
+
         // Подключаем элементы DOM
         this.connectDOMElements();
-        
+
         // Подключаем обработчики событий
         this.attachEventListeners();
-        
+
         // Загружаем историю диалога из БД
         await this.loadHistory();
-        
+
         // Подключаем WebSocket
         await this.connectWebSocket();
-        
+
         // Запрашиваем доступ к микрофону
         await this.requestMicrophoneAccess();
+
+        this._hideInitOverlay();
+    }
+
+    _showInitOverlay() {
+        if (document.getElementById('vt-init-overlay')) return;
+        const el = document.createElement('div');
+        el.id = 'vt-init-overlay';
+        el.setAttribute('role', 'status');
+        el.setAttribute('aria-label', 'Инициализация тренировки…');
+        el.setAttribute('aria-busy', 'true');
+        el.style.cssText = [
+            'position:fixed;inset:0;z-index:9990;',
+            'background:rgba(15,23,42,.55);backdrop-filter:blur(4px);',
+            'display:grid;place-items:center;',
+        ].join('');
+        el.innerHTML = `
+          <div style="background:#fff;border-radius:20px;padding:28px 36px;text-align:center;
+               box-shadow:0 24px 60px rgba(0,0,0,.25);font-family:Inter,system-ui,sans-serif;min-width:220px;">
+            <div id="vt-init-dots" style="display:flex;gap:7px;justify-content:center;margin-bottom:14px;">
+              ${[0,1,2].map(i=>`<span style="width:10px;height:10px;border-radius:50%;background:#1e3a8a;
+                opacity:.2;animation:vt-pulse 1.2s ease-in-out ${i*0.2}s infinite alternate;display:block"></span>`).join('')}
+            </div>
+            <div style="font-size:14px;font-weight:600;color:#0f172a">Подготовка тренировки…</div>
+            <div style="font-size:12px;color:#64748b;margin-top:4px">Подключение и запрос микрофона</div>
+          </div>`;
+        if (!document.getElementById('vt-pulse-style')) {
+            const s = document.createElement('style');
+            s.id = 'vt-pulse-style';
+            s.textContent = '@keyframes vt-pulse{to{opacity:.9;transform:scale(1.15)}}';
+            document.head.appendChild(s);
+        }
+        document.body.appendChild(el);
+    }
+
+    _hideInitOverlay() {
+        const el = document.getElementById('vt-init-overlay');
+        if (!el) return;
+        el.style.transition = 'opacity .3s';
+        el.style.opacity = '0';
+        setTimeout(() => el.remove(), 320);
     }
     
     connectDOMElements() {
@@ -306,6 +350,7 @@ class VoiceTraining {
 
                 this.startHeartbeat();
                 this.flushPendingAudio();
+                this.hideReconnectBanner();
 
                 if (isReconnect) {
                     this.showNotification('success', 'Соединение восстановлено', 'Можно продолжать тренировку.');
@@ -355,6 +400,7 @@ class VoiceTraining {
             console.error('❌ Достигнут лимит попыток реконнекта');
             this.connectionState = 'failed';
             this.updateConnectionIndicator();
+            this.hideReconnectBanner();
             this.showReconnectFailedOverlay();
             return;
         }
@@ -366,11 +412,49 @@ class VoiceTraining {
         this.connectionState = 'reconnecting';
         this.updateConnectionStatus('connecting', `Переподключение (попытка ${this.reconnectAttempt}/${this.maxReconnectAttempts}) через ${Math.round(delay/1000)}с…`);
         this.updateConnectionIndicator();
+        this.showReconnectBanner(this.reconnectAttempt, this.maxReconnectAttempts, Math.round(delay / 1000));
 
         console.log(`🔄 Реконнект через ${delay}мс (попытка ${this.reconnectAttempt}/${this.maxReconnectAttempts})`);
         this.reconnectTimer = setTimeout(() => {
             this.connectWebSocket(true);
         }, delay);
+    }
+
+    showReconnectBanner(attempt, max, delaySec) {
+        let banner = document.getElementById('vt-reconnect-banner');
+        if (!banner) {
+            banner = document.createElement('div');
+            banner.id = 'vt-reconnect-banner';
+            banner.setAttribute('role', 'status');
+            banner.setAttribute('aria-live', 'polite');
+            banner.style.cssText = [
+                'position:sticky;top:0;z-index:490;',
+                'background:#fffbeb;border:1.5px solid #fcd34d;border-radius:10px;',
+                'padding:11px 16px;margin:0 0 12px;',
+                'display:flex;align-items:center;gap:10px;',
+                'font-family:Inter,system-ui,sans-serif;font-size:13px;color:#78350f;',
+            ].join('');
+            const target = this.chatMessages || document.querySelector('.voice-training-container') || document.body;
+            target.prepend(banner);
+        }
+        banner.innerHTML = `
+          <svg style="flex-shrink:0;animation:vt-spin 1.2s linear infinite" width="16" height="16"
+               viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+               aria-hidden="true">
+            <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/>
+          </svg>
+          <span>Связь прервана — переподключение (${attempt}/${max}), через ${delaySec}с…</span>`;
+        if (!document.getElementById('vt-spin-style')) {
+            const s = document.createElement('style');
+            s.id = 'vt-spin-style';
+            s.textContent = '@keyframes vt-spin{to{transform:rotate(360deg)}}';
+            document.head.appendChild(s);
+        }
+    }
+
+    hideReconnectBanner() {
+        const b = document.getElementById('vt-reconnect-banner');
+        if (b) b.remove();
     }
 
     startHeartbeat() {
@@ -458,15 +542,17 @@ class VoiceTraining {
         overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(10,35,64,.78);backdrop-filter:blur(6px);display:grid;place-items:center;padding:20px;font-family:Inter,system-ui,sans-serif;';
         overlay.innerHTML = `
           <div style="background:white;border-radius:24px;padding:28px;max-width:440px;width:100%;box-shadow:0 28px 80px rgba(0,0,0,.3);text-align:center;">
-            <div style="font-size:42px;margin-bottom:8px;">🔌</div>
-            <div style="font-size:20px;font-weight:900;color:#0a2340;margin-bottom:10px;">Соединение потеряно</div>
-            <div style="font-size:14px;color:#4b6f92;line-height:1.6;margin-bottom:20px;">
+            <div style="display:flex;justify-content:center;margin-bottom:10px;color:#1e3a8a;">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="1" y1="1" x2="23" y2="23"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55M5 12.55a10.94 10.94 0 0 1 5.17-2.39M10.71 5.05A16 16 0 0 1 22.58 9M1.42 9a15.91 15.91 0 0 1 4.7-2.88M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/></svg>
+            </div>
+            <div style="font-size:20px;font-weight:900;color:#0f172a;margin-bottom:10px;">Соединение потеряно</div>
+            <div style="font-size:14px;color:#64748b;line-height:1.6;margin-bottom:20px;">
               Не удалось восстановить связь с сервером после нескольких попыток. Проверьте интернет
               и попробуйте подключиться вручную, или завершите тренировку.
             </div>
             <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
-              <button id="vt-reconnect-btn" style="background:linear-gradient(90deg,#149dff,#31b4ff);color:white;border:0;padding:12px 20px;border-radius:14px;font-weight:800;font-size:14px;cursor:pointer;">Переподключиться</button>
-              <button id="vt-end-btn" style="background:#f1f5f9;color:#0a2340;border:1px solid #e2e8f0;padding:12px 20px;border-radius:14px;font-weight:800;font-size:14px;cursor:pointer;">Завершить тренировку</button>
+              <button id="vt-reconnect-btn" style="background:#1e3a8a;color:white;border:0;padding:12px 20px;border-radius:999px;font-weight:700;font-size:14px;cursor:pointer;">Переподключиться</button>
+              <button id="vt-end-btn" style="background:#f1f5f9;color:#0f172a;border:1px solid #e6e9ef;padding:12px 20px;border-radius:999px;font-weight:700;font-size:14px;cursor:pointer;">Завершить тренировку</button>
             </div>
           </div>
         `;
@@ -510,8 +596,6 @@ class VoiceTraining {
                 case 'connected':
                     console.log('✅ Сессия создана:', data.session_id, 'db_session_id:', data.db_session_id);
                     this.isConnected = true;
-                    // ВСЕГДА обновляем sessionId на db_session_id текущего подключения
-                    // (старый session_id из URL — от прошлой сессии, он не годится для валидации)
                     if (data.db_session_id) {
                         this.sessionId = data.db_session_id;
                         console.log(`✅ sessionId обновлён на db_session_id=${data.db_session_id} (для валидации)`);
@@ -519,10 +603,12 @@ class VoiceTraining {
                         console.warn('⚠️ connected: db_session_id не пришёл, sessionId остаётся:', this.sessionId);
                     }
                     this.showNotification('success', 'Подключено', data.message || 'Сессия создана');
+                    this.autoStartListening();
                     break;
                     
                 case 'session.created':
                     console.log('✅ Сессия Azure создана');
+                    this.autoStartListening();
                     break;
                 
                 case 'input_audio_buffer.speech_started':
@@ -680,7 +766,7 @@ class VoiceTraining {
                         this.microphoneMuted = true;
                         this.aiIsSpeaking = true;
                         if (this.micButton) {
-                            this.micStatus.textContent = '🔇 Микрофон отключён (ИИ говорит)';
+                            this.micStatus.textContent = 'Микрофон отключён (ИИ говорит)';
                             this.micButton.classList.add('muted-for-ai');
                         }
                     }
@@ -794,7 +880,7 @@ class VoiceTraining {
                                 this.microphoneMuted = true;
                                 this.aiIsSpeaking = true;
                                 if (this.micButton) {
-                                    this.micStatus.textContent = '🔇 Микрофон отключён (ИИ говорит)';
+                                    this.micStatus.textContent = 'Микрофон отключён (ИИ говорит)';
                                     this.micButton.classList.add('muted-for-ai');
                                 }
                             }
@@ -905,7 +991,7 @@ class VoiceTraining {
         
         // Обновляем статус
         if (this.micButton && this.isRecording) {
-            this.micStatus.textContent = '🔇 Микрофон отключён (ИИ говорит)';
+            this.micStatus.textContent = 'Микрофон отключён (ИИ говорит)';
             this.micButton.classList.add('muted-for-ai');
         }
     }
@@ -989,7 +1075,7 @@ class VoiceTraining {
             
             if (this.micButton) {
                 this.micButton.classList.remove('muted-for-ai');
-                this.micStatus.textContent = '🎤 Слушаю...';
+                this.micStatus.textContent = 'Слушаю...';
             }
             
         } catch (e) {
@@ -1010,7 +1096,7 @@ class VoiceTraining {
             this.microphoneMuted = true;
             this.aiIsSpeaking = true;
             if (this.micButton) {
-                this.micStatus.textContent = '🔇 Микрофон отключён (ИИ говорит)';
+                this.micStatus.textContent = 'Микрофон отключён (ИИ говорит)';
                 this.micButton.classList.add('muted-for-ai');
             }
         }
@@ -1423,9 +1509,9 @@ class VoiceTraining {
         // Автоматически продолжаем слушать если режим активен
         if (this.isRecording && !this.isPaused) {
             if (this.micButton) {
-                this.micStatus.textContent = '🎤 Слушаю...';
+                this.micStatus.textContent = 'Слушаю...';
             }
-            this.showNotification('info', '👂 Слушаю', 'Говорите, когда будете готовы', 2000);
+            this.showNotification('info', 'Слушаю', 'Говорите, когда будете готовы', 2000);
         } else {
             console.warn('⚠️ handleAudioEnd: Запись не активна после завершения ответа ИИ:', {
                 isRecording: this.isRecording,
@@ -1610,24 +1696,96 @@ class VoiceTraining {
             }
 
             this.showNotification('success', 'Готово', 'Микрофон настроен и готов к работе');
+            if (this.isConnected) {
+                await this.autoStartListening();
+            }
 
         } catch (error) {
             console.error('❌ Ошибка доступа к микрофону:', error);
-            let errorMessage = 'Не удалось получить доступ к микрофону';
-            if (error.name === 'NotAllowedError') {
-                errorMessage = 'Доступ к микрофону запрещен. Разрешите доступ в настройках браузера.';
-            } else if (error.name === 'NotFoundError') {
-                errorMessage = 'Микрофон не найден. Убедитесь, что микрофон подключен.';
-            }
-            this.showNotification('error', 'Ошибка', errorMessage);
-
+            this.showMicErrorBanner(error);
             if (this.micButton) {
                 this.micButton.disabled = true;
-                this.micStatus.textContent = 'Микрофон недоступен';
+                this.micButton.setAttribute('aria-disabled', 'true');
             }
+            if (this.micStatus) this.micStatus.textContent = 'Микрофон недоступен';
         }
     }
-    
+
+    showMicErrorBanner(error) {
+        const existing = document.getElementById('vt-mic-error-banner');
+        if (existing) existing.remove();
+
+        const isDenied = error && (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError');
+        const isNotFound = error && error.name === 'NotFoundError';
+
+        const ua = navigator.userAgent;
+        const isChrome = /chrome/i.test(ua) && !/edg/i.test(ua);
+        const isFirefox = /firefox/i.test(ua);
+        const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+
+        let hint = '';
+        if (isDenied) {
+            if (isChrome) hint = 'В Chrome: нажмите 🔒 слева в адресной строке → «Разрешения сайта» → Микрофон → Разрешить → обновите страницу.';
+            else if (isFirefox) hint = 'В Firefox: нажмите 🔒 слева в адресной строке → «Разрешения» → Использовать микрофон → Разрешить.';
+            else if (isSafari) hint = 'В Safari: Сафари → Настройки для этого сайта → Микрофон → Разрешить.';
+            else hint = 'Откройте настройки браузера → Настройки сайта → Микрофон и разрешите доступ для этого сайта.';
+        } else if (isNotFound) {
+            hint = 'Подключите микрофон или гарнитуру и обновите страницу.';
+        } else {
+            hint = 'Убедитесь, что браузер имеет доступ к микрофону, затем обновите страницу.';
+        }
+
+        const title = isDenied ? 'Доступ к микрофону запрещён'
+                    : isNotFound ? 'Микрофон не найден'
+                    : 'Не удалось включить микрофон';
+
+        const banner = document.createElement('div');
+        banner.id = 'vt-mic-error-banner';
+        banner.setAttribute('role', 'alert');
+        banner.setAttribute('aria-live', 'assertive');
+        banner.style.cssText = [
+            'position:sticky;top:0;z-index:500;',
+            'background:#fef2f2;border:1.5px solid #fca5a5;border-radius:12px;',
+            'padding:16px 20px;margin:0 0 16px;',
+            'display:flex;align-items:flex-start;gap:14px;',
+            'font-family:Inter,system-ui,sans-serif;',
+        ].join('');
+        banner.innerHTML = `
+          <svg style="flex-shrink:0;margin-top:2px;color:#ef4444" width="22" height="22" viewBox="0 0 24 24"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+               aria-hidden="true">
+            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          <div style="flex:1">
+            <div style="font-weight:700;font-size:14px;color:#b91c1c;margin-bottom:4px">${title}</div>
+            <div style="font-size:13px;color:#7f1d1d;line-height:1.55">${hint}</div>
+            ${isDenied ? `
+            <button id="vt-mic-retry-btn" style="margin-top:12px;display:inline-flex;align-items:center;gap:6px;background:#ef4444;color:#fff;border:0;padding:9px 16px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
+                <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/>
+              </svg>Попробовать снова
+            </button>` : ''}
+          </div>`;
+
+        // Insert at top of chat-messages container or body
+        const target = this.chatMessages || document.querySelector('.voice-training-container') || document.body;
+        target.prepend(banner);
+
+        if (isDenied) {
+            const retryBtn = document.getElementById('vt-mic-retry-btn');
+            if (retryBtn) {
+                retryBtn.addEventListener('click', () => {
+                    banner.remove();
+                    if (this.micButton) { this.micButton.disabled = false; this.micButton.removeAttribute('aria-disabled'); }
+                    this.requestMicrophoneAccess();
+                });
+            }
+        }
+        // role="alert" + aria-live="assertive" озвучивает баннер скринридером
+        // без необходимости явно переводить фокус.
+    }
+
     async initializeAudioContext(stream) {
         try {
             // Инициализируем AudioContext с высоким качеством (24kHz для профессионального звука)
@@ -2021,6 +2179,17 @@ class VoiceTraining {
             await this.startContinuousListening();
         }
     }
+
+    async autoStartListening() {
+        if (this.isRecording || !this.isConnected || !this.mediaStream) {
+            return;
+        }
+        try {
+            await this.startContinuousListening();
+        } catch (error) {
+            console.warn('⚠️ Автозапуск микрофона не удался, нажмите кнопку микрофона:', error);
+        }
+    }
     
     async startContinuousListening() {
         if (!this.isConnected) {
@@ -2091,7 +2260,7 @@ class VoiceTraining {
         
         // Проверяем, что аудио действительно обрабатывается
         console.log('🎤 Начало непрерывного прослушивания - готов к приему аудио');
-        this.showNotification('success', '🎤 Активировано', 'Я вас слушаю. Говорите когда готовы');
+        this.showNotification('success', 'Активировано', 'Я вас слушаю. Говорите когда готовы');
     }
     
     stopContinuousListening() {
@@ -2178,7 +2347,10 @@ class VoiceTraining {
     
     async confirmStopTraining() {
         console.log('🛑 Завершение тренировки');
-        
+        this._clearAIResponseTimer();
+        this.hideReconnectBanner();
+        this._hideInitOverlay();
+
         // Если тренировка уже завершена автоматически — не дублируем валидацию
         if (this.isTrainingFinished) {
             console.log('ℹ️ Тренировка уже завершена, пропускаем confirmStopTraining');
@@ -2364,9 +2536,32 @@ class VoiceTraining {
         if (this.aiTyping) {
             this.aiTyping.style.display = show ? 'flex' : 'none';
         }
-        
+
         if (this.aiStatusDot) {
             this.aiStatusDot.className = show ? 'participant-status status-online' : 'participant-status';
+        }
+
+        if (show) {
+            this._startAIResponseTimer();
+        } else {
+            this._clearAIResponseTimer();
+        }
+    }
+
+    _startAIResponseTimer() {
+        this._clearAIResponseTimer();
+        this._aiResponseTimeoutId = setTimeout(() => {
+            this._aiResponseTimeoutId = null;
+            if (this.aiTyping && this.aiTyping.style.display !== 'none') {
+                this.showNotification('warning', 'ИИ медленно отвечает', 'Подождите или проверьте интернет-соединение.', 8000);
+            }
+        }, 35000);
+    }
+
+    _clearAIResponseTimer() {
+        if (this._aiResponseTimeoutId) {
+            clearTimeout(this._aiResponseTimeoutId);
+            this._aiResponseTimeoutId = null;
         }
     }
     
@@ -2450,7 +2645,7 @@ class VoiceTraining {
         
         if (this.progressText) {
             if (percent === 100) {
-                this.progressText.textContent = '🎉 Чеклист выполнен!';
+                this.progressText.textContent = 'Чеклист выполнен!';
                 this.unlockAchievement('Первый шаг');
             } else {
                 this.progressText.textContent = `Выполнено: ${checkedItems} из ${totalItems}`;
@@ -2467,7 +2662,7 @@ class VoiceTraining {
                 achievement.classList.remove('locked');
                 achievement.classList.add('unlocked');
                 
-                this.showNotification('success', '🏆 Достижение!', `Получено: ${name}`);
+                this.showNotification('success', 'Достижение!', `Получено: ${name}`);
             }
         });
     }
@@ -2517,7 +2712,11 @@ class VoiceTraining {
     
     exportTranscript() {
         console.log('📥 Экспорт транскрипта...');
-        
+        if (this.exportTranscriptBtn) {
+            this.exportTranscriptBtn.setAttribute('aria-busy', 'true');
+            this.exportTranscriptBtn.disabled = true;
+        }
+
         const messages = this.chatMessages.querySelectorAll('.message-group');
         let transcript = `Транскрипт тренировки\n`;
         transcript += `Дата: ${new Date().toLocaleString('ru-RU')}\n`;
@@ -2539,7 +2738,11 @@ class VoiceTraining {
         a.download = `transcript_${Date.now()}.txt`;
         a.click();
         URL.revokeObjectURL(url);
-        
+
+        if (this.exportTranscriptBtn) {
+            this.exportTranscriptBtn.removeAttribute('aria-busy');
+            this.exportTranscriptBtn.disabled = false;
+        }
         this.showNotification('success', 'Экспорт', 'Транскрипт сохранен');
     }
     
@@ -2731,7 +2934,7 @@ class VoiceTraining {
                 <div style="font-size: 20px; font-weight: 700; margin-bottom: 12px;">Тренировка завершена</div>
                 <div style="font-size: 14px; color: #aaa; margin-bottom: 24px;">Все этапы пройдены</div>
                 <div style="display: flex; flex-direction: column; gap: 10px; align-items: center;">
-                    <button onclick="window.location.href='/calls';"
+                    <button onclick="window.location.href='${this.postTrainingUrl}';"
                         style="background: #6c63ff; color: #fff; border: none; border-radius: 8px;
                         padding: 12px 32px; font-size: 15px; cursor: pointer; font-weight: 600;">
                         Продолжить
@@ -2813,7 +3016,7 @@ class VoiceTraining {
                 
                 <div style="text-align: center; display: flex; flex-direction: column; gap: 10px; align-items: center;">
                     ${passed ? `
-                        <button onclick="window.location.href='/calls';"
+                        <button onclick="window.location.href='${this.postTrainingUrl}';"
                             style="background: ${statusColor}; color: #fff; border: none; border-radius: 8px; padding: 12px 32px; font-size: 15px; cursor: pointer; font-weight: 600;">
                             Отлично! Продолжить
                         </button>
@@ -2822,7 +3025,7 @@ class VoiceTraining {
                             style="background: #6c63ff; color: #fff; border: none; border-radius: 8px; padding: 12px 32px; font-size: 15px; cursor: pointer; font-weight: 600;">
                             Попробовать ещё раз
                         </button>
-                        <button onclick="window.location.href='/calls';"
+                        <button onclick="window.location.href='${this.postTrainingUrl}';"
                             style="background: transparent; color: #aaa; border: 1px solid #444; border-radius: 8px; padding: 10px 24px; font-size: 13px; cursor: pointer;">
                             Выйти
                         </button>

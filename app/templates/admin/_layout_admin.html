@@ -1,3 +1,4 @@
+{% import "partials/icons.html" as icons %}
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -6,10 +7,7 @@
   <title>{% block title %}Админ-панель — UpStat{% endblock %}</title>
 
   <!-- базовые стили проекта -->
-  <link rel="stylesheet" href="/static/styles.css?v=16"/>
-  
-  <!-- Font Awesome для иконок -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link rel="stylesheet" href="/static/styles.css?v=19"/>
 
   <!-- макет: сетка, сайдбар, топбар -->
   <style>
@@ -18,14 +16,20 @@
       --surface:#ffffff;
       --text:#0f172a;
       --muted:#64748b;
-      --border:#e5e7eb;
-      --shadow:0 1px 2px rgba(15,23,42,.04),0 8px 24px rgba(15,23,42,.06);
+      --border:#e6e9ef;
+      --shadow:0 1px 2px rgba(15,23,42,.05);
+      --shadow-md:0 4px 16px rgba(15,23,42,.06);
       --radius:14px;
       --surface-hover:#f1f5f9;
-      --admin-primary:#dc2626;
+      --accent:#eef2ff;
+      --ring:rgba(30,58,138,.30);
+      --primary:#1e3a8a;
+      --primary-hover:#1e40af;
+      --admin-primary:#1e3a8a;
       --admin-secondary:#f59e0b;
       --admin-success:#10b981;
-      --admin-info:#3b82f6;
+      --admin-info:#1e3a8a;
+      --admin-danger:#dc2626;
     }
 
     *, *::before, *::after { box-sizing: border-box; }
@@ -36,57 +40,54 @@
     /* Admin Sidebar */
     .admin-sidebar{
       position:sticky; top:0; height:100vh;
-      background: linear-gradient(180deg, #1f2937 0%, #111827 100%);
-      border-right:1px solid #374151;
-      padding:16px; display:flex; flex-direction:column; gap:16px;
-      backdrop-filter: blur(10px);
-      transition: box-shadow .25s ease;
+      background: var(--surface);
+      border-right:1px solid var(--border);
+      padding:18px 14px; display:flex; flex-direction:column; gap:14px;
+      transition: box-shadow .2s ease;
     }
     
     .admin-brand{
-      font-weight:800; letter-spacing:.2px; font-size:20px;
-      background: linear-gradient(135deg, var(--admin-primary), #ef4444);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      padding: 16px 0;
-      text-align: center;
-      border-bottom: 1px solid #374151;
-      margin-bottom: 20px;
+      display:flex; align-items:center; gap:10px;
+      font-weight:700; letter-spacing:-.01em; font-size:18px;
+      color:var(--text);
+      padding: 10px 8px 14px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 8px;
+    }
+    .admin-brand .brand-logo{
+      display:inline-flex; align-items:center; justify-content:center;
+      width:28px; height:28px; border-radius:8px;
+      background:var(--primary); color:#fff; flex-shrink:0;
     }
     
-    .admin-menu{display:flex; flex-direction:column; gap:8px; margin-top:8px;}
+    .admin-menu{display:flex; flex-direction:column; gap:2px; margin-top:4px;}
     .admin-menu a{
       display:flex; align-items:center; gap:10px;
-      padding:10px 14px; border-radius:10px; text-decoration:none;
-      color:#d1d5db; transition:all 0.3s ease; font-weight:500; font-size:13px;
-      border: 1px solid transparent;
+      padding:9px 12px; border-radius:10px; text-decoration:none;
+      color:var(--muted); transition:background .15s ease, color .15s ease; font-weight:500; font-size:14px;
     }
+    .admin-menu a svg{width:18px; height:18px; flex-shrink:0;}
     .admin-menu a:hover{
-      background: rgba(220, 38, 38, 0.1);
-      border-color: rgba(220, 38, 38, 0.2);
-      color: #ffffff;
-      transform: translateX(4px);
+      background: var(--surface-hover);
+      color: var(--text);
     }
     .admin-menu a.active{
-      background: linear-gradient(135deg, var(--admin-primary), #ef4444);
-      color: white;
-      box-shadow: 0 8px 24px rgba(220, 38, 38, 0.3);
-      transform: translateX(4px);
+      background: var(--primary);
+      color: #fff;
     }
 
-    .admin-sidebar-footer{margin-top:auto; border-top:1px solid #374151; padding-top:20px;}
+    .admin-sidebar-footer{margin-top:auto; border-top:1px solid var(--border); padding-top:14px;}
     .admin-userbox{
-      font-size:14px; color:#9ca3af; line-height:1.4;
-      padding: 16px;
-      background: #1f2937;
-      border-radius: 12px;
-      border: 1px solid #374151;
+      font-size:13px; color:var(--muted); line-height:1.45;
+      padding: 12px;
+      background: var(--surface-hover);
+      border-radius: 10px;
+      border: 1px solid var(--border);
     }
-    .admin-userbox b{color:#ffffff; font-weight:600;}
+    .admin-userbox b{color:var(--text); font-weight:600;}
     .admin-userbox .role-badge{
       display: inline-block;
-      background: var(--admin-primary);
+      background: var(--admin-danger);
       color: white;
       padding: 2px 8px;
       border-radius: 6px;
@@ -95,28 +96,32 @@
     }
     
     .btn{
-      display:inline-flex; align-items:center; gap:8px; 
-      border:1px solid var(--border); background:var(--surface-hover); 
-      color:var(--text); padding:10px 16px; border-radius:12px; 
-      cursor:pointer; font-weight:500; transition: all 0.3s ease;
+      display:inline-flex; align-items:center; justify-content:center; gap:8px; 
+      border:1px solid var(--border); background:var(--surface); 
+      color:var(--text); padding:9px 16px; border-radius:999px; 
+      cursor:pointer; font-weight:500; font-size:14px;
+      transition: background .15s ease, border-color .15s ease, color .15s ease;
     }
+    .btn svg{width:16px; height:16px;}
     .btn:hover{
-      background: var(--admin-primary);
-      color: white;
-      border-color: var(--admin-primary);
-      transform: translateY(-2px);
-      box-shadow: 0 8px 24px rgba(220, 38, 38, 0.2);
+      background: var(--surface-hover);
+      border-color: var(--border);
     }
-    .btn:focus{outline:2px solid #fecaca; outline-offset:2px}
+    .btn-primary, .btn.primary{
+      background: var(--primary); color:#fff; border-color: var(--primary);
+    }
+    .btn-primary:hover, .btn.primary:hover{
+      background: var(--primary-hover); border-color: var(--primary-hover);
+    }
+    .btn:focus-visible{outline:2px solid var(--ring); outline-offset:2px}
     .btn.block{width:100%}
 
     /* Main */
     .main{display:flex; flex-direction:column; min-width:0; overflow-x:hidden;}
     .admin-topbar{
       display:flex; align-items:center; justify-content:space-between;
-      padding:16px 24px; background:var(--surface); border-bottom:1px solid var(--border);
-      position:sticky; top:0; z-index:10; backdrop-filter: blur(10px);
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      padding:12px 24px; background:var(--surface); border-bottom:1px solid var(--border);
+      position:sticky; top:0; z-index:10;
     }
     .admin-topbar-right{display:flex; align-items:center; gap:12px}
     .content{padding:20px; min-width:0; overflow:hidden; max-width:100%;}
@@ -156,10 +161,12 @@
       font-size: 18px;
       color: white;
     }
-    .admin-card-icon.users{background: linear-gradient(135deg, var(--admin-info), #2563eb);}
-    .admin-card-icon.conversations{background: linear-gradient(135deg, var(--admin-success), #059669);}
-    .admin-card-icon.meetings{background: linear-gradient(135deg, var(--admin-secondary), #d97706);}
-    .admin-card-icon.system{background: linear-gradient(135deg, #8b5cf6, #7c3aed);}
+    .admin-card-icon{ background: var(--accent); color: var(--primary); }
+    .admin-card-icon.users{background: var(--accent); color: var(--primary);}
+    .admin-card-icon.conversations{background: rgba(16,185,129,.12); color: var(--admin-success);}
+    .admin-card-icon.meetings{background: rgba(245,158,11,.12); color: var(--admin-secondary);}
+    .admin-card-icon.system{background: var(--accent); color: var(--primary);}
+    .admin-card-icon svg{width:20px; height:20px;}
     
     .admin-metric{
       font-size: 26px;
@@ -175,7 +182,7 @@
       gap: 4px;
     }
     .admin-metric-change.positive{color: var(--admin-success);}
-    .admin-metric-change.negative{color: var(--admin-primary);}
+    .admin-metric-change.negative{color: var(--admin-danger);}
 
     /* Admin Tables */
     .admin-table-container{
@@ -327,47 +334,48 @@
     <!-- Admin Sidebar -->
     <aside class="admin-sidebar">
       <div class="admin-brand">
-        <i class="fas fa-user-shield"></i> Админ-панель
+        <span class="brand-logo">{{ icons.icon('shield', size=16) }}</span>
+        Админ-панель
       </div>
 
       <nav class="admin-menu" aria-label="Административная навигация">
         <a href="/admin" class="{% if request.url.path == '/admin' %}active{% endif %}" aria-label="Главная админ-панели">
-          <i class="fas fa-tachometer-alt"></i> Дашборд
+          {{ icons.icon('dashboard', size=18) }} Дашборд
         </a>
         <a href="/admin/users" class="{% if request.url.path.startswith('/admin/users') %}active{% endif %}" aria-label="Управление пользователями">
-          <i class="fas fa-users"></i> Пользователи
+          {{ icons.icon('users', size=18) }} Пользователи
         </a>
         <a href="/admin/analytics" class="{% if request.url.path.startswith('/admin/analytics') %}active{% endif %}" aria-label="Аналитика">
-          <i class="fas fa-chart-line"></i> Аналитика
+          {{ icons.icon('analytics', size=18) }} Аналитика
         </a>
         <a href="/admin/prompts" class="{% if request.url.path.startswith('/admin/prompts') %}active{% endif %}" aria-label="Управление промптами">
-          <i class="fas fa-code"></i> Промпты
+          {{ icons.icon('code', size=18) }} Промпты
         </a>
         <a href="/admin/research" class="{% if request.url.path.startswith('/admin/research') %}active{% endif %}" aria-label="Исследование">
-          <i class="fas fa-flask"></i> Исследование
+          {{ icons.icon('flask', size=18) }} Исследование
         </a>
         <a href="/admin/settings" class="{% if request.url.path.startswith('/admin/settings') %}active{% endif %}" aria-label="Настройки системы">
-          <i class="fas fa-cog"></i> Настройки
+          {{ icons.icon('settings', size=18) }} Настройки
         </a>
         <a href="/admin/logs" class="{% if request.url.path.startswith('/admin/logs') %}active{% endif %}" aria-label="Логи системы">
-          <i class="fas fa-file-alt"></i> Логи
+          {{ icons.icon('file-text', size=18) }} Логи
         </a>
       </nav>
 
       <div class="admin-sidebar-footer">
         <div class="admin-userbox">
-          <i class="fas fa-user-shield"></i> <b>{{ current_user.name }}</b><br/>
+          <b>{{ current_user.name }}</b><br/>
           <span style="opacity:.8">{{ current_user.email }}</span>
           <div class="role-badge">Администратор</div>
         </div>
 
         <div style="margin-top: 16px;">
-          <a href="/dashboard" class="btn block" style="margin-bottom: 8px; background: #374151; color: #d1d5db; border-color: #4b5563;">
-            <i class="fas fa-arrow-left"></i> К основному интерфейсу
+          <a href="/dashboard" class="btn block" style="margin-bottom: 8px;">
+            {{ icons.icon('arrow-left', size=16) }} К основному интерфейсу
           </a>
           <form action="/logout" method="post" style="margin: 0;">
-            <button type="submit" class="btn block" style="background: var(--admin-primary); color: white; border-color: var(--admin-primary);">
-              <i class="fas fa-sign-out-alt"></i> Выйти
+            <button type="submit" class="btn block" style="background: var(--admin-danger); color: white; border-color: var(--admin-danger);">
+              {{ icons.icon('logout', size=16) }} Выйти
             </button>
           </form>
         </div>
@@ -385,8 +393,8 @@
           </button>
         </div>
         <div class="admin-topbar-right">
-          <div style="font-size: 14px; color: var(--muted);">
-            <i class="fas fa-clock"></i> <span id="current-time"></span>
+          <div style="display:flex; align-items:center; gap:6px; font-size: 14px; color: var(--muted);">
+            {{ icons.icon('clock', size=16) }} <span id="current-time"></span>
           </div>
         </div>
       </header>
