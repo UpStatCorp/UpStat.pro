@@ -22,21 +22,6 @@ _STAGE_LABELS = {
 }
 
 
-def _compute_streak(dates_trained: set) -> int:
-    """Считает streak (дней подряд с тренировкой) через timedelta."""
-    from datetime import date, timedelta
-    today = date.today()
-    streak = 0
-    check = today
-    while True:
-        if check in dates_trained:
-            streak += 1
-            check -= timedelta(days=1)
-        else:
-            break
-    return streak
-
-
 def _train_dashboard(request: Request, db: Session, user):
     """
     Train-дашборд: статистика сессий, streak, тренировка на сегодня.
@@ -64,9 +49,9 @@ def _train_dashboard(request: Request, db: Session, user):
     avg_score = sum(scores) / len(scores) if scores else 0
     completed_stages = sum(1 for s, t in sessions_with_training if s.completed_at)
 
-    # Streak через timedelta (без хрупкой арифметики)
-    dates_trained = {s.completed_at.date() for s, t in sessions_with_training if s.completed_at}
-    streak = _compute_streak(dates_trained)
+    # Стрик: хранимый, TZ-устойчивый, с учётом выходных по программе
+    from services import streak_service
+    streak, best_streak = streak_service.refresh_streak(db, user)
 
     # Последние 10 сессий для отображения
     recent_sessions = []
@@ -79,40 +64,23 @@ def _train_dashboard(request: Request, db: Session, user):
             "completed_at": s.completed_at,
         })
 
-    # Тренировка на сегодня из программы (если есть TrainingProgram)
+    # Тренировка на сегодня из программы (по stage_key, запуск on-demand)
     today_training = None
+    program_active = False
+    program_rest_day = False
     try:
-        from models import TrainingProgram, TrainingProgramDay
-        team_ids = [tm.team_id for tm in user.team_memberships]
-        if team_ids:
-            prog = (
-                db.query(TrainingProgram)
-                .filter(
-                    TrainingProgram.team_id.in_(team_ids),
-                    TrainingProgram.is_active == True,
-                )
-                .first()
-            )
-            if prog and prog.start_date:
-                start = prog.start_date.date() if hasattr(prog.start_date, "date") else today
-                day_idx = (today - start).days % max(1, prog.cycle_days)
-                prog_day = (
-                    db.query(TrainingProgramDay)
-                    .filter(
-                        TrainingProgramDay.program_id == prog.id,
-                        TrainingProgramDay.day_index == day_idx,
-                    )
-                    .first()
-                )
-                if prog_day and prog_day.training_id:
-                    t = db.get(Training, prog_day.training_id)
-                    if t:
-                        stage_key = t.stage or t.scenario_type or ""
-                        today_training = {
-                            "training_id": t.id,
-                            "stage_num": prog_day.day_index + 1,
-                            "stage_label": _STAGE_LABELS.get(stage_key, "Тренировка"),
-                        }
+        prog = streak_service.active_program(db, user)
+        if prog:
+            program_active = True
+            stage = streak_service.today_stage(db, user)
+            if stage:
+                today_training = {
+                    "stage_key": stage["stage_key"],
+                    "stage_num": stage["day_index"] + 1,
+                    "stage_label": _STAGE_LABELS.get(stage["stage_key"], "Тренировка"),
+                }
+            else:
+                program_rest_day = True  # сегодня в цикле нет этапа
     except Exception:
         pass  # Таблицы программы ещё не созданы
 
@@ -122,11 +90,14 @@ def _train_dashboard(request: Request, db: Session, user):
             "request": request,
             "user": user,
             "streak": streak,
+            "best_streak": best_streak,
             "total_sessions": total_sessions,
             "avg_score": avg_score,
             "completed_stages": completed_stages,
             "recent_sessions": recent_sessions,
             "today_training": today_training,
+            "program_active": program_active,
+            "program_rest_day": program_rest_day,
         },
     )
 
@@ -623,12 +594,3 @@ def create_test_training(request: Request, db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Не удалось создать тестовую тренировку: {exc}")
 
-
-@router.get("/settings")
-def settings(request: Request, db: Session = Depends(get_db)):
-    user = require_user(request, db)
-    # Загружаем информацию о командах пользователя для отображения в меню
-    user = db.query(User).options(joinedload(User.team_memberships)).filter(User.id == user.id).first()
-    return request.app.state.templates.TemplateResponse(
-        "settings.html", {"request": request, "user": user}
-    )

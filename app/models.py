@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean, UniqueConstraint, Float, func as sa_func
+from sqlalchemy import Column, Integer, String, DateTime, Date, ForeignKey, Text, Boolean, UniqueConstraint, Float, func as sa_func
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from database import Base
 
@@ -707,6 +707,11 @@ class SellerPassport(Base):
     first_call_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     last_updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    # Стрик тренировок (хранимый; даты считаются в едином часовом поясе APP_TZ)
+    current_streak: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    best_streak: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_trained_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
 
     user = relationship("User", backref="seller_passport")
     snapshots = relationship("PassportSnapshot", back_populates="passport", cascade="all, delete-orphan")

@@ -75,7 +75,9 @@ def validate_settings():
         "openai_api_key",
         "elevenlabs_api_key"
     ]
-    
+
+    missing_vars = []
+
     # Проверяем Zoom OAuth настройки если они нужны
     zoom_vars = ["zoom_client_id", "zoom_client_secret", "zoom_account_id"]
     if any(getattr(settings, var) for var in zoom_vars):
@@ -83,8 +85,7 @@ def validate_settings():
         for var in zoom_vars:
             if not getattr(settings, var):
                 missing_vars.append(var)
-    
-    missing_vars = []
+
     for var in required_vars:
         if not getattr(settings, var):
             missing_vars.append(var)

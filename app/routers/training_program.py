@@ -104,5 +104,76 @@ async def save_team_program(
             ))
             day_index += 1
 
+    # Цикл не может быть короче числа назначенных дней: иначе последние дни
+    # (day_index >= cycle_days) никогда не попали бы в расписание участникам.
+    # Если цикл длиннее — лишние дни остаются выходными (это допустимо).
+    if day_index > program.cycle_days:
+        program.cycle_days = day_index
+
     db.commit()
     return RedirectResponse(url=f"/teams/{team_id}/program", status_code=302)
+
+
+@router.post(
+    "/trainings/program/start-today",
+    dependencies=[Depends(require_capability("training_program"))],
+)
+def start_today_training(request: Request, db: Session = Depends(get_db)):
+    """
+    Запуск тренировки дня из активной программы команды (для участника).
+    Этап берётся из расписания программы по сегодняшнему дню цикла, тренировка
+    создаётся on-demand через curriculum_service (без хранения training_id).
+    Идемпотентно в рамках дня: переиспользует уже созданную сегодня программную
+    тренировку того же этапа, если она ещё не завершена.
+    """
+    user = require_user(request, db)
+
+    from services import streak_service
+    from services.curriculum_service import create_from_catalog
+    from models import AnalysisTrainingPlan, Training
+    from time_utils import today_local, local_date
+
+    stage = streak_service.today_stage(db, user)
+    if not stage:
+        # сегодня выходной по программе или программа не назначена
+        return RedirectResponse(url="/trainings/catalog", status_code=302)
+
+    stage_key = stage["stage_key"]
+
+    # Сериализуем параллельные запросы одного пользователя (двойной клик «Начать»),
+    # чтобы не создать два плана за один день. Транзакционный advisory-lock
+    # снимается при первом же commit (внутри create_from_catalog), но к этому
+    # моменту проверка-и-создание уже атомарна относительно второго запроса.
+    from sqlalchemy import text
+    db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": int(user.id)})
+
+    # Переиспользуем сегодняшнюю незавершённую программную тренировку этого этапа
+    existing = (
+        db.query(Training)
+        .join(AnalysisTrainingPlan, Training.plan_id == AnalysisTrainingPlan.id)
+        .filter(
+            AnalysisTrainingPlan.user_id == user.id,
+            AnalysisTrainingPlan.plan_source == "program",
+            Training.scenario_type == stage_key,
+            Training.status != "completed",
+        )
+        .order_by(Training.id.desc())
+        .first()
+    )
+
+    training_id = None
+    if existing and existing.plan and existing.plan.created_at \
+            and local_date(existing.plan.created_at) == today_local():
+        training_id = existing.id
+    else:
+        try:
+            _, training_id = create_from_catalog(
+                db, user, stage_key, level=1, source="program"
+            )
+        except ValueError:
+            # промпт для этапа не найден — отправляем в каталог
+            return RedirectResponse(url="/trainings/catalog", status_code=302)
+
+    return RedirectResponse(
+        url=f"/voice-training/training?training_id={training_id}", status_code=302
+    )

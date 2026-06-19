@@ -64,6 +64,11 @@ else:
 # Хранилище активных подключений для старого endpoint
 active_connections: dict = {}
 
+# Хранилище активных тренировочных сессий (создание сейчас отключено,
+# см. закомментированный /training/create ниже). Объявлено, чтобы
+# эндпоинты чтения/удаления возвращали 404, а не падали с NameError.
+active_training_sessions: dict = {}
+
 # Путь к веб-интерфейсу
 web_dir = Path(__file__).parent / "web"
 
@@ -131,20 +136,21 @@ async def get_training_page(
     session_id: Optional[int] = None
 ):
     """Возвращает страницу голосовой тренировки."""
-    from fastapi.templating import Jinja2Templates
     from database import get_db
     from models import User
-    
-    # Получаем путь к шаблонам
-    current_file = Path(__file__).resolve()
-    project_root = current_file.parent.parent  # /app/voice_assistant -> /app
-    templates_dir = project_root / "templates"
-    
-    # Проверяем, существует ли директория templates
-    if not templates_dir.exists():
-        templates_dir = project_root / "app" / "templates"
-    
-    templates = Jinja2Templates(directory=str(templates_dir))
+
+    # Переиспользуем настроенный в app.main экземпляр Jinja2Templates: на нём
+    # зарегистрированы globals (resolve_locale, _, gettext, get_brand) и фильтры,
+    # которые требует train/_layout.html. Свежий Jinja2Templates их не имеет.
+    templates = getattr(request.app.state, "templates", None)
+    if templates is None:
+        from fastapi.templating import Jinja2Templates
+        current_file = Path(__file__).resolve()
+        project_root = current_file.parent.parent  # /app/voice_assistant -> /app
+        templates_dir = project_root / "templates"
+        if not templates_dir.exists():
+            templates_dir = project_root / "app" / "templates"
+        templates = Jinja2Templates(directory=str(templates_dir))
     
     # Получаем user_id из сессии и загружаем пользователя из БД
     user_id = request.session.get("user_id")

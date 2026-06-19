@@ -7,9 +7,16 @@ import asyncio
 import base64
 import json
 import logging
+import os
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
+
+# Лимит размера одного аудио-чанка (base64). 64 KB в base64 ≈ 48 KB PCM ≈ 1 с при 24 kHz int16.
+_MAX_AUDIO_CHUNK_B64 = int(os.getenv("MAX_AUDIO_CHUNK_B64", str(64 * 1024)))
+
+# Максимальная продолжительность голосовой сессии (секунды; дефолт 60 мин).
+_MAX_SESSION_SECONDS = int(os.getenv("MAX_VOICE_SESSION_SECONDS", str(60 * 60)))
 from fastapi import WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 
@@ -24,7 +31,7 @@ from .config import (
     AZURE_VOICE_LIVE_VOICE,
     AZURE_VOICE_LIVE_TRANSCRIPTION_MODEL,
     AZURE_VOICE_LIVE_TRANSCRIPTION_LANGUAGE,
-    SYSTEM_PROMPT
+    get_system_prompt,
 )
 from .azure_voice_live import AzureVoiceLiveConnection, get_azure_token
 
@@ -246,7 +253,26 @@ async def handle_websocket_connection(
         # Если для Training.stage есть многоэтапная конфигурация
         # (папка app/static/docs/trainings/<stage>/stage_*.txt) — используем её,
         # иначе работаем по старой одно-промптовой схеме.
-        session_instructions = SYSTEM_PROMPT
+        # Определяем локаль пользователя (EN только для TRAIN_GLOBAL, иначе RU).
+        # Строгий gate: влияет на промпты только если EN-контент явно создан.
+        user_locale = "ru"
+        try:
+            try:
+                from models import User
+            except ImportError:
+                from app.models import User
+            try:
+                from services.i18n_service import resolve_locale
+            except ImportError:
+                from app.services.i18n_service import resolve_locale
+
+            _user = db.query(User).filter_by(id=user_id).first()
+            if _user is not None:
+                user_locale = resolve_locale(_user)
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось определить локаль пользователя: {e}")
+
+        session_instructions = get_system_prompt(user_locale)
         training_record = None
         try:
             try:
@@ -261,7 +287,7 @@ async def handle_websocket_connection(
         stages: list = []
         if training_record and getattr(training_record, "stage", None):
             try:
-                stages = load_stages(training_record.stage)
+                stages = load_stages(training_record.stage, locale=user_locale)
             except Exception as e:
                 logger.warning(f"⚠️ Ошибка загрузки этапов тренировки: {e}")
 
@@ -286,7 +312,7 @@ async def handle_websocket_connection(
                 f"Используй общую структуру тренировки из основного промпта, "
                 f"но примеры и ситуации подбирай под тему \"{training_record.title}\"."
             )
-            session_instructions = SYSTEM_PROMPT + training_context
+            session_instructions = get_system_prompt(user_locale) + training_context
             logger.info(f"📋 Промпт дополнен контекстом тренировки: {training_record.title}")
         
         # Для многоэтапных тренировок регистрируем tool-функции,
@@ -313,6 +339,19 @@ async def handle_websocket_connection(
             "message": "✅ Подключение установлено"
         })
         logger.info("✅ Подтверждение подключения отправлено клиенту")
+
+        # Одноэтапная тренировка: ИИ начинает первым, чтобы пользователь слышал отклик
+        if not user_session.stages:
+            try:
+                await azure_connection.send_response_create(
+                    instructions=(
+                        "Кратко поприветствуй пользователя на русском языке и начни тренировку "
+                        "строго по инструкциям сессии. Сначала выступи как тренер-инструктор."
+                    )
+                )
+                logger.info("🎙️ Запрошен стартовый ответ ИИ")
+            except Exception as e:
+                logger.warning(f"⚠️ Не удалось запустить стартовую реплику ИИ: {e}")
         
         # Если тренировка многоэтапная — сразу сообщаем клиенту
         # стартовый этап и роль ИИ, чтобы UI отрисовал бейдж/прогресс.
@@ -333,21 +372,32 @@ async def handle_websocket_connection(
         )
         
         # Основной цикл обработки сообщений от клиента
+        session_start = datetime.now(timezone.utc)
         try:
             async for message in websocket.iter_text():
+                # Cap по длительности сессии
+                elapsed = (datetime.now(timezone.utc) - session_start).total_seconds()
+                if elapsed > _MAX_SESSION_SECONDS:
+                    logger.warning(f"Session {user_id} exceeded max duration ({_MAX_SESSION_SECONDS}s), closing")
+                    await websocket.send_json({"type": "error", "message": "Максимальная продолжительность тренировки достигнута."})
+                    break
+
                 try:
                     data = json.loads(message) if message else {}
                 except (json.JSONDecodeError, ValueError):
-                    logger.warning(f"⚠️ Невалидный JSON: {message[:100]}")
+                    logger.warning(f"Invalid JSON from user {user_id}: {message[:100]}")
                     continue
-                
+
                 msg_type = data.get("type")
-                
+
                 if msg_type == "input_audio_buffer.append":
                     # Получили аудио чанк в формате input_audio_buffer.append (как в оригинале)
                     audio_base64 = data.get("audio", "")
                     if audio_base64:
-                        logger.debug(f"📤 Получен аудио чанк от клиента (размер base64: {len(audio_base64)})")
+                        if len(audio_base64) > _MAX_AUDIO_CHUNK_B64:
+                            logger.warning(f"Audio chunk too large ({len(audio_base64)} b64 bytes) from user {user_id}, skipping")
+                            continue
+                        logger.debug(f"Audio chunk from user {user_id}: {len(audio_base64)} b64 bytes")
                         try:
                             # Проверяем что соединение с Azure активно
                             if not azure_connection.is_connected:
@@ -376,7 +426,10 @@ async def handle_websocket_connection(
                     # Старый формат для обратной совместимости
                     audio_base64 = data.get("audio") or data.get("audio_data", "")
                     if audio_base64:
-                        logger.debug(f"📤 Получен аудио чанк (старый формат, размер base64: {len(audio_base64)})")
+                        if len(audio_base64) > _MAX_AUDIO_CHUNK_B64:
+                            logger.warning(f"Audio chunk (legacy) too large ({len(audio_base64)}) from user {user_id}, skipping")
+                            continue
+                        logger.debug(f"Audio chunk (legacy) from user {user_id}: {len(audio_base64)} b64 bytes")
                         try:
                             if not azure_connection.is_connected:
                                 logger.warning("Соединение с Azure разорвано, пропускаем аудио")

@@ -4,13 +4,27 @@ AI-валидатор тренировки.
 оценивает выполнение задач тренировки и даёт разрешение на завершение.
 """
 
+import asyncio
 import json
 import os
 import logging
 from typing import Dict, Optional
-from openai import AsyncOpenAI
+
+from openai import (
+    AsyncOpenAI,
+    APITimeoutError,
+    APIConnectionError,
+    InternalServerError,
+    RateLimitError,
+)
 
 logger = logging.getLogger(__name__)
+
+# Ошибки, при которых имеет смысл повторить запрос (инфраструктурные)
+_TRANSIENT = (APITimeoutError, APIConnectionError, InternalServerError, RateLimitError)
+
+# Модель по умолчанию; переопределяется через OPENAI_VALIDATOR_MODEL
+_DEFAULT_MODEL = "gpt-4o-mini"
 
 VALIDATION_PROMPT = """Ты — валидатор тренировки по продажам. Твоя задача — проверить, правильно ли менеджер прошёл тренировку.
 
@@ -70,6 +84,28 @@ VALIDATION_PROMPT = """Ты — валидатор тренировки по п�
 
 Только JSON, без комментариев."""
 
+_EMPTY_CRITERIA = {
+    "full_cycle": 0,
+    "understanding": 0,
+    "execution_quality": 0,
+    "active_participation": 0,
+}
+
+_STAGE_NAMES = {
+    "contact": "Вступление в контакт",
+    "needs": "Работа с потребностями",
+    "presentation": "Презентация",
+    "objections": "Работа с возражениями",
+    "closing": "Завершение сделки",
+}
+
+
+class ValidationTransientError(Exception):
+    """Валидация не прошла из-за временной инфраструктурной ошибки.
+
+    Означает: сессию НЕ нужно помечать failed — пользователь может повторить.
+    """
+
 
 class TrainingValidatorService:
     """Сервис AI-валидации тренировочного диалога"""
@@ -81,81 +117,113 @@ class TrainingValidatorService:
         training_description: str,
         training_recommendation: str,
         training_stage: Optional[str] = None,
-        system_prompt: Optional[str] = None
+        system_prompt: Optional[str] = None,
     ) -> Dict:
-        """
-        Валидирует транскрипт тренировки через GPT.
-        
+        """Валидирует транскрипт тренировки через GPT.
+
         Returns:
             Dict с полями: score, passed, criteria, feedback, details
+
+        Raises:
+            ValidationTransientError: временная ошибка инфраструктуры после 3 попыток.
+                Caller не должен помечать сессию как failed.
         """
         if not transcript or len(transcript.strip()) < 50:
             return {
                 "score": 0,
                 "passed": False,
-                "criteria": {
-                    "full_cycle": 0,
-                    "understanding": 0,
-                    "execution_quality": 0,
-                    "active_participation": 0
-                },
+                "criteria": _EMPTY_CRITERIA.copy(),
                 "feedback": "Тренировка не пройдена — диалог слишком короткий или отсутствует.",
-                "details": "Транскрипт пуст или содержит менее 50 символов. Пройдите тренировку полностью."
+                "details": "Транскрипт пуст или содержит менее 50 символов. Пройдите тренировку полностью.",
             }
 
-        stage_names = {
-            "contact": "Вступление в контакт",
-            "needs": "Работа с потребностями",
-            "presentation": "Презентация",
-            "objections": "Работа с возражениями",
-            "closing": "Завершение сделки"
-        }
+        model = os.getenv("OPENAI_VALIDATOR_MODEL", _DEFAULT_MODEL)
 
         prompt = VALIDATION_PROMPT.format(
             training_title=training_title,
             training_description=training_description,
             training_recommendation=training_recommendation,
-            training_stage=stage_names.get(training_stage, training_stage or "Не указан"),
+            training_stage=_STAGE_NAMES.get(training_stage, training_stage or "Не указан"),
             system_prompt=system_prompt or "(стандартный промпт тренера)",
-            transcript=transcript[:8000]
+            transcript=transcript[:8000],
         )
 
-        try:
-            client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        last_exc: Optional[Exception] = None
 
-            response = await client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"},
-                temperature=0.3,
-                timeout=30.0
-            )
+        for attempt in range(3):
+            try:
+                response = await client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    response_format={"type": "json_object"},
+                    temperature=0.3,
+                    timeout=60.0,
+                )
 
-            result = json.loads(response.choices[0].message.content)
+                raw = response.choices[0].message.content
+                result = json.loads(raw)
 
-            score = max(0, min(100, int(result.get("score", 0))))
-            result["score"] = score
-            result["passed"] = score >= 70
+                score = max(0, min(100, int(result.get("score", 0))))
+                result["score"] = score
+                result["passed"] = score >= 70
 
-            logger.info(
-                f"Валидация тренировки: score={score}, passed={result['passed']}"
-            )
-            return result
+                # Логируем usage для наблюдаемости (токены и модель)
+                usage = response.usage
+                logger.info(
+                    "Validation complete",
+                    extra={
+                        "score": score,
+                        "passed": result["passed"],
+                        "model": model,
+                        "input_tokens": usage.prompt_tokens if usage else None,
+                        "output_tokens": usage.completion_tokens if usage else None,
+                    },
+                )
+                return result
 
-        except Exception as e:
-            logger.error(f"Ошибка AI-валидации тренировки: {e}", exc_info=True)
-            return {
-                "score": 0,
-                "passed": False,
-                "criteria": {
-                    "full_cycle": 0,
-                    "understanding": 0,
-                    "execution_quality": 0,
-                    "active_participation": 0
-                },
-                "feedback": "Не удалось выполнить валидацию. Попробуйте завершить тренировку ещё раз.",
-                "details": f"Ошибка сервиса валидации: {str(e)}"
-            }
+            except _TRANSIENT as exc:
+                last_exc = exc
+                if attempt < 2:
+                    delay = 2 ** (attempt + 1)  # 2s → 4s
+                    logger.warning(
+                        "Transient validation error, retrying",
+                        extra={
+                            "attempt": attempt + 1,
+                            "delay_s": delay,
+                            "error_type": type(exc).__name__,
+                            "error": str(exc),
+                        },
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    logger.error(
+                        "Validation failed after 3 attempts",
+                        extra={"error_type": type(exc).__name__, "error": str(exc)},
+                        exc_info=True,
+                    )
+                    raise ValidationTransientError(
+                        f"Validation service unavailable after 3 attempts: {type(exc).__name__}"
+                    ) from exc
+
+            except Exception as exc:
+                # Non-transient: AuthenticationError, BadRequestError, JSONDecodeError, etc.
+                # Не имеет смысла повторять — возвращаем score=0 немедленно.
+                logger.error(
+                    "Non-transient validation error",
+                    extra={"error_type": type(exc).__name__, "error": str(exc)},
+                    exc_info=True,
+                )
+                return {
+                    "score": 0,
+                    "passed": False,
+                    "criteria": _EMPTY_CRITERIA.copy(),
+                    "feedback": "Не удалось выполнить валидацию. Обратитесь к администратору.",
+                    "details": "Ошибка конфигурации сервиса валидации.",
+                }
+
+        # Ветка недостижима, но удовлетворяет type-checker
+        raise ValidationTransientError("Unexpected exit from retry loop")  # pragma: no cover
 
     @staticmethod
     async def validate_and_complete_training(
@@ -163,11 +231,14 @@ class TrainingValidatorService:
         session_id: int,
         training_id: int,
         transcript: str,
-        system_prompt: Optional[str] = None
+        system_prompt: Optional[str] = None,
     ) -> Dict:
-        """
-        Валидирует тренировку и обновляет статусы в БД.
-        Объединяет валидацию + обновление TrainingSession + Training + Plan.
+        """Валидирует тренировку и обновляет статусы в БД.
+
+        При ValidationTransientError (временная недоступность OpenAI):
+        - НЕ делает commit — сессия остаётся в статусе "active"
+        - Возвращает dict с validation_error=True
+        - Пользователь может повторить попытку
         """
         try:
             from models import TrainingSession, Training, AnalysisTrainingPlan
@@ -182,17 +253,38 @@ class TrainingValidatorService:
                 "score": 0,
                 "passed": False,
                 "feedback": "Тренировка не найдена в базе данных.",
-                "details": f"training_id={training_id} не существует."
+                "details": f"training_id={training_id} не существует.",
+                "training_completed": False,
+                "plan_completed": False,
             }
 
-        validation_result = await TrainingValidatorService.validate_training(
-            transcript=transcript,
-            training_title=training.title,
-            training_description=training.description,
-            training_recommendation=training.recommendation,
-            training_stage=training.stage,
-            system_prompt=system_prompt
-        )
+        # Попытка валидации — может поднять ValidationTransientError
+        try:
+            validation_result = await TrainingValidatorService.validate_training(
+                transcript=transcript,
+                training_title=training.title,
+                training_description=training.description,
+                training_recommendation=training.recommendation,
+                training_stage=training.stage,
+                system_prompt=system_prompt,
+            )
+        except ValidationTransientError as exc:
+            # Инфраструктурная ошибка: НЕ записываем результат в БД.
+            # Сессия остаётся "active" — пользователь может повторить.
+            logger.error(
+                "Validation transient error — session left active",
+                extra={"session_id": session_id, "training_id": training_id, "error": str(exc)},
+            )
+            return {
+                "score": 0,
+                "passed": False,
+                "criteria": _EMPTY_CRITERIA.copy(),
+                "feedback": "Сервис проверки временно недоступен. Попробуйте завершить тренировку ещё раз через несколько минут.",
+                "details": "Временная ошибка AI-валидатора.",
+                "training_completed": False,
+                "plan_completed": False,
+                "validation_error": True,
+            }
 
         score = validation_result["score"]
         passed = validation_result["passed"]
@@ -211,13 +303,17 @@ class TrainingValidatorService:
         if training.best_score is None or score > training.best_score:
             training.best_score = score
 
+        # Уже завершалась раньше? Тогда счётчик плана не инкрементим повторно
+        was_completed = training.status == "completed"
+
         if passed:
             training.status = "completed"
-            training.completed_at = datetime.utcnow()
+            training.completed_at = training.completed_at or datetime.utcnow()
 
             plan = training.plan
             if plan:
-                plan.completed_trainings += 1
+                if not was_completed:
+                    plan.completed_trainings += 1
 
                 try:
                     from services.training_plan_service import TrainingPlanService
@@ -227,19 +323,40 @@ class TrainingValidatorService:
 
                 if plan.completed_trainings >= plan.total_trainings:
                     plan.status = "completed"
-        else:
+        elif not was_completed:
+            # Не понижаем статус уже завершённой тренировки при неудачной пересдаче
             training.status = "available"
 
         db.commit()
 
+        # Фиксируем результаты ДО refresh_streak: он делает повторный db.commit(),
+        # который истекает ORM-объекты (expire_on_commit), и последующее обращение
+        # к training.plan.status стало бы хрупким lazy-reload.
+        plan_completed = bool(training.plan and training.plan.status == "completed")
+        completed_user_id = session.user_id if session else None
+
         validation_result["training_completed"] = passed
-        validation_result["plan_completed"] = (
-            training.plan.status == "completed" if training.plan else False
-        )
+        validation_result["plan_completed"] = plan_completed
+
+        # Стрик пользователя (хранимый, TZ-устойчивый) — пересчитываем после коммита
+        try:
+            from services.streak_service import refresh_streak
+            from models import User
+            if completed_user_id:
+                u = db.query(User).get(completed_user_id)
+                if u:
+                    refresh_streak(db, u)
+        except Exception:
+            logger.exception("refresh_streak failed after training completion")
 
         logger.info(
-            f"Валидация завершена: training_id={training_id}, session_id={session_id}, "
-            f"score={score}, passed={passed}"
+            "Validation and completion done",
+            extra={
+                "training_id": training_id,
+                "session_id": session_id,
+                "score": score,
+                "passed": passed,
+            },
         )
 
         return validation_result

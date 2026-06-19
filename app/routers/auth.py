@@ -20,6 +20,22 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["auth"])
 
 
+def _is_dev_mode() -> bool:
+    """
+    Локальный режим разработки: код верификации не отправляется на почту,
+    а показывается прямо на странице подтверждения — удобно для тестов.
+
+    Включается через ENVIRONMENT=development или DEV_SHOW_VERIFICATION_CODE=true.
+    В production НИКОГДА не показываем код, даже если флаг включён по ошибке.
+    """
+    env = os.getenv("ENVIRONMENT", "").lower()
+    if env in ("production", "prod"):
+        return False
+    if os.getenv("DEV_SHOW_VERIFICATION_CODE", "").lower() in ("1", "true", "yes"):
+        return True
+    return env in ("development", "dev", "local")
+
+
 def _attach_invitation_if_present(request: Request, db: Session, user: User):
     """Если в сессии есть invite_token — автоматически добавляет пользователя в команду"""
     invite_token = request.session.get("invite_token")
@@ -113,7 +129,34 @@ def login(request: Request, db: Session = Depends(get_db),
         except Exception as e:
             logger.warning(f"Ошибка проверки приглашения при логине: {e}")
     
+    # Account-based lockout: защита от брутфорса пароля (общий счётчик через Redis,
+    # если задан REDIS_URL; иначе in-memory). После 10 неудач — блок на 15 минут.
+    _MAX_LOGIN_FAILS = 10
+    _LOGIN_LOCK_TTL = 900
+    _cache = get_cache_service(os.getenv("REDIS_URL"))
+    _fail_key = f"login_fail:{email_norm}"
+    try:
+        _fails = int(_cache.get(_fail_key) or 0)
+    except (TypeError, ValueError):
+        _fails = 0
+    if _fails >= _MAX_LOGIN_FAILS:
+        return request.app.state.templates.TemplateResponse(
+            "login.html",
+            {
+                "request": request,
+                "error": "Слишком много неудачных попыток входа. Попробуйте через 15 минут.",
+                "invited_email": invited_email,
+                "team_name": team_name,
+                "has_invitation": invited_email is not None
+            },
+            status_code=429
+        )
+
     if not user or not verify_password(password, user.password_hash):
+        try:
+            _cache.set(_fail_key, str(_fails + 1), ttl=_LOGIN_LOCK_TTL)
+        except Exception:
+            pass
         return request.app.state.templates.TemplateResponse(
             "login.html",
             {
@@ -125,7 +168,13 @@ def login(request: Request, db: Session = Depends(get_db),
             },
             status_code=400
         )
-    
+
+    # Успешный вход — сбрасываем счётчик неудач
+    try:
+        _cache.delete(_fail_key)
+    except Exception:
+        pass
+
     request.session["user_id"] = user.id
     
     # Обновляем время последнего входа
@@ -256,7 +305,7 @@ def register(request: Request, db: Session = Depends(get_db),
             status_code=400
         )
 
-    code = str(random.randint(100000, 999999))
+    code = f"{secrets.randbelow(900000) + 100000}"  # криптостойкий 6-значный код
     cache = get_cache_service(os.getenv("REDIS_URL"))
     # Сохраняем brand из request.state в кэш, чтобы register_verify знал режим
     brand = getattr(getattr(request, "state", None), "brand", "full")
@@ -270,6 +319,14 @@ def register(request: Request, db: Session = Depends(get_db),
         "sent_at": datetime.utcnow().isoformat()
     })
     cache.set(f"email_verify:{email_norm}", payload, ttl=600)
+
+    # DEV-режим: не отправляем письмо, показываем код прямо на странице
+    if _is_dev_mode():
+        logger.info(f"[DEV] Код верификации для {email_norm}: {code}")
+        return request.app.state.templates.TemplateResponse(
+            "register_verify.html",
+            {"request": request, "email": email_norm, "dev_code": code}
+        )
 
     try:
         send_verification_code(email_norm, code)
@@ -416,11 +473,19 @@ def register_resend(request: Request, email: str = Form(...)):
              "error": "Подождите минуту перед повторной отправкой."}
         )
 
-    new_code = str(random.randint(100000, 999999))
+    new_code = f"{secrets.randbelow(900000) + 100000}"  # криптостойкий 6-значный код
     data["code"] = new_code
     data["attempts"] = 0
     data["sent_at"] = datetime.utcnow().isoformat()
     cache.set(f"email_verify:{email_norm}", json.dumps(data), ttl=600)
+
+    # DEV-режим: не отправляем письмо, показываем новый код прямо на странице
+    if _is_dev_mode():
+        logger.info(f"[DEV] Новый код верификации для {email_norm}: {new_code}")
+        return request.app.state.templates.TemplateResponse(
+            "register_verify.html",
+            {"request": request, "email": email_norm, "dev_code": new_code}
+        )
 
     try:
         send_verification_code(email_norm, new_code)

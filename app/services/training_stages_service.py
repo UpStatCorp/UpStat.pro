@@ -194,12 +194,17 @@ def _get_first_line_template(stage_name: str, number: int) -> str:
     return _FIRST_LINE_TEMPLATES.get((stage_name, number), "")
 
 
-def load_stages(stage_name: Optional[str]) -> List[TrainingStage]:
+def load_stages(stage_name: Optional[str], locale: str = "ru") -> List[TrainingStage]:
     """
     Загружает все этапы тренировки для указанного `stage_name`.
 
     Args:
         stage_name: имя этапа продаж из Training.stage (например, "closing").
+        locale: локаль пользователя ("ru" | "en"). Строгий gate: EN-промпты
+            берутся из подпапки <stage_name>/en/ ТОЛЬКО если она существует и
+            содержит файлы. Иначе (и всегда для "ru") используется текущая
+            RU-конфигурация без изменений — поведение ИИ для существующих
+            RU-пользователей не меняется.
 
     Returns:
         Список TrainingStage в порядке возрастания номера этапа,
@@ -212,6 +217,13 @@ def load_stages(stage_name: Optional[str]) -> List[TrainingStage]:
     folder = _trainings_root() / stage_name
     if not folder.exists() or not folder.is_dir():
         return []
+
+    # Строгий locale-gate: EN-вариант применяется только при наличии файлов.
+    if (locale or "ru").lower() == "en":
+        en_folder = folder / "en"
+        if en_folder.is_dir() and any(en_folder.glob("stage_*.txt")):
+            folder = en_folder
+            logger.info("🌐 Используется EN-конфигурация этапов для '%s'", stage_name)
 
     files = sorted(
         folder.glob("stage_*.txt"),

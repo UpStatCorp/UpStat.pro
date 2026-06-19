@@ -103,7 +103,7 @@ def create_from_catalog(
     # Stub-Conversation (без реального звонка)
     conv = Conversation(
         user_id=user.id,
-        title=f"[Каталог] {stage_label} — уровень {level}",
+        title=f"[Каталог] {stage_label}",
     )
     db.add(conv)
     db.flush()
@@ -111,8 +111,9 @@ def create_from_catalog(
     # Stub-Message (нужен для report_message_id NOT NULL)
     stub_msg = Message(
         conversation_id=conv.id,
-        role="system",
-        content=f"[catalog-stub] stage={stage_key} level={level}",
+        user_id=None,
+        role="bot",
+        text=f"[catalog-stub] stage={stage_key}",
     )
     db.add(stub_msg)
     db.flush()
@@ -121,9 +122,9 @@ def create_from_catalog(
     plan = AnalysisTrainingPlan(
         user_id=user.id,
         report_message_id=stub_msg.id,
-        title=f"{stage_label} (уровень {level})",
+        title=stage_label,
         recommendations_json=json.dumps(
-            [{"stage": stage_key, "level": level, "source": "catalog"}],
+            [{"stage": stage_key, "source": source}],
             ensure_ascii=False,
         ),
         total_trainings=1,
@@ -134,14 +135,18 @@ def create_from_catalog(
     db.add(plan)
     db.flush()
 
-    # Training — одна тренировка
+    # Training — одна тренировка.
+    # stage=stage_key включает многоэтапный режим: если в каталоге несколько
+    # stage_N.txt (как у "closing" — 4 этапа), они проходятся последовательно
+    # в рамках ОДНОЙ тренировки, а не как отдельные «уровни».
     training = Training(
         plan_id=plan.id,
         order=1,
-        title=f"{stage_label} — уровень {level}",
+        title=stage_label,
         description=stage_info["description"],
         recommendation=stage_info["description"],
         scenario_type=stage_key,
+        stage=stage_key,
         status="available",
     )
     db.add(training)

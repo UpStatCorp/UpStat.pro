@@ -26,11 +26,16 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="AI Agent Service", version="1.0.0")
 
-# CORS middleware
+# CORS middleware.
+# Origins берём из env CORS_ALLOW_ORIGINS (через запятую). По умолчанию — пусто
+# (сервис внутренний). Wildcard '*' вместе с credentials НЕ используем: это
+# небезопасно и блокируется браузерами.
+_cors_env = os.getenv("CORS_ALLOW_ORIGINS", "").strip()
+_allow_origins = [o.strip() for o in _cors_env.split(",") if o.strip()] if _cors_env else []
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # В продакшене ограничить
-    allow_credentials=True,
+    allow_origins=_allow_origins,
+    allow_credentials=bool(_allow_origins),
     allow_methods=["*"],
     allow_headers=["*"],
 )

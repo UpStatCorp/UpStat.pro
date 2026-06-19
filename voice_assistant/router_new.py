@@ -6,7 +6,7 @@
 import logging
 from datetime import datetime
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query, Request, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 from typing import Optional
 from pathlib import Path
@@ -90,39 +90,41 @@ async def websocket_training_endpoint(
         from itsdangerous import BadSignature
         
         # Декодируем session cookie → извлекаем session_user_id (защита от подмены)
-        import os, json as _json
-        from itsdangerous import URLSafeTimedSerializer, BadSignature
+        import os, json as _json, base64 as _b64
+        from itsdangerous import TimestampSigner
         secret_key = os.getenv("SECRET_KEY")
         if not secret_key:
             await websocket.send_json({"type": "error", "message": "⚠️ Сервер не настроен (SECRET_KEY)"})
             await websocket.close(code=1011, reason="Server misconfigured")
             return
-        serializer = URLSafeTimedSerializer(secret_key)
+        # Starlette SessionMiddleware подписывает cookie как
+        # TimestampSigner(secret).sign(b64encode(json(session))) — читаем тем же способом.
+        signer = TimestampSigner(str(secret_key))
         session_user_id: Optional[int] = None
+        _session_max_age = int(os.getenv("SESSION_MAX_AGE", str(60 * 60 * 8)))
         try:
-            raw = session_cookie
-            # Starlette кодирует сессию через itsdangerous.TimestampSigner
-            payload = serializer.loads(raw, salt="cookie-session", max_age=None)
+            data = signer.unsign(session_cookie, max_age=_session_max_age)
+            payload = _json.loads(_b64.b64decode(data))
             session_user_id = payload.get("user_id") if isinstance(payload, dict) else None
         except Exception:
-            pass  # Сессия не читается — продолжаем с query_param, но проверяем далее
-
-        # user_id из query (может отсутствовать)
-        user_id_param = websocket.query_params.get('user_id')
+            pass  # Сессия не читается — пробуем query param только если разрешено
 
         if session_user_id is not None:
-            # Если сессия расшифрована — используем ИЗ НЕЁЙ; игнорируем query param
             user_id = session_user_id
-        elif user_id_param:
-            # Fallback: только если сессия не декодировалась (например, dev-режим)
-            user_id = int(user_id_param)
         else:
-            await websocket.send_json({
-                "type": "error",
-                "message": "⚠️ Не удалось определить пользователя"
-            })
-            await websocket.close(code=1008, reason="Missing user_id")
-            return
+            # query-param fallback — только если явно разрешён (dev/тест).
+            # В продакшене ALLOW_QUERY_USER_ID оставить false (дефолт).
+            _allow_query = os.getenv("ALLOW_QUERY_USER_ID", "false").lower() == "true"
+            user_id_param = websocket.query_params.get('user_id')
+            if _allow_query and user_id_param:
+                user_id = int(user_id_param)
+            else:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "⚠️ Сессия недействительна или истекла. Войдите заново."
+                })
+                await websocket.close(code=1008, reason="Unauthorized")
+                return
 
         # Проверяем что пользователь существует
         try:
@@ -170,16 +172,25 @@ async def websocket_training_endpoint(
 
 
 @router.get("/stats")
-async def get_training_stats():
+async def get_training_stats(request: Request, db: Session = Depends(get_db)):
     """
-    Возвращает статистику использования сервера.
-    
-    Returns:
-        Информация о текущих сессиях и загрузке сервера
+    Возвращает статистику использования сервера. Только для администратора —
+    содержит инфраструктурные метрики (активные сессии, нагрузка).
     """
+    user_id = request.session.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Требуется аутентификация")
+    try:
+        from models import User
+    except ImportError:
+        from app.models import User
+    user = db.query(User).filter_by(id=user_id).first()
+    if not user or user.role != "admin":
+        raise HTTPException(status_code=403, detail="Доступ только для администратора")
+
     session_manager = get_session_manager()
     stats = session_manager.get_stats()
-    
+
     return {
         "status": "ok",
         "sessions": stats
@@ -189,23 +200,31 @@ async def get_training_stats():
 @router.get("/session/{session_id}")
 async def get_session_info(
     session_id: str,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
-    Получает информацию о сессии тренировки.
-    
+    Получает информацию о сессии тренировки (только своей).
+
     Args:
         session_id: UUID сессии
-    
+
     Returns:
         Информация о сессии
     """
+    user_id = request.session.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Требуется аутентификация")
+
     session_manager = get_session_manager()
     session = await session_manager.get_session(session_id)
-    
+
     if not session:
-        return {"error": "Session not found"}, 404
-    
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if session.user_id != user_id:
+        raise HTTPException(status_code=403, detail="Нет доступа к этой сессии")
+
     return {
         "session_id": session.session_id,
         "user_id": session.user_id,
@@ -219,23 +238,31 @@ async def get_session_info(
 @router.post("/session/{session_id}/end")
 async def end_training_session(
     session_id: str,
+    request: Request,
     db: Session = Depends(get_db)
 ):
     """
-    Принудительно завершает сессию тренировки.
-    
+    Принудительно завершает сессию тренировки (только свою).
+
     Args:
         session_id: UUID сессии
-    
+
     Returns:
         Результат операции
     """
+    user_id = request.session.get("user_id")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Требуется аутентификация")
+
     session_manager = get_session_manager()
     session = await session_manager.get_session(session_id)
-    
+
     if not session:
-        return {"error": "Session not found"}, 404
-    
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if session.user_id != user_id:
+        raise HTTPException(status_code=403, detail="Нет доступа к этой сессии")
+
     # Закрываем сессию
     await session_manager.close_session(session_id)
     
@@ -330,42 +357,40 @@ async def get_training_page(
     db: Session = Depends(get_db)
 ):
     """Возвращает страницу голосовой тренировки (для обратной совместимости)."""
-    from fastapi.templating import Jinja2Templates
-    
     try:
         from models import User, Training
     except ImportError:
         from app.models import User, Training
+
+    # Переиспользуем настроенный в app.main экземпляр Jinja2Templates: на нём
+    # зарегистрированы globals (resolve_locale, _, gettext, get_brand) и фильтры,
+    # которые требует train/_layout.html. Свежий Jinja2Templates их не имеет.
+    templates = getattr(request.app.state, "templates", None)
+    if templates is None:
+        from fastapi.templating import Jinja2Templates
+        current_file = Path(__file__).resolve()
+        project_root = current_file.parent.parent  # /voice_assistant -> /
+        templates_dir = project_root / "app" / "templates"
+        if not templates_dir.exists():
+            templates_dir = project_root / "templates"
+        templates = Jinja2Templates(directory=str(templates_dir))
     
-    # Получаем путь к шаблонам
-    current_file = Path(__file__).resolve()
-    project_root = current_file.parent.parent  # /voice_assistant -> /
-    templates_dir = project_root / "app" / "templates"
-    
-    # Проверяем, существует ли директория templates
-    if not templates_dir.exists():
-        templates_dir = project_root / "templates"
-    
-    templates = Jinja2Templates(directory=str(templates_dir))
-    
-    # Получаем user_id из сессии и загружаем пользователя из БД
+    # Получаем user_id из сессии и загружаем пользователя из БД.
+    # Страница тренировки доступна только авторизованным — иначе редирект на логин
+    # (раньше создавалась FakeUser-заглушка, что открывало страницу анонимам).
     user_id = request.session.get("user_id")
+    if not user_id:
+        return RedirectResponse(url="/login", status_code=302)
+
     user = None
-    
-    if user_id:
-        try:
-            user = db.query(User).filter_by(id=user_id).first()
-        except Exception as e:
-            logger.error(f"Ошибка загрузки пользователя: {e}", exc_info=True)
-    
-    # Если user нет, создаем заглушку
+    try:
+        user = db.query(User).filter_by(id=user_id).first()
+    except Exception as e:
+        logger.error(f"Ошибка загрузки пользователя: {e}", exc_info=True)
+
     if not user:
-        class FakeUser:
-            def __init__(self):
-                self.id = None
-                self.name = "Гость"
-                self.email = "guest@training.local"
-        user = FakeUser()
+        request.session.clear()
+        return RedirectResponse(url="/login", status_code=302)
     
     # Данные о тренировке (если есть training_id)
     training_data = {
@@ -413,11 +438,23 @@ async def get_training_page(
             raise HTTPException(status_code=500, detail="Ошибка загрузки данных тренировки")
     
     # Данные для шаблона
+    try:
+        from services.capability_service import has_capability
+    except ImportError:
+        from app.services.capability_service import has_capability
+
+    is_full_user = has_capability(user, "call_analysis")
+    post_training_url = "/calls" if is_full_user else "/dashboard"
+    # Full users keep the full dashboard layout (with sidebar); train users get train layout
+    layout_template = "_layout_dashboard.html" if is_full_user else "train/_layout.html"
+
     context = {
         "request": request,
         "user": user,
         "current_user": user,
-        "training": training_data
+        "training": training_data,
+        "post_training_url": post_training_url,
+        "layout_template": layout_template,
     }
     
     return templates.TemplateResponse("voice_training_conference.html", context)
@@ -449,14 +486,21 @@ async def complete_training(request: Request, db: Session = Depends(get_db)):
         user_responses_count = data.get("user_responses_count", 0)
         ai_questions_count = data.get("ai_questions_count", 0)
         
-        logger.info(f"💾 Завершение тренировки: session_id={session_id}, training_id={training_id}")
+        logger.info("Completing training session", extra={"session_id": session_id, "training_id": training_id})
         
         if not session_id:
             raise HTTPException(status_code=400, detail="session_id is required")
         
-        session = db.query(TrainingSession).filter_by(id=session_id).first()
+        # with_for_update — пессимистичная блокировка против двойного завершения
+        # (автозавершение по WebSocket + ручное нажатие кнопки одновременно)
+        session = (
+            db.query(TrainingSession)
+            .filter_by(id=session_id)
+            .with_for_update()
+            .first()
+        )
         if not session:
-            logger.warning(f"⚠️ Сессия {session_id} не найдена в БД")
+            logger.warning("Training session not found in DB", extra={"session_id": session_id})
             return {
                 "success": True,
                 "message": "Тренировка завершена (сессия не найдена в БД)",
@@ -470,7 +514,7 @@ async def complete_training(request: Request, db: Session = Depends(get_db)):
         # Если сессия уже завершена и есть score — возвращаем сохранённый результат
         # (защита от двойного вызова при автозавершении + ручном нажатии кнопки)
         if session.status == "completed" and session.score is not None:
-            logger.info(f"ℹ️ Сессия {session_id} уже завершена, возвращаем сохранённый результат (score={session.score})")
+            logger.info("Session already completed, returning cached result", extra={"session_id": session_id, "score": session.score})
             training = db.query(Training).filter_by(id=int(training_id)).first() if training_id else None
             return {
                 "success": True,
@@ -509,8 +553,8 @@ async def complete_training(request: Request, db: Session = Depends(get_db)):
                                 for s in stages
                             )
                     except Exception as e:
-                        logger.warning(f"⚠️ Не удалось загрузить этапы для валидации: {e}")
-                
+                        logger.warning("Failed to load stages for validation", extra={"error": str(e)})
+
                 validation_result = await TrainingValidatorService.validate_and_complete_training(
                     db=db,
                     session_id=session_id,
@@ -518,15 +562,25 @@ async def complete_training(request: Request, db: Session = Depends(get_db)):
                     transcript=transcript,
                     system_prompt=effective_prompt
                 )
-                
+
+                is_error = validation_result.get("validation_error", False)
                 logger.info(
-                    f"✅ AI-валидация: score={validation_result['score']}, "
-                    f"passed={validation_result['passed']}, training_id={training_id}"
+                    "AI validation result",
+                    extra={
+                        "score": validation_result["score"],
+                        "passed": validation_result["passed"],
+                        "training_id": training_id,
+                        "validation_error": is_error,
+                    },
                 )
-                
+
                 return {
-                    "success": True,
-                    "message": "Тренировка проверена AI-валидатором",
+                    "success": not is_error,
+                    "message": (
+                        "Сервис проверки временно недоступен. Попробуйте ещё раз."
+                        if is_error
+                        else "Тренировка проверена AI-валидатором"
+                    ),
                     "score": validation_result["score"],
                     "passed": validation_result["passed"],
                     "feedback": validation_result.get("feedback", ""),
@@ -534,7 +588,8 @@ async def complete_training(request: Request, db: Session = Depends(get_db)):
                     "details": validation_result.get("details", ""),
                     "training_completed": validation_result.get("training_completed", False),
                     "plan_completed": validation_result.get("plan_completed", False),
-                    "session_id": session_id
+                    "validation_error": is_error,
+                    "session_id": session_id,
                 }
         
         # Обычная тренировка (не из плана) — просто сохраняем
@@ -545,9 +600,22 @@ async def complete_training(request: Request, db: Session = Depends(get_db)):
                 (datetime.utcnow() - session.started_at).total_seconds()
             )
         db.commit()
-        
+
+        # Стрик пользователя — свободная тренировка тоже засчитывает день
+        try:
+            from models import User
+            try:
+                from services.streak_service import refresh_streak
+            except ImportError:
+                from app.services.streak_service import refresh_streak
+            u = db.query(User).get(session.user_id)
+            if u:
+                refresh_streak(db, u)
+        except Exception:
+            logger.warning("refresh_streak failed (free training)", exc_info=True)
+
         logger.info(f"✅ Свободная тренировка завершена: session_id={session_id}")
-        
+
         return {
             "success": True,
             "message": "Тренировка завершена",

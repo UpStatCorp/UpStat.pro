@@ -184,23 +184,6 @@ class ZoomClient:
         except Exception as e:
             logger.error(f"Error processing video stream: {e}")
     
-    async def send_audio(self, meeting_id: str, audio_data: bytes) -> bool:
-        """Отправляет аудио в Zoom встречу"""
-        try:
-            if meeting_id not in self.active_connections:
-                logger.warning(f"Not connected to meeting {meeting_id}")
-                return False
-            
-            # TODO: Реализовать реальную отправку аудио в Zoom
-            # Пока используем заглушку
-            
-            logger.debug(f"Sent {len(audio_data)} bytes of audio to meeting {meeting_id}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error sending audio to meeting {meeting_id}: {e}")
-            return False
-    
     async def send_video(self, meeting_id: str, video_data: bytes) -> bool:
         """Отправляет видео в Zoom встречу"""
         try:

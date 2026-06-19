@@ -3,15 +3,15 @@
 
 Источник истины — user.product_mode (денормализованное поле).
 
-Политика дефолтов:
-  - NULL product_mode   → FULL (обратная совместимость для СУЩЕСТВУЮЩИХ юзеров до v2)
+Политика дефолтов (fail-closed):
+  - NULL product_mode   → FREE (безопасный дефолт; существующим юзерам до v2
+                               нужно явно выставить product_mode через миграцию)
   - product_mode="free" → FREE (новые самостоятельные регистрации без инвайта)
   - product_mode="full" → FULL (явное назначение через Sale Manager)
   - product_mode="train"→ TRAIN_RU / TRAIN_GLOBAL
 
 ВАЖНО: новые самостоятельные регистрации (auth.py/google_oauth.py) ДОЛЖНЫ
-получать product_mode="free", а не NULL. NULL → FULL оставлен только ради
-обратной совместимости с уже существующими записями в БД.
+получать product_mode="free", а не NULL.
 """
 from __future__ import annotations
 
@@ -78,12 +78,12 @@ def get_capabilities(user: "User") -> set[str]:
       1. Organization.capabilities_override (JSON-патч поверх SKU)
       2. SKU организации (через user.organization.sku)
       3. user.product_mode → дефолтный SKU
-      4. NULL product_mode → FULL (обратная совместимость)
+      4. NULL product_mode → FREE (fail-closed)
     """
     # Определяем базовый SKU
     sku = _resolve_sku(user)
 
-    base_caps: set[str] = set(SKU_CAPABILITIES.get(sku, SKU_CAPABILITIES["FULL"]))
+    base_caps: set[str] = set(SKU_CAPABILITIES.get(sku, SKU_CAPABILITIES["FREE"]))
 
     # Применяем capabilities_override из организации
     override = _get_override(user)
@@ -116,8 +116,8 @@ def _resolve_sku(user: "User") -> str:
     if mode in _MODE_TO_SKU:
         return _MODE_TO_SKU[mode]
 
-    # Дефолт: FULL (обратная совместимость для существующих NULL-юзеров)
-    return "FULL"
+    # Дефолт: FREE (fail-closed — неизвестный/NULL product_mode не даёт доступ)
+    return "FREE"
 
 
 def _get_override(user: "User") -> Optional[dict]:

@@ -1,0 +1,45 @@
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+exclude = [
+    ".venv",
+    "venv",
+    "alembic/versions",
+    "__pycache__",
+    "voice_assistant/temp",
+]
+
+[tool.ruff.lint]
+# E/W: pycodestyle errors/warnings
+# F: pyflakes (undefined names, unused imports, etc.)
+# I: isort
+# B: flake8-bugbear (likely bugs and design issues)
+select = ["E", "W", "F", "I", "B"]
+ignore = [
+    "E501",   # line too long — handled by formatter
+    "E402",   # module-level import not at top (FastAPI patterns)
+    "B008",   # function call in default argument (FastAPI Depends)
+    "B904",   # raise from exc (existing codebase not yet migrated)
+    "F841",   # local variable assigned but never used
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["F401", "F811"]  # re-imports and unused imports are fine in tests
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+
+[tool.bandit]
+exclude_dirs = ["venv", ".venv", "alembic", "voice_assistant/temp"]
+skips = ["B101", "B311"]  # B101: assert in tests; B311: random not for security
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+strict = false
+exclude = ["venv", "alembic"]

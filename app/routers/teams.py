@@ -21,32 +21,61 @@ from services.team_access import (
 from services.team_invitations import create_invitations
 from services.email import send_invitation_email
 from services.team_script_service import convert_to_checklist_format
+from services.capability_service import has_capability
+from sqlalchemy.orm import joinedload
 
 router = APIRouter(tags=["teams"])
+
+
+def _train_mode(user: User) -> bool:
+    return not has_capability(user, "call_analysis")
+
+
+def _teams_template(user: User, page: str) -> str:
+    if _train_mode(user):
+        return f"train/{page}"
+    return page
+
+
+def _user_for_layout(db: Session, user: User) -> User:
+    if not _train_mode(user):
+        return user
+    return (
+        db.query(User)
+        .options(joinedload(User.managed_teams))
+        .filter(User.id == user.id)
+        .first()
+    ) or user
+
+
+@router.get("/teams")
+def teams_redirect(request: Request, db: Session = Depends(get_db)):
+    require_user(request, db)
+    return RedirectResponse(url="/teams/my", status_code=302)
 
 
 @router.get("/teams/my", response_class=HTMLResponse)
 def my_teams_page(request: Request, db: Session = Depends(get_db)):
     """Страница 'Моя команда'"""
     current_user = require_user(request, db)
-    
-    # Получаем команды, где пользователь менеджер
+    train_mode = _train_mode(current_user)
+    current_user = _user_for_layout(db, current_user)
+
     manager_teams = get_manager_teams(db, current_user)
-    
-    # Получаем команды, где пользователь участник
+
     member_teams = db.query(Team).join(TeamMember).filter(
         TeamMember.user_id == current_user.id
     ).all()
-    
-    # Рендерим шаблон
+
     return request.app.state.templates.TemplateResponse(
-        "team_manage.html",
+        _teams_template(current_user, "team_manage.html"),
         {
             "request": request,
             "user": current_user,
             "manager_teams": manager_teams,
             "member_teams": member_teams,
-            "is_manager": is_manager(current_user) or is_admin(current_user)
+            "is_manager": is_manager(current_user) or is_admin(current_user),
+            "train_mode": train_mode,
         }
     )
 
@@ -105,15 +134,19 @@ def team_members_page(
     invitations = db.query(TeamInvitation).filter(
         TeamInvitation.team_id == team_id
     ).order_by(TeamInvitation.created_at.desc()).all()
-    
+
+    train_mode = _train_mode(current_user)
+    current_user = _user_for_layout(db, current_user)
+
     return request.app.state.templates.TemplateResponse(
-        "team_members.html",
+        _teams_template(current_user, "team_members.html"),
         {
             "request": request,
             "user": current_user,
             "team": team,
             "members": members,
-            "invitations": invitations
+            "invitations": invitations,
+            "train_mode": train_mode,
         }
     )
 

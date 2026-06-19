@@ -90,7 +90,7 @@ class UserSession:
         self.current_stage_index = 0
         self.is_switching_stage = False
         
-        logger.info(f"✨ Создана новая сессия: {self.session_id} для user_id={user_id}")
+        logger.info("Session created", extra={"session_id": self.session_id, "user_id": user_id})
     
     def update_activity(self):
         """Обновляет время последней активности"""
@@ -106,11 +106,11 @@ class UserSession:
         """Очищает историю диалога"""
         if self.gpt:
             self.gpt.clear_history()
-            logger.info(f"🗑️ Очищена история диалога для сессии {self.session_id}")
+            logger.info("Conversation history cleared", extra={"session_id": self.session_id})
     
     def cleanup(self):
         """Очистка ресурсов при закрытии сессии"""
-        logger.info(f"🧹 Очистка сессии {self.session_id}")
+        logger.info("Session cleanup", extra={"session_id": self.session_id})
         self.current_audio.clear()
         # Дополнительная очистка при необходимости
 
@@ -139,7 +139,7 @@ class SessionManager:
         # Блокировка для потокобезопасности
         self._lock = asyncio.Lock()
         
-        logger.info(f"🚀 SessionManager инициализирован: max_sessions={max_concurrent_sessions}, max_workers={max_workers}")
+        logger.info("SessionManager initialized", extra={"max_sessions": max_concurrent_sessions, "max_workers": max_workers})
     
     async def create_session(
         self, 
@@ -149,33 +149,22 @@ class SessionManager:
     ) -> Optional[UserSession]:
         """
         Создаёт новую сессию для пользователя.
-        
-        Args:
-            user_id: ID пользователя
-            training_id: ID тренировки (опционально)
-            db_session_id: ID сессии в БД (опционально)
-            
-        Returns:
-            UserSession или None если достигнут лимит
         """
         async with self._lock:
-            # Проверяем лимит
             if len(self.sessions) >= self.max_concurrent_sessions:
-                logger.warning(f"⚠️ Достигнут лимит сессий ({self.max_concurrent_sessions})")
+                logger.warning("Session limit reached", extra={"limit": self.max_concurrent_sessions})
                 return None
-            
-            # Закрываем существующую сессию пользователя если есть
+
             if user_id in self.user_sessions:
                 old_session_id = self.user_sessions[user_id]
-                logger.info(f"🔄 Закрываем старую сессию {old_session_id} для user_id={user_id}")
-                await self.close_session(old_session_id)
-            
-            # Создаём новую сессию
+                logger.info("Closing existing session for user", extra={"old_session_id": old_session_id, "user_id": user_id})
+                await self._close_session_unlocked(old_session_id)
+
             session = UserSession(user_id, training_id, db_session_id)
             self.sessions[session.session_id] = session
             self.user_sessions[user_id] = session.session_id
-            
-            logger.info(f"✅ Создана сессия {session.session_id} (всего: {len(self.sessions)})")
+
+            logger.info("Session created", extra={"session_id": session.session_id, "total": len(self.sessions)})
             return session
     
     async def get_session(self, session_id: str) -> Optional[UserSession]:
@@ -209,25 +198,29 @@ class SessionManager:
         return None
     
     async def close_session(self, session_id: str):
-        """
-        Закрывает и удаляет сессию.
-        
-        Args:
-            session_id: ID сессии
-        """
+        """Закрывает и удаляет сессию."""
         async with self._lock:
-            session = self.sessions.get(session_id)
-            if session:
-                # Очищаем ресурсы
-                session.cleanup()
-                
-                # Удаляем из маппингов
-                if session.user_id in self.user_sessions:
-                    del self.user_sessions[session.user_id]
-                
-                del self.sessions[session_id]
-                
-                logger.info(f"🗑️ Сессия {session_id} закрыта (осталось: {len(self.sessions)})")
+            await self._close_session_unlocked(session_id)
+
+    async def _close_session_unlocked(self, session_id: str):
+        session = self.sessions.get(session_id)
+        if not session:
+            return
+
+        if session.websocket:
+            try:
+                await session.websocket.close(code=1000, reason="Session closed")
+            except Exception:
+                pass
+
+        session.cleanup()
+
+        if session.user_id in self.user_sessions:
+            if self.user_sessions[session.user_id] == session_id:
+                del self.user_sessions[session.user_id]
+
+        del self.sessions[session_id]
+        logger.info("Session closed", extra={"session_id": session_id, "remaining": len(self.sessions)})
     
     async def cleanup_inactive_sessions(self, timeout_seconds: int = 3600):
         """
@@ -245,7 +238,7 @@ class SessionManager:
                 to_close.append(session_id)
         
         for session_id in to_close:
-            logger.info(f"⏰ Закрываем неактивную сессию {session_id}")
+            logger.info("Closing inactive session", extra={"session_id": session_id})
             await self.close_session(session_id)
     
     def get_stats(self) -> dict:
@@ -265,7 +258,7 @@ class SessionManager:
     
     async def shutdown(self):
         """Завершает работу менеджера и закрывает все сессии"""
-        logger.info("🛑 Завершение работы SessionManager...")
+        logger.info("SessionManager shutting down")
         
         # Закрываем все сессии
         session_ids = list(self.sessions.keys())
@@ -275,7 +268,7 @@ class SessionManager:
         # Останавливаем пул воркеров
         self.stt_executor.shutdown(wait=True)
         
-        logger.info("✅ SessionManager остановлен")
+        logger.info("SessionManager stopped")
 
 
 # Глобальный экземпляр менеджера сессий

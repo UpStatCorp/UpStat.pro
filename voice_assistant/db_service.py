@@ -55,11 +55,11 @@ class VoiceTrainingDBService:
             db.commit()
             db.refresh(session)
             
-            logger.info(f"✅ Создана DB сессия #{session.id} для user_id={user_id}, training_id={training_id}")
+            logger.info("DB training session created", extra={"session_id": session.id, "user_id": user_id, "training_id": training_id})
             return session.id
-            
+
         except Exception as e:
-            logger.error(f"❌ Ошибка создания сессии в БД: {e}")
+            logger.error("Failed to create training session in DB", extra={"error": str(e)}, exc_info=True)
             db.rollback()
             raise
     
@@ -101,10 +101,10 @@ class VoiceTrainingDBService:
             
             db.add(message)
             db.commit()
-            logger.debug(f"💾 Сохранено сообщение для session_id={session_id}, role={role}")
-            
+            logger.debug("Voice message saved", extra={"session_id": session_id, "role": role})
+
         except Exception as e:
-            logger.error(f"❌ Ошибка сохранения сообщения: {e}")
+            logger.error("Failed to save voice message", extra={"error": str(e)}, exc_info=True)
             db.rollback()
     
     @staticmethod
@@ -132,12 +132,12 @@ class VoiceTrainingDBService:
             if session:
                 session.conversation_history_json = json.dumps(conversation_history, ensure_ascii=False)
                 db.commit()
-                logger.debug(f"💾 Обновлена история диалога для session_id={session_id}")
+                logger.debug("Conversation history updated", extra={"session_id": session_id})
             else:
-                logger.warning(f"⚠️ Сессия {session_id} не найдена")
-                
+                logger.warning("Training session not found", extra={"session_id": session_id})
+
         except Exception as e:
-            logger.error(f"❌ Ошибка обновления истории: {e}")
+            logger.error("Failed to update conversation history", extra={"error": str(e)}, exc_info=True)
             db.rollback()
     
     @staticmethod
@@ -182,12 +182,12 @@ class VoiceTrainingDBService:
                     session.feedback = feedback
                 
                 db.commit()
-                logger.info(f"✅ Сессия {session_id} завершена: {duration_seconds}s, {user_responses_count} ответов")
+                logger.info("Training session completed", extra={"session_id": session_id, "duration_s": duration_seconds, "responses": user_responses_count})
             else:
-                logger.warning(f"⚠️ Сессия {session_id} не найдена")
-                
+                logger.warning("Training session not found for completion", extra={"session_id": session_id})
+
         except Exception as e:
-            logger.error(f"❌ Ошибка завершения сессии: {e}")
+            logger.error("Failed to complete training session", extra={"error": str(e)}, exc_info=True)
             db.rollback()
     
     @staticmethod
@@ -215,12 +215,12 @@ class VoiceTrainingDBService:
                     session.duration_seconds = int(duration)
                 
                 db.commit()
-                logger.info(f"⚠️ Сессия {session_id} прервана")
+                logger.info("Training session aborted", extra={"session_id": session_id})
             else:
-                logger.warning(f"⚠️ Сессия {session_id} не найдена")
-                
+                logger.warning("Training session not found for abort", extra={"session_id": session_id})
+
         except Exception as e:
-            logger.error(f"❌ Ошибка прерывания сессии: {e}")
+            logger.error("Failed to abort training session", extra={"error": str(e)}, exc_info=True)
             db.rollback()
     
     @staticmethod
@@ -258,7 +258,7 @@ class VoiceTrainingDBService:
             return sessions
             
         except Exception as e:
-            logger.error(f"❌ Ошибка получения сессий: {e}")
+            logger.error("Failed to fetch user training sessions", extra={"error": str(e)}, exc_info=True)
             return []
     
     @staticmethod
@@ -286,6 +286,6 @@ class VoiceTrainingDBService:
             return messages
             
         except Exception as e:
-            logger.error(f"❌ Ошибка получения сообщений: {e}")
+            logger.error("Failed to fetch session messages", extra={"error": str(e)}, exc_info=True)
             return []
 
