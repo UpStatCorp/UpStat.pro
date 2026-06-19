@@ -1,7 +1,13 @@
 """
-Система отслеживания прогресса длительных операций
+Система отслеживания прогресса длительных операций.
+
+Хранилище — Redis (ключ `progress:op:{id}`), чтобы прогресс, записанный
+worker-процессом, был виден вебу. Если REDIS_URL не задан/недоступен —
+graceful-фолбэк на память процесса (как в middleware/rate_limit.py).
 """
 import asyncio
+import os
+import json
 import time
 from typing import Dict, Optional, Callable, Any, List
 from datetime import datetime
@@ -145,116 +151,185 @@ class ProgressInfo:
             "metadata": self.metadata
         }
 
+    def to_state(self) -> Dict[str, Any]:
+        """Полное состояние для персистентности (Redis), включая тайминги ETA."""
+        d = self.to_dict()
+        d["stage_start_times"] = self.stage_start_times
+        d["stage_durations"] = self.stage_durations
+        return d
+
+    @classmethod
+    def from_state(cls, state: Dict[str, Any]) -> "ProgressInfo":
+        """Восстановление из состояния (Redis)."""
+        p = cls(state["operation_id"], state.get("total_stages", 5), state.get("title", "Обработка..."))
+        p.status = ProgressStatus(state.get("status", "pending"))
+        p.current_stage = state.get("current_stage", 0)
+        p.stage_name = state.get("stage_name", "")
+        p.stage_message = state.get("stage_message", "")
+        p.percentage = state.get("percentage", 0)
+        p.error_message = state.get("error_message")
+        p.estimated_time_remaining = state.get("estimated_time_remaining")
+        p.can_cancel = state.get("can_cancel", False)
+        p.metadata = state.get("metadata", {}) or {}
+        try:
+            p.started_at = datetime.fromisoformat(state["started_at"]) if state.get("started_at") else p.started_at
+            p.updated_at = datetime.fromisoformat(state["updated_at"]) if state.get("updated_at") else p.updated_at
+            p.completed_at = datetime.fromisoformat(state["completed_at"]) if state.get("completed_at") else None
+        except (ValueError, TypeError):
+            pass
+        # ключи тайминга приходят из JSON строками — приводим к int
+        p.stage_start_times = {int(k): float(v) for k, v in (state.get("stage_start_times") or {}).items()}
+        p.stage_durations = {int(k): float(v) for k, v in (state.get("stage_durations") or {}).items()}
+        return p
+
 
 class ProgressTracker:
-    """Трекер прогресса операций"""
-    
+    """Трекер прогресса операций (Redis-backed, с in-memory фолбэком)."""
+
+    _KEY = "progress:op:{}"
+    _ACTIVE = "progress:active"
+
     def __init__(self):
-        self.operations: Dict[str, ProgressInfo] = {}
-        self.cleanup_interval = 3600  # Очистка каждый час
-        self.max_age = 86400  # Хранить операции 24 часа
+        self.cleanup_interval = 3600
+        self.max_age = int(os.getenv("PROGRESS_TTL_SECONDS", "86400"))  # 24ч
         self._cleanup_task: Optional[asyncio.Task] = None
-    
+        self._mem: Dict[str, ProgressInfo] = {}  # фолбэк, если Redis недоступен
+        self._redis = None
+        self._redis_tried = False
+
+    def _r(self):
+        """Ленивый sync-redis (как в rate_limit.py). None → in-memory фолбэк."""
+        if self._redis is None and not self._redis_tried:
+            self._redis_tried = True
+            url = os.getenv("REDIS_URL", "")
+            if url:
+                try:
+                    import redis as _redis
+                    client = _redis.from_url(url, decode_responses=True, socket_connect_timeout=2)
+                    client.ping()
+                    self._redis = client
+                except Exception as e:  # noqa: BLE001
+                    logger.warning(f"ProgressTracker: Redis недоступен, in-memory фолбэк: {e}")
+                    self._redis = None
+        return self._redis
+
+    def _save(self, p: ProgressInfo) -> None:
+        r = self._r()
+        if r is None:
+            self._mem[p.operation_id] = p
+            return
+        try:
+            r.set(self._KEY.format(p.operation_id), json.dumps(p.to_state(), ensure_ascii=False), ex=self.max_age)
+            if p.status in (ProgressStatus.PENDING, ProgressStatus.IN_PROGRESS):
+                r.sadd(self._ACTIVE, p.operation_id)
+            else:
+                r.srem(self._ACTIVE, p.operation_id)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"ProgressTracker save failed: {e}")
+            self._mem[p.operation_id] = p
+
+    def _load(self, operation_id: str) -> Optional[ProgressInfo]:
+        r = self._r()
+        if r is None:
+            return self._mem.get(operation_id)
+        try:
+            raw = r.get(self._KEY.format(operation_id))
+            if not raw:
+                return self._mem.get(operation_id)
+            return ProgressInfo.from_state(json.loads(raw))
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"ProgressTracker load failed: {e}")
+            return self._mem.get(operation_id)
+
     def create_operation(
         self,
         operation_id: str,
         total_stages: int = 5,
         title: str = "Обработка...",
-        can_cancel: bool = False
+        can_cancel: bool = False,
     ) -> ProgressInfo:
-        """Создать новую операцию"""
         progress = ProgressInfo(operation_id, total_stages, title)
         progress.can_cancel = can_cancel
-        self.operations[operation_id] = progress
-        
+        self._save(progress)
         logger.info(f"Created progress tracking for operation {operation_id}")
         return progress
-    
+
     def get_operation(self, operation_id: str) -> Optional[ProgressInfo]:
-        """Получить информацию об операции"""
-        return self.operations.get(operation_id)
-    
+        return self._load(operation_id)
+
     def update_operation(
-        self,
-        operation_id: str,
-        stage_number: int,
-        stage_name: str,
-        message: str
+        self, operation_id: str, stage_number: int, stage_name: str, message: str
     ) -> Optional[ProgressInfo]:
-        """Обновить прогресс операции"""
-        progress = self.operations.get(operation_id)
+        progress = self._load(operation_id)
         if progress:
-            # Завершить предыдущий этап если это новый этап
             if stage_number > progress.current_stage:
                 progress.complete_stage(progress.current_stage)
-            
             progress.start_stage(stage_number, stage_name, message)
-            logger.debug(f"Updated operation {operation_id}: stage {stage_number}, {message}")
+            self._save(progress)
         return progress
-    
+
     def complete_operation(self, operation_id: str, message: str = "Готово!"):
-        """Завершить операцию"""
-        progress = self.operations.get(operation_id)
+        progress = self._load(operation_id)
         if progress:
             progress.complete(message)
+            self._save(progress)
             logger.info(f"Completed operation {operation_id}")
-    
+
     def fail_operation(self, operation_id: str, error_message: str):
-        """Отметить операцию как неудачную"""
-        progress = self.operations.get(operation_id)
+        progress = self._load(operation_id)
         if progress:
             progress.fail(error_message)
+            self._save(progress)
             logger.error(f"Failed operation {operation_id}: {error_message}")
-    
+
     def cancel_operation(self, operation_id: str) -> bool:
-        """Отменить операцию"""
-        progress = self.operations.get(operation_id)
+        progress = self._load(operation_id)
         if progress and progress.can_cancel:
             progress.cancel()
+            self._save(progress)
             logger.info(f"Cancelled operation {operation_id}")
             return True
         return False
-    
+
     def list_active_operations(self, limit: int = 100) -> List[Dict[str, Any]]:
-        """Получить список активных операций"""
-        active = [
-            p.to_dict() for p in self.operations.values()
-            if p.status in (ProgressStatus.PENDING, ProgressStatus.IN_PROGRESS)
-        ]
-        return sorted(
-            active,
-            key=lambda x: x["started_at"],
-            reverse=True
-        )[:limit]
-    
+        r = self._r()
+        items: List[Dict[str, Any]] = []
+        if r is None:
+            items = [
+                p.to_dict() for p in self._mem.values()
+                if p.status in (ProgressStatus.PENDING, ProgressStatus.IN_PROGRESS)
+            ]
+        else:
+            try:
+                for op_id in list(r.smembers(self._ACTIVE)):
+                    p = self._load(op_id)
+                    if p is None or p.status not in (ProgressStatus.PENDING, ProgressStatus.IN_PROGRESS):
+                        r.srem(self._ACTIVE, op_id)  # подчистить протухшие/завершённые
+                        continue
+                    items.append(p.to_dict())
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"ProgressTracker list_active failed: {e}")
+        return sorted(items, key=lambda x: x["started_at"], reverse=True)[:limit]
+
     async def cleanup_old_operations(self):
-        """Очистка старых операций"""
+        """Redis чистит по TTL сам; in-memory — периодически чистим завершённые."""
         while True:
             try:
                 await asyncio.sleep(self.cleanup_interval)
-                
-                current_time = time.time()
-                to_remove = []
-                
-                for op_id, progress in self.operations.items():
-                    # Удаляем завершенные операции старше max_age
-                    if progress.completed_at:
-                        age = (datetime.utcnow() - progress.completed_at).total_seconds()
-                        if age > self.max_age:
-                            to_remove.append(op_id)
-                
+                if self._r() is not None:
+                    continue
+                to_remove = [
+                    op_id for op_id, p in list(self._mem.items())
+                    if p.completed_at and (datetime.utcnow() - p.completed_at).total_seconds() > self.max_age
+                ]
                 for op_id in to_remove:
-                    del self.operations[op_id]
-                    logger.debug(f"Cleaned up old operation {op_id}")
-                
+                    self._mem.pop(op_id, None)
                 if to_remove:
-                    logger.info(f"Cleaned up {len(to_remove)} old operations")
-                    
-            except Exception as e:
+                    logger.info(f"Cleaned up {len(to_remove)} old operations (in-memory)")
+            except Exception as e:  # noqa: BLE001
                 logger.error(f"Error in cleanup task: {e}")
-    
+
     def start_cleanup_task(self):
-        """Запустить фоновую задачу очистки"""
         if self._cleanup_task is None or self._cleanup_task.done():
             self._cleanup_task = asyncio.create_task(self.cleanup_old_operations())
             logger.info("Started progress tracker cleanup task")

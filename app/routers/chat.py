@@ -1,4 +1,5 @@
 import os
+import re
 import uuid
 import asyncio
 import logging
@@ -13,6 +14,7 @@ from models import Conversation, Message, Attachment, CRMRecording, CRMIntegrati
 from deps import require_user, require_capability
 from services.pipeline import run_pipeline, run_pipeline_from_text, run_pipeline_from_raw_text
 from services.image_pipeline import run_pipeline_from_images
+from services.queue import use_queue, enqueue_run_pipeline
 from services.error_handler import ErrorHandler, ValidationError, FileProcessingError
 from utils.file_validator import FileValidator, validate_uploaded_file
 
@@ -320,7 +322,9 @@ async def send_message(
                     validation_errors.append(f"{filename}: {e.user_message}")
                     continue
                 
-                ext = os.path.splitext(filename)[1] or ""
+                # Расширение для имени на диске: только безопасные символы, иначе без расширения
+                raw_ext = (os.path.splitext(filename)[1] or "").lower()
+                ext = raw_ext if re.fullmatch(r"\.[a-z0-9]{1,8}", raw_ext) else ""
                 safe_original = _secure_filename(filename)
                 safe_name = f"{uuid.uuid4().hex}{ext}"
                 user_dir = os.path.join(UPLOAD_DIR, str(target_user.id), str(conv.id))
@@ -458,7 +462,10 @@ async def send_message(
             # Запускаем pipeline с progress_conversation_id для отображения прогресса в чате менеджера
             progress_conv_id = manager_conv.id if manager_conv else None
             for att_id in audio_att_ids:
-                asyncio.create_task(run_pipeline(target_user.id, conv.id, att_id, progress_conversation_id=progress_conv_id))
+                if use_queue():
+                    await enqueue_run_pipeline("audio", target_user.id, conv.id, att_id, progress_conversation_id=progress_conv_id)
+                else:
+                    asyncio.create_task(run_pipeline(target_user.id, conv.id, att_id, progress_conversation_id=progress_conv_id))
         
         # Если есть текстовые файлы → запуск пайплайна без транскрибации
         elif text_att_ids:
@@ -490,7 +497,10 @@ async def send_message(
             # Запускаем pipeline с progress_conversation_id для отображения прогресса в чате менеджера
             progress_conv_id = manager_conv.id if manager_conv else None
             for att_id in text_att_ids:
-                asyncio.create_task(run_pipeline_from_text(target_user.id, conv.id, att_id, progress_conversation_id=progress_conv_id))
+                if use_queue():
+                    await enqueue_run_pipeline("text", target_user.id, conv.id, att_id, progress_conversation_id=progress_conv_id)
+                else:
+                    asyncio.create_task(run_pipeline_from_text(target_user.id, conv.id, att_id, progress_conversation_id=progress_conv_id))
 
         # Если есть изображения → распознавание переписки + анализ
         elif image_att_ids:
@@ -518,12 +528,15 @@ async def send_message(
             db.commit()
 
             progress_conv_id = manager_conv.id if manager_conv else None
-            asyncio.create_task(
-                run_pipeline_from_images(
-                    target_user.id, conv.id, image_att_ids,
-                    progress_conversation_id=progress_conv_id
+            if use_queue():
+                await enqueue_run_pipeline("images", target_user.id, conv.id, image_att_ids, progress_conversation_id=progress_conv_id)
+            else:
+                asyncio.create_task(
+                    run_pipeline_from_images(
+                        target_user.id, conv.id, image_att_ids,
+                        progress_conversation_id=progress_conv_id
+                    )
                 )
-            )
 
         # Если нет аудио, текстовых файлов и изображений — проверяем, не вставлен ли текст транскрибации
         if not audio_att_ids and not text_att_ids and not image_att_ids:
@@ -553,7 +566,10 @@ async def send_message(
                 db.add(got); db.commit()
                 
                 progress_conv_id = manager_conv.id if manager_conv else None
-                asyncio.create_task(run_pipeline_from_raw_text(target_user.id, conv.id, text_clean, progress_conversation_id=progress_conv_id))
+                if use_queue():
+                    await enqueue_run_pipeline("raw_text", target_user.id, conv.id, text_clean, progress_conversation_id=progress_conv_id)
+                else:
+                    asyncio.create_task(run_pipeline_from_raw_text(target_user.id, conv.id, text_clean, progress_conversation_id=progress_conv_id))
             else:
                 reply_text = scripted_reply(text_clean, len(files), target_user.name)
                 if reply_text:

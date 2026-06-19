@@ -12,6 +12,7 @@ from models import Conversation, Message, Attachment
 from deps import require_user, require_capability
 from services.pipeline_trener import run_pipeline_trener, run_pipeline_from_text_trener, run_pipeline_from_raw_text_trener
 from services.image_pipeline import run_pipeline_from_images_trener
+from services.queue import use_queue, enqueue_run_pipeline
 from services.error_handler import ErrorHandler, ValidationError, FileProcessingError
 from utils.file_validator import FileValidator, validate_uploaded_file
 
@@ -305,7 +306,10 @@ async def send_message(
         db.commit()
 
         for att_id in audio_att_ids:
-            asyncio.create_task(run_pipeline_trener(user.id, conv.id, att_id))
+            if use_queue():
+                await enqueue_run_pipeline("audio_trener", user.id, conv.id, att_id)
+            else:
+                asyncio.create_task(run_pipeline_trener(user.id, conv.id, att_id))
     
     # Если есть текстовые файлы → запуск пайплайна без транскрибации
     elif text_att_ids:
@@ -319,7 +323,10 @@ async def send_message(
         db.commit()
 
         for att_id in text_att_ids:
-            asyncio.create_task(run_pipeline_from_text_trener(user.id, conv.id, att_id))
+            if use_queue():
+                await enqueue_run_pipeline("text_trener", user.id, conv.id, att_id)
+            else:
+                asyncio.create_task(run_pipeline_from_text_trener(user.id, conv.id, att_id))
 
     # Если есть изображения → распознавание переписки + анализ тренера
     elif image_att_ids:
@@ -332,9 +339,12 @@ async def send_message(
         db.add(got)
         db.commit()
 
-        asyncio.create_task(
-            run_pipeline_from_images_trener(user.id, conv.id, image_att_ids)
-        )
+        if use_queue():
+            await enqueue_run_pipeline("images_trener", user.id, conv.id, image_att_ids)
+        else:
+            asyncio.create_task(
+                run_pipeline_from_images_trener(user.id, conv.id, image_att_ids)
+            )
 
     # Если нет аудио, текстовых файлов и изображений — проверяем, не вставлен ли текст транскрибации
     if not audio_att_ids and not text_att_ids and not image_att_ids:
@@ -347,7 +357,10 @@ async def send_message(
                 text=f"Текст транскрибации получен ({len(text_clean)} символов). Запускаю анализ…",
             )
             db.add(got); db.commit()
-            asyncio.create_task(run_pipeline_from_raw_text_trener(user.id, conv.id, text_clean))
+            if use_queue():
+                await enqueue_run_pipeline("raw_text_trener", user.id, conv.id, text_clean)
+            else:
+                asyncio.create_task(run_pipeline_from_raw_text_trener(user.id, conv.id, text_clean))
         else:
             reply_text = scripted_reply(text_clean, len(files), user.name)
             if reply_text:

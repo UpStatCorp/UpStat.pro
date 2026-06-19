@@ -23,6 +23,7 @@ from services.crm_service import (
     full_crm_sync, sync_crm_deals, sync_crm_leads,
 )
 from services.pipeline import run_pipeline, run_pipeline_from_raw_text
+from services.queue import use_queue, enqueue_analyze_recording, enqueue_batch
 from services.notification_service import NotificationService, NotificationType
 from services.training_plan_service import TrainingPlanService
 
@@ -604,13 +605,28 @@ async def analyze_recording_endpoint(recording_id: int, background_tasks: Backgr
     if not recording:
         raise HTTPException(404, "Запись не найдена")
     if recording.sync_status in ["downloading", "analyzing"]:
-        raise HTTPException(400, f"Запись уже в обработке: {recording.sync_status}")
+        # Запись «в обработке». Если процесс, который её обрабатывал, умер
+        # (рестарт/краш воркера), фоновая задача не возобновится и запись зависнет.
+        # Разрешаем повторный запуск, если она в этом статусе дольше таймаута —
+        # порог намеренно больше длительности любого реального анализа.
+        stuck_after = timedelta(minutes=int(os.getenv("STUCK_RECORDING_TIMEOUT_MIN", "30")))
+        last_activity = recording.downloaded_at or recording.created_at
+        is_stuck = last_activity is not None and (datetime.utcnow() - last_activity) > stuck_after
+        if not is_stuck:
+            raise HTTPException(400, f"Запись уже в обработке: {recording.sync_status}")
+        logger.warning(
+            f"Recording {recording.id} stuck in '{recording.sync_status}' since {last_activity}; "
+            f"allowing re-analysis."
+        )
 
     recording.sync_status = "downloading"
     recording.error_message = None
     db.commit()
 
-    background_tasks.add_task(analyze_recording_task, recording_id)
+    if use_queue():
+        await enqueue_analyze_recording(recording_id, owner_id=user.id)
+    else:
+        background_tasks.add_task(analyze_recording_task, recording_id)
     return JSONResponse({"status": "started"})
 
 
@@ -649,7 +665,11 @@ async def batch_analyze_recordings(request: Request, background_tasks: Backgroun
         rec.error_message = None
     db.commit()
 
-    background_tasks.add_task(batch_analyze_task, batch_id, user.id)
+    if use_queue():
+        # Батч = N отдельных per-record job (fairness + ретрай по одной записи)
+        await enqueue_batch([r.id for r in recordings], owner_id=user.id)
+    else:
+        background_tasks.add_task(batch_analyze_task, batch_id, user.id)
     return JSONResponse({"status": "started", "batch_id": batch_id, "count": len(recordings),
                          "message": f"Запущен анализ {len(recordings)} записей"})
 
@@ -727,7 +747,10 @@ async def crm_webhook_receiver(integration_id: int, webhook_secret: str, request
     integration = db.query(CRMIntegration).filter(CRMIntegration.id == integration_id, CRMIntegration.is_active == True).first()
     if not integration:
         raise HTTPException(404, "Integration not found")
-    if not integration.webhook_secret or integration.webhook_secret != webhook_secret:
+    import secrets as _secrets
+    if not integration.webhook_secret or not _secrets.compare_digest(
+        str(integration.webhook_secret), str(webhook_secret)
+    ):
         raise HTTPException(403, "Invalid webhook secret")
 
     # Проверяем capability владельца интеграции (webhook не проходит через require_user)
@@ -938,10 +961,16 @@ async def _process_chat_recording(db: Session, recording: CRMRecording, integrat
     db.commit()
     
     try:
-        await run_pipeline_from_raw_text(recording.user_id, conversation.id, chat_text)
+        pipeline_ok = await run_pipeline_from_raw_text(recording.user_id, conversation.id, chat_text)
     except Exception as e:
         recording.sync_status = "failed"
-        recording.error_message = f"Ошибка анализа чата: {str(e)[:400]}"
+        recording.error_message = f"Ошибка анализа чата: {str(e)[:2000]}"
+        db.commit()
+        return
+
+    if not pipeline_ok:
+        recording.sync_status = "failed"
+        recording.error_message = "Анализ не завершён — конвейер прервался (подробности в диалоге)"
         db.commit()
         return
 
@@ -1073,10 +1102,16 @@ async def _process_call_recording(db: Session, recording: CRMRecording, integrat
     db.commit()
 
     try:
-        await run_pipeline(recording.user_id, conversation.id, attachment.id)
+        pipeline_ok = await run_pipeline(recording.user_id, conversation.id, attachment.id)
     except Exception as e:
         recording.sync_status = "failed"
-        recording.error_message = f"Ошибка анализа: {str(e)[:400]}"
+        recording.error_message = f"Ошибка анализа: {str(e)[:2000]}"
+        db.commit()
+        return
+
+    if not pipeline_ok:
+        recording.sync_status = "failed"
+        recording.error_message = "Анализ не завершён — конвейер прервался (подробности в диалоге)"
         db.commit()
         return
 
@@ -1169,9 +1204,15 @@ async def analyze_recording_task(recording_id: int):
 
 
 def _extract_score_from_report(report_text: str) -> Optional[int]:
-    """Извлекает числовую оценку из текста отчёта"""
+    """Извлекает числовую оценку из текста отчёта.
+
+    Сначала ищет машиночитаемый маркер `ИТОГОВАЯ_ОЦЕНКА: NN` (его просим
+    выводить финальный промпт), затем — человекочитаемые форматы как fallback.
+    """
     import re
     patterns = [
+        # Машиночитаемый маркер — наивысший приоритет
+        r'ИТОГОВАЯ_ОЦЕНКА\s*[:=]\s*(\d{1,3})',
         r'(?:Общая оценка|Итоговая оценка|Оценка|Score|Балл)[:\s]*(\d{1,3})\s*(?:/\s*100|из\s*100|баллов)?',
         r'(\d{1,3})\s*(?:/\s*100|из\s*100)\s*(?:баллов|points)?',
         r'(?:Итого|Результат)[:\s]*(\d{1,3})',

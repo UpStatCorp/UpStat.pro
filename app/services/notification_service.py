@@ -1,9 +1,15 @@
 """
-Сервис уведомлений пользователю
+Сервис уведомлений пользователю.
+
+Хранилище — таблица `notifications` в Postgres (модель `Notification` в models.py),
+а НЕ память процесса. Это обязательно: анализы исполняются в отдельном
+worker-процессе, и уведомление, созданное воркером, должно быть видно вебу.
+Сервис stateless — создавать `NotificationService()` напрямую безопасно.
 """
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from enum import Enum
+import json
 import logging
 
 logger = logging.getLogger(__name__)
@@ -26,67 +32,50 @@ class NotificationPriority(Enum):
     URGENT = 4
 
 
-class Notification:
-    """Уведомление"""
-    
-    def __init__(
-        self,
-        id: str,
-        type: NotificationType,
-        title: str,
-        message: str,
-        priority: NotificationPriority = NotificationPriority.NORMAL,
-        duration: Optional[int] = None,  # Длительность показа в мс (None = до закрытия)
-        action_label: Optional[str] = None,
-        action_url: Optional[str] = None,
-        dismissible: bool = True,
-        metadata: Optional[Dict[str, Any]] = None
-    ):
-        self.id = id
-        self.type = type
-        self.title = title
-        self.message = message
-        self.priority = priority
-        self.duration = duration
-        self.action_label = action_label
-        self.action_url = action_url
-        self.dismissible = dismissible
-        self.created_at = datetime.utcnow()
-        self.read = False
-        self.metadata = metadata or {}
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Конвертация в словарь"""
-        return {
-            "id": self.id,
-            "type": self.type.value,
-            "title": self.title,
-            "message": self.message,
-            "priority": self.priority.value,
-            "duration": self.duration,
-            "action_label": self.action_label,
-            "action_url": self.action_url,
-            "dismissible": self.dismissible,
-            "created_at": self.created_at.isoformat(),
-            "read": self.read,
-            "metadata": self.metadata
-        }
+_ICONS = {
+    NotificationType.SUCCESS: "✅",
+    NotificationType.ERROR: "❌",
+    NotificationType.WARNING: "⚠️",
+    NotificationType.INFO: "ℹ️",
+    NotificationType.PROGRESS: "⏳",
+}
+
+MAX_NOTIFICATIONS_PER_USER = 100
+
+
+class _Created:
+    """Лёгкий результат add_notification (id строкой — совместимо с прежним API)."""
+    def __init__(self, id_: int):
+        self.id = str(id_)
+
+
+def _row_to_dict(n) -> Dict[str, Any]:
+    """DB-строка `notifications` → словарь прежней формы (для роутера/фронта)."""
+    meta = {}
+    if n.metadata_json:
+        try:
+            meta = json.loads(n.metadata_json)
+        except (json.JSONDecodeError, TypeError):
+            meta = {}
+    return {
+        "id": str(n.id),  # снаружи id остаётся строкой — схема роутера не меняется
+        "type": n.type,
+        "title": n.title,
+        "message": n.message,
+        "priority": int(meta.get("priority", NotificationPriority.NORMAL.value)),
+        "duration": meta.get("duration"),
+        "action_label": n.link_text,
+        "action_url": n.link,
+        "dismissible": bool(meta.get("dismissible", True)),
+        "created_at": n.created_at.isoformat() if n.created_at else datetime.utcnow().isoformat(),
+        "read": bool(n.is_read),
+        "metadata": meta.get("metadata", {}),
+    }
 
 
 class NotificationService:
-    """Сервис управления уведомлениями"""
-    
-    def __init__(self):
-        # Хранилище уведомлений по пользователям
-        self.user_notifications: Dict[int, List[Notification]] = {}
-        self.max_notifications_per_user = 100
-        self.notification_counter = 0
-    
-    def _generate_id(self) -> str:
-        """Генерация уникального ID уведомления"""
-        self.notification_counter += 1
-        return f"notif_{int(datetime.utcnow().timestamp())}_{self.notification_counter}"
-    
+    """Сервис управления уведомлениями (поверх таблицы notifications)."""
+
     def add_notification(
         self,
         user_id: int,
@@ -98,113 +87,171 @@ class NotificationService:
         action_label: Optional[str] = None,
         action_url: Optional[str] = None,
         dismissible: bool = True,
-        metadata: Optional[Dict[str, Any]] = None
-    ) -> Notification:
-        """Добавить уведомление для пользователя"""
-        
-        notification = Notification(
-            id=self._generate_id(),
-            type=type,
-            title=title,
-            message=message,
-            priority=priority,
-            duration=duration,
-            action_label=action_label,
-            action_url=action_url,
-            dismissible=dismissible,
-            metadata=metadata
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> _Created:
+        """Создать уведомление в БД для пользователя."""
+        from database import SessionLocal
+        from models import Notification as NotificationModel
+
+        meta_blob = json.dumps(
+            {
+                "priority": priority.value,
+                "duration": duration,
+                "dismissible": dismissible,
+                "metadata": metadata or {},
+            },
+            ensure_ascii=False,
         )
-        
-        if user_id not in self.user_notifications:
-            self.user_notifications[user_id] = []
-        
-        # Добавляем в начало списка
-        self.user_notifications[user_id].insert(0, notification)
-        
-        # Ограничиваем количество уведомлений
-        if len(self.user_notifications[user_id]) > self.max_notifications_per_user:
-            self.user_notifications[user_id] = self.user_notifications[user_id][:self.max_notifications_per_user]
-        
-        logger.info(f"Added {type.value} notification for user {user_id}: {title}")
-        return notification
-    
+        db = SessionLocal()
+        try:
+            n = NotificationModel(
+                user_id=user_id,
+                type=type.value,
+                title=title,
+                message=message,
+                icon=_ICONS.get(type, "🔔"),
+                link=action_url,
+                link_text=action_label,
+                is_read=False,
+                metadata_json=meta_blob,
+            )
+            db.add(n)
+            db.commit()
+            db.refresh(n)
+            new_id = n.id
+            self._trim(db, user_id)
+            logger.info(f"Added {type.value} notification for user {user_id}: {title}")
+            return _Created(new_id)
+        except Exception as e:  # noqa: BLE001
+            logger.error(f"add_notification failed for user {user_id}: {e}")
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            return _Created(0)
+        finally:
+            db.close()
+
+    def _trim(self, db, user_id: int) -> None:
+        """Оставляем не больше MAX_NOTIFICATIONS_PER_USER последних — удаляем старые."""
+        from models import Notification as NotificationModel
+        old_ids = [
+            row[0]
+            for row in db.query(NotificationModel.id)
+            .filter(NotificationModel.user_id == user_id)
+            .order_by(NotificationModel.created_at.desc())
+            .offset(MAX_NOTIFICATIONS_PER_USER)
+            .all()
+        ]
+        if old_ids:
+            db.query(NotificationModel).filter(NotificationModel.id.in_(old_ids)).delete(
+                synchronize_session=False
+            )
+            db.commit()
+
     def get_notifications(
         self,
         user_id: int,
         unread_only: bool = False,
-        limit: Optional[int] = None
+        limit: Optional[int] = None,
     ) -> List[Dict[str, Any]]:
-        """Получить уведомления пользователя"""
-        if user_id not in self.user_notifications:
-            return []
-        
-        notifications = self.user_notifications[user_id]
-        
-        if unread_only:
-            notifications = [n for n in notifications if not n.read]
-        
-        if limit:
-            notifications = notifications[:limit]
-        
-        return [n.to_dict() for n in notifications]
-    
+        """Получить уведомления пользователя (новые сверху)."""
+        from database import SessionLocal
+        from models import Notification as NotificationModel
+        db = SessionLocal()
+        try:
+            q = db.query(NotificationModel).filter(NotificationModel.user_id == user_id)
+            if unread_only:
+                q = q.filter(NotificationModel.is_read == False)  # noqa: E712
+            q = q.order_by(NotificationModel.created_at.desc())
+            if limit:
+                q = q.limit(limit)
+            return [_row_to_dict(n) for n in q.all()]
+        finally:
+            db.close()
+
     def mark_as_read(self, user_id: int, notification_id: str) -> bool:
-        """Отметить уведомление как прочитанное"""
-        if user_id not in self.user_notifications:
+        """Отметить уведомление прочитанным."""
+        from database import SessionLocal
+        from models import Notification as NotificationModel
+        try:
+            nid = int(notification_id)
+        except (TypeError, ValueError):
             return False
-        
-        for notification in self.user_notifications[user_id]:
-            if notification.id == notification_id:
-                notification.read = True
-                logger.debug(f"Marked notification {notification_id} as read for user {user_id}")
-                return True
-        
-        return False
-    
+        db = SessionLocal()
+        try:
+            n = db.query(NotificationModel).filter(
+                NotificationModel.id == nid, NotificationModel.user_id == user_id
+            ).first()
+            if not n:
+                return False
+            if not n.is_read:
+                n.is_read = True
+                n.read_at = datetime.utcnow()
+                db.commit()
+            return True
+        finally:
+            db.close()
+
     def mark_all_as_read(self, user_id: int) -> int:
-        """Отметить все уведомления как прочитанные"""
-        if user_id not in self.user_notifications:
-            return 0
-        
-        count = 0
-        for notification in self.user_notifications[user_id]:
-            if not notification.read:
-                notification.read = True
-                count += 1
-        
-        logger.info(f"Marked {count} notifications as read for user {user_id}")
-        return count
-    
+        """Отметить все уведомления прочитанными."""
+        from database import SessionLocal
+        from models import Notification as NotificationModel
+        db = SessionLocal()
+        try:
+            count = db.query(NotificationModel).filter(
+                NotificationModel.user_id == user_id, NotificationModel.is_read == False  # noqa: E712
+            ).update({"is_read": True, "read_at": datetime.utcnow()}, synchronize_session=False)
+            db.commit()
+            return int(count or 0)
+        finally:
+            db.close()
+
     def dismiss_notification(self, user_id: int, notification_id: str) -> bool:
-        """Удалить уведомление"""
-        if user_id not in self.user_notifications:
+        """Удалить уведомление."""
+        from database import SessionLocal
+        from models import Notification as NotificationModel
+        try:
+            nid = int(notification_id)
+        except (TypeError, ValueError):
             return False
-        
-        notifications = self.user_notifications[user_id]
-        for i, notification in enumerate(notifications):
-            if notification.id == notification_id:
-                notifications.pop(i)
-                logger.debug(f"Dismissed notification {notification_id} for user {user_id}")
-                return True
-        
-        return False
-    
+        db = SessionLocal()
+        try:
+            deleted = db.query(NotificationModel).filter(
+                NotificationModel.id == nid, NotificationModel.user_id == user_id
+            ).delete(synchronize_session=False)
+            db.commit()
+            return bool(deleted)
+        finally:
+            db.close()
+
     def get_unread_count(self, user_id: int) -> int:
-        """Получить количество непрочитанных уведомлений"""
-        if user_id not in self.user_notifications:
-            return 0
-        
-        return sum(1 for n in self.user_notifications[user_id] if not n.read)
-    
+        """Количество непрочитанных."""
+        from database import SessionLocal
+        from models import Notification as NotificationModel
+        db = SessionLocal()
+        try:
+            return int(
+                db.query(NotificationModel).filter(
+                    NotificationModel.user_id == user_id, NotificationModel.is_read == False  # noqa: E712
+                ).count()
+            )
+        finally:
+            db.close()
+
     def clear_all(self, user_id: int) -> int:
-        """Очистить все уведомления пользователя"""
-        if user_id not in self.user_notifications:
-            return 0
-        
-        count = len(self.user_notifications[user_id])
-        self.user_notifications[user_id] = []
-        logger.info(f"Cleared {count} notifications for user {user_id}")
-        return count
+        """Удалить все уведомления пользователя."""
+        from database import SessionLocal
+        from models import Notification as NotificationModel
+        db = SessionLocal()
+        try:
+            count = db.query(NotificationModel).filter(
+                NotificationModel.user_id == user_id
+            ).delete(synchronize_session=False)
+            db.commit()
+            return int(count or 0)
+        finally:
+            db.close()
     
     # Хелперы для быстрого создания типичных уведомлений
     
@@ -215,7 +262,7 @@ class NotificationService:
         message: str,
         duration: int = 5000,
         **kwargs
-    ) -> Notification:
+    ) -> "_Created":
         """Уведомление об успехе"""
         return self.add_notification(
             user_id=user_id,
@@ -233,7 +280,7 @@ class NotificationService:
         message: str,
         duration: Optional[int] = None,
         **kwargs
-    ) -> Notification:
+    ) -> "_Created":
         """Уведомление об ошибке"""
         return self.add_notification(
             user_id=user_id,
@@ -252,7 +299,7 @@ class NotificationService:
         message: str,
         duration: int = 8000,
         **kwargs
-    ) -> Notification:
+    ) -> "_Created":
         """Предупреждение"""
         return self.add_notification(
             user_id=user_id,
@@ -271,7 +318,7 @@ class NotificationService:
         message: str,
         duration: int = 5000,
         **kwargs
-    ) -> Notification:
+    ) -> "_Created":
         """Информационное уведомление"""
         return self.add_notification(
             user_id=user_id,

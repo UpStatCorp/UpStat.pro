@@ -44,7 +44,13 @@ ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 UPLOAD_DIR = os.path.abspath("uploads")
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+# Защитные сетки для внешних API (Фаза 0): ни один вызов не висит вечно.
+LLM_TIMEOUT_SECONDS = float(os.getenv("LLM_TIMEOUT_SECONDS", "120"))
+LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "3"))
+STT_TIMEOUT_SECONDS = float(os.getenv("STT_TIMEOUT_SECONDS", "120"))
+STT_MAX_RETRIES = int(os.getenv("STT_MAX_RETRIES", "2"))
+
+client = OpenAI(api_key=OPENAI_API_KEY, timeout=LLM_TIMEOUT_SECONDS, max_retries=LLM_MAX_RETRIES)
 
 
 def _ffmpeg_wav(src: Path, dst: Path, rate: int = 16000):
@@ -62,22 +68,39 @@ async def _elevenlabs_transcribe(wav_path: Path) -> Dict[str, Any]:
         "timestamps_granularity": "word",
         "tag_audio_events": True,
     }
-    timeout = httpx.Timeout(300.0)
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            with open(wav_path, "rb") as f:
-                files = {"file": f}
-                resp = await client.post(url, headers=headers, data=data, files=files)
-        if resp.status_code in (401, 403):
-            raise HTTPStatusError(
-                f"Unauthorized ({resp.status_code})", request=resp.request, response=resp
+    timeout = httpx.Timeout(STT_TIMEOUT_SECONDS)
+    last_exc: Optional[Exception] = None
+    # Ретраи только на временные сбои (5xx/сеть/таймаут). 401/403 — сразу наверх
+    # (вызывающий код переключится на Whisper).
+    for attempt in range(STT_MAX_RETRIES + 1):
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as http_client:
+                with open(wav_path, "rb") as f:
+                    files = {"file": f}
+                    resp = await http_client.post(url, headers=headers, data=data, files=files)
+            if resp.status_code in (401, 403):
+                raise HTTPStatusError(
+                    f"Unauthorized ({resp.status_code})", request=resp.request, response=resp
+                )
+            resp.raise_for_status()
+            return resp.json()
+        except HTTPStatusError as e:
+            status = e.response.status_code if e.response is not None else None
+            # 401/403 — не ретраим, пусть caller уйдёт на Whisper
+            if status in (401, 403) or (status is not None and status < 500):
+                raise
+            last_exc = e
+        except (TimeoutException, RequestError) as e:
+            last_exc = e
+        if attempt < STT_MAX_RETRIES:
+            backoff = 2 ** attempt
+            logger.warning(
+                f"ElevenLabs transcribe failed (attempt {attempt + 1}/{STT_MAX_RETRIES + 1}): "
+                f"{last_exc}. Retry in {backoff}s"
             )
-        resp.raise_for_status()
-        return resp.json()
-    except TimeoutException:
-        raise
-    except RequestError:
-        raise
+            await asyncio.sleep(backoff)
+    # Исчерпали ретраи — пробрасываем последнюю ошибку
+    raise last_exc
 
 
 def _openai_whisper_transcribe(audio_path: Path):
@@ -337,14 +360,26 @@ def _extract_and_collect_scores(response_text: str, checklist_scores: List[Dict]
     if json_match:
         try:
             scores_data = json.loads(json_match.group(1))
-            for score_item in scores_data.get("scores", []):
-                if "code" in score_item and "passed" in score_item:
-                    checklist_scores.append({
-                        "code": score_item["code"],
-                        "passed": bool(score_item["passed"]),
-                        "confidence": float(score_item.get("confidence", 0.8)),
-                    })
-            logger.info(f"Извлечено {len(scores_data.get('scores', []))} оценок из ответа GPT")
+            raw_scores = scores_data.get("scores", []) if isinstance(scores_data, dict) else []
+            added = 0
+            for score_item in raw_scores:
+                if not isinstance(score_item, dict):
+                    continue
+                code = score_item.get("code")
+                if not code or "passed" not in score_item:
+                    continue
+                try:
+                    confidence = float(score_item.get("confidence", 0.8))
+                except (TypeError, ValueError):
+                    confidence = 0.8
+                confidence = max(0.0, min(1.0, confidence))  # клампим в [0,1]
+                checklist_scores.append({
+                    "code": str(code),
+                    "passed": bool(score_item["passed"]),
+                    "confidence": confidence,
+                })
+                added += 1
+            logger.info(f"Извлечено {added} оценок из ответа GPT (из {len(raw_scores)} в JSON)")
         except (json.JSONDecodeError, ValueError) as e:
             logger.warning(f"Не удалось распарсить JSON scores: {e}")
 
@@ -374,6 +409,241 @@ def _read_text_file(file_path: Path) -> str:
             raise Exception(f"Ошибка чтения Word файла: {e}")
     else:
         raise Exception(f"Неподдерживаемый формат файла: {ext}")
+
+
+async def _run_all_checklists(
+    db: Session,
+    user_id: int,
+    dialogue_json_str: str,
+    research: Optional[ResearchLogger] = None,
+) -> tuple:
+    """Прогоняет диалог по всем чек-листам из ./checklists и по скрипту команды.
+
+    Каждый чек-лист изолирован: битый JSON-файл на диске или ошибка анализа
+    одного чек-листа НЕ прерывает остальные — анализ завершается по тем, что
+    отработали. Возвращает (combined_text, checklist_scores, skipped_list).
+    """
+    check_dir = Path("checklists")
+    check_files = sorted(check_dir.glob("*.json"))  # детерминированный порядок
+    analyses: List[str] = []
+    checklist_scores: List[Dict] = []
+    skipped: List[str] = []
+
+    # Скрипт команды (опционально)
+    team_script = None
+    try:
+        from services.team_access import get_team_script_for_user
+        from models import User as UserModel
+        target_user_obj = db.get(UserModel, user_id)
+        if target_user_obj:
+            team_script = get_team_script_for_user(db, target_user_obj, user_id)
+    except Exception as e:
+        logger.warning(f"Ошибка получения скрипта команды: {e}")
+
+    # Стандартные чек-листы — параллельно, с ограничением одновременности
+    # (чтобы не упереться в rate-limit OpenAI). Каждый чек-лист изолирован и
+    # пишет в СВОИ локальные списки (без гонок по общему состоянию); результаты
+    # затем собираются в детерминированном порядке файлов.
+    # В research-режиме идём последовательно — ради упорядоченного CoT-лога.
+    concurrency = 1 if research is not None else max(1, int(os.getenv("CHECKLIST_CONCURRENCY", "4")))
+    sem = asyncio.Semaphore(concurrency)
+
+    async def _one(cf: Path):
+        title = cf.stem.upper()
+        try:
+            data = json.loads(cf.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as e:
+            logger.error(f"Чек-лист '{cf.name}' пропущен — не удалось прочитать/распарсить: {e}")
+            return None
+        local_analyses: List[str] = []
+        local_scores: List[Dict] = []
+        async with sem:
+            try:
+                await _analyze_checklist(data, title, dialogue_json_str, local_analyses, local_scores, research=research)
+            except Exception as e:
+                logger.error(f"Чек-лист '{cf.name}' пропущен — ошибка анализа: {e}", exc_info=True)
+                return None
+        return local_analyses, local_scores
+
+    results = await asyncio.gather(*[_one(cf) for cf in check_files])
+    for cf, res in zip(check_files, results):
+        if res is None:
+            skipped.append(cf.stem)
+        else:
+            local_analyses, local_scores = res
+            analyses.extend(local_analyses)
+            checklist_scores.extend(local_scores)
+
+    # Скрипт команды
+    if team_script:
+        script_title = team_script.get("title", "Скрипт команды")
+        try:
+            await _analyze_checklist(team_script, script_title, dialogue_json_str, analyses, research=research)
+        except Exception as e:
+            logger.error(f"Скрипт команды пропущен — ошибка анализа: {e}", exc_info=True)
+            skipped.append(script_title)
+
+    combined = "\n".join(analyses)
+    if skipped:
+        combined += "\n\n⚠️ Пропущены чек-листы (ошибка обработки): " + ", ".join(skipped)
+    return combined, checklist_scores, skipped
+
+
+SCORE_MARKER_INSTRUCTION = (
+    "\n\nВ САМОМ КОНЦЕ ответа выведи итоговую оценку звонка отдельной строкой "
+    "в машиночитаемом виде:\nИТОГОВАЯ_ОЦЕНКА: NN/100\n"
+    "где NN — целое число от 0 до 100."
+)
+
+
+async def _finalize_analysis_and_report(
+    db: Session,
+    user_id: int,
+    conversation_id: int,
+    display_conv_id: int,
+    progress_conversation_id: Optional[int],
+    temp_dir: Path,
+    combined: str,
+    checklist_scores: List[Dict],
+    dialogue_json_str: str,
+    skipped_checklists: List[str],
+    research: Optional[ResearchLogger] = None,
+):
+    """Финальный отчёт + пост-процессы — общая часть всех трёх конвейеров.
+
+    Бросает исключение, если фатально не удалось построить итоговый отчёт
+    (вызывающий код пометит анализ как failed). Пост-процессы (win-probability,
+    параметры, паспорт, действия менеджера) — best-effort: их сбой логируется,
+    но не валит анализ, т.к. сам отчёт уже сохранён.
+    """
+    # Финальный промпт: из БД или fallback из кода
+    prompt_service = PromptService(db)
+    final_prompt_template = prompt_service.get_active_prompt("sales_audit_summary")
+    if final_prompt_template:
+        final_prompt = final_prompt_template.content.format(
+            analyses=combined, dialogue_json_str=dialogue_json_str
+        )
+        logger.info(f"🔍 Финальный промпт из БД (версия {final_prompt_template.version})")
+    else:
+        logger.warning("⚠️ FALLBACK: использую финальный промпт из кода")
+        final_prompt = (
+            "Суммируй результаты аудита, опираясь на найденные роли manager/client и процитированные фразы менеджера.\n"
+            "Сформируй отчёт для РОПа:\n"
+            "1) Сильные стороны (3–6) — по делу.\n"
+            "2) Зоны роста (3–6) — с конкретными рекомендациями к поведению и формулировками.\n"
+            "3) Примеры фраз МЕНЕДЖЕРА (5–10) из диалога: «фраза» [t=мм:сс–мм:сс].\n"
+            "4) Чек-лист исправлений на неделю (5–8 пунктов, измеримо).\n"
+            "Только факты из анализов и JSON-диалога — без домыслов.\n\n"
+            f"Анализы по чек-листам (с role mapping вверху):\n{combined}\n\n"
+            f"ДИАЛОГ_JSON (для ссылок на таймкоды):\n{dialogue_json_str}\n"
+        )
+
+    if research is not None:
+        final_prompt_for_call = final_prompt + REASONING_INSTRUCTION_SUMMARY + SCORE_MARKER_INSTRUCTION
+        final_call_kwargs = {
+            "model": "gpt-4o",
+            "messages": [{"role": "user", "content": final_prompt_for_call}],
+            "temperature": 0.4,
+            "max_tokens": 8000,
+        }
+    else:
+        final_prompt_for_call = final_prompt + SCORE_MARKER_INSTRUCTION
+        final_call_kwargs = {
+            "model": "gpt-4o",
+            "messages": [{"role": "user", "content": final_prompt_for_call}],
+            "temperature": 0.2,
+        }
+    final_resp = await asyncio.to_thread(
+        lambda: client.chat.completions.create(**final_call_kwargs)
+    )
+    summary_raw = final_resp.choices[0].message.content.strip()
+    summary = "=== ИТОГОВЫЙ ОТЧЁТ ===\n" + summary_raw
+    if research is not None:
+        try:
+            research.capture_stage(
+                stage_name="Итоговый отчёт", model="gpt-4o",
+                prompt=final_prompt_for_call, raw_response=summary_raw,
+                usage=getattr(final_resp, "usage", None),
+            )
+        except Exception as research_err:  # noqa: BLE001
+            logger.warning(f"Research capture (summary) failed: {research_err}")
+
+    report_body = combined + "\n\n" + summary
+    if skipped_checklists:
+        report_body += "\n\n⚠️ Часть чек-листов не обработана: " + ", ".join(skipped_checklists)
+
+    # uuid-суффикс в имени защищает от коллизий при параллельных/повторных анализах
+    report_path = temp_dir / f"analysis_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.txt"
+    report_path.write_text(report_body, encoding="utf-8")
+
+    if progress_conversation_id and progress_conversation_id != conversation_id:
+        msg_progress_done = Message(conversation_id=display_conv_id, user_id=None, role="bot",
+                                    text="✅ Анализ завершён! Результаты сохранены в аккаунт участника команды.")
+        db.add(msg_progress_done); db.commit()
+
+    msg_done = Message(conversation_id=conversation_id, user_id=None, role="bot",
+                       text="Готово ✅ Отчёт во вложении.")
+    db.add(msg_done); db.flush()
+    key_rep = os.path.relpath(report_path, start=UPLOAD_DIR)
+    _attach_file(db, msg_done.id, report_path.name, "text/plain", key_rep, report_path.stat().st_size)
+    db.commit()
+
+    analysis_text_full = combined + "\n\n" + summary
+
+    # Win Probability (best-effort)
+    try:
+        from services.win_probability_service import (
+            save_checklist_scores, calculate_win_probability, generate_probability_report
+        )
+        if checklist_scores:
+            save_checklist_scores(conversation_id, checklist_scores, db)
+            win_prob = calculate_win_probability(conversation_id, db)
+            if win_prob:
+                prob_report_path = generate_probability_report(win_prob, temp_dir, db)
+                key_prob = os.path.relpath(prob_report_path, start=UPLOAD_DIR)
+                _attach_file(db, msg_done.id, prob_report_path.name, "text/plain", key_prob, prob_report_path.stat().st_size)
+                db.commit()
+    except Exception as e:
+        logger.error(f"Ошибка расчёта Win Probability: {e}", exc_info=True)
+
+    # Извлечение ошибок и коррекций из анализа (best-effort)
+    try:
+        from services.analytics_service import AnalyticsService
+        from models import TeamMember
+        team_id = None
+        team_member = db.query(TeamMember).filter(TeamMember.user_id == user_id).first()
+        if team_member:
+            team_id = team_member.team_id
+        AnalyticsService.extract_errors_from_analysis(
+            db, user_id, conversation_id, msg_done.id, analysis_text_full, team_id
+        )
+    except Exception as e:
+        logger.error(f"Ошибка извлечения ошибок из анализа: {e}", exc_info=True)
+
+    # Извлечение структурированных параметров по справочнику (best-effort)
+    try:
+        from services.parameter_extraction import extract_parameters
+        await extract_parameters(conversation_id, dialogue_json_str, db, research=research)
+    except Exception as e:
+        logger.error(f"Ошибка извлечения параметров: {e}", exc_info=True)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+    # Паспорт продавца (best-effort)
+    try:
+        from services.seller_passport_service import update_seller_passport
+        await update_seller_passport(db, user_id, conversation_id, dialogue_json_str, analysis_text_full, research=research)
+    except Exception as e:
+        logger.error(f"Ошибка обновления паспорта продавца: {e}", exc_info=True)
+
+    # Сбор успешных/неуспешных действий менеджера (best-effort)
+    try:
+        from services.manager_actions_service import process_manager_actions
+        await process_manager_actions(db, user_id, conversation_id, dialogue_json_str, analysis_text_full, research=research)
+    except Exception as e:
+        logger.error(f"Ошибка сбора действий менеджера: {e}", exc_info=True)
 
 
 async def run_pipeline_from_text(user_id: int, conversation_id: int, text_attachment_id: int, progress_conversation_id: Optional[int] = None):
@@ -412,6 +682,7 @@ async def run_pipeline_from_text(user_id: int, conversation_id: int, text_attach
         logger.warning(f"ResearchLogger init failed: {research_err}")
         research = None
     
+    pipeline_ok = False
     try:
         text_att = db.get(Attachment, text_attachment_id)
         if not text_att:
@@ -449,8 +720,8 @@ async def run_pipeline_from_text(user_id: int, conversation_id: int, text_attach
         dialogue = redact_pii_in_dialogue(dialogue)
 
         # Сохраняем материалы
-        tr_txt = temp_dir / f"transcript_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.txt"
-        dialogue_path = temp_dir / f"dialogue_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
+        tr_txt = temp_dir / f"transcript_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.txt"
+        dialogue_path = temp_dir / f"dialogue_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.json"
 
         tr_txt.write_text(text, encoding="utf-8")
         dialogue_path.write_text(json.dumps(dialogue, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -472,186 +743,28 @@ async def run_pipeline_from_text(user_id: int, conversation_id: int, text_attach
                          text="Делаю анализ по чек-листам…")
         db.add(msg_an); db.commit()
 
-        check_dir = Path("checklists")
-        check_files = list(check_dir.glob("*.json"))
-        analyses: List[str] = []
-        checklist_scores: List[Dict] = []
         dialogue_json_str = dialogue_path.read_text(encoding="utf-8")
-
-        # Получаем скрипт команды для пользователя, если он есть
-        team_script = None
-        try:
-            from services.team_access import get_team_script_for_user
-            from models import User as UserModel
-            target_user_obj = db.get(UserModel, user_id)
-            if target_user_obj:
-                team_script = get_team_script_for_user(db, target_user_obj, user_id)
-        except Exception as e:
-            logger.warning(f"Ошибка получения скрипта команды: {e}")
-
-        # Обрабатываем стандартные чеклисты
-        for cf in check_files:
-            data = json.loads(cf.read_text(encoding="utf-8"))
-            script_title = cf.stem.upper()
-            
-            # Анализируем чеклист
-            await _analyze_checklist(data, script_title, dialogue_json_str, analyses, checklist_scores, research=research)
-        
-        # Обрабатываем скрипт команды, если он есть
-        if team_script:
-            script_title = team_script.get("title", "Скрипт команды")
-            await _analyze_checklist(team_script, script_title, dialogue_json_str, analyses, research=research)
-
-        combined = "\n".join(analyses)
-
-        # Получаем финальный промпт из базы данных
-        prompt_service = PromptService(db)
-        final_prompt_template = prompt_service.get_active_prompt("sales_audit_summary")
-        
-        if final_prompt_template:
-            # Используем промпт из базы данных
-            final_prompt = final_prompt_template.content.format(
-                analyses=combined,
-                dialogue_json_str=dialogue_json_str
-            )
-            logger.info(f"🔍 ИСПОЛЬЗУЮ ФИНАЛЬНЫЙ ПРОМПТ ИЗ БД (версия {final_prompt_template.version}): {final_prompt[:100]}...")
-        else:
-            # Fallback на старый промпт, если в БД нет активного
-            logger.warning("⚠️ FALLBACK: Использую старый финальный промпт из кода")
-            final_prompt = (
-                "Суммируй результаты аудита, опираясь на найденные роли manager/client и процитированные фразы менеджера.\n"
-                "Сформируй отчёт для РОПа:\n"
-                "1) Сильные стороны (3–6) — по делу.\n"
-                "2) Зоны роста (3–6) — с конкретными рекомендациями к поведению и формулировкам.\n"
-                "3) Примеры фраз МЕНЕДЖЕРА (5–10) из диалога: «фраза» [t=мм:сс–мм:сс].\n"
-                "4) Чек-лист исправлений на неделю (5–8 пунктов, измеримо).\n"
-                "Только факты из анализов и JSON-диалога — без домыслов.\n\n"
-                f"Анализы по чек-листам (с role mapping вверху):\n{combined}\n\n"
-                f"ДИАЛОГ_JSON (для ссылок на таймкоды):\n{dialogue_json_str}\n"
-            )
-        if research is not None:
-            final_prompt_for_call = final_prompt + REASONING_INSTRUCTION_SUMMARY
-            final_call_kwargs = {
-                "model": "gpt-4o",
-                "messages": [{"role": "user", "content": final_prompt_for_call}],
-                "temperature": 0.4,
-                "max_tokens": 8000,
-            }
-        else:
-            final_prompt_for_call = final_prompt
-            final_call_kwargs = {
-                "model": "gpt-4o",
-                "messages": [{"role": "user", "content": final_prompt_for_call}],
-                "temperature": 0.2,
-            }
-        final_resp = await asyncio.to_thread(
-            lambda: client.chat.completions.create(**final_call_kwargs)
+        combined, checklist_scores, skipped_checklists = await _run_all_checklists(
+            db, user_id, dialogue_json_str, research=research
         )
-        summary_raw = final_resp.choices[0].message.content.strip()
-        summary = "=== ИТОГОВЫЙ ОТЧЁТ ===\n" + summary_raw
-        if research is not None:
-            try:
-                research.capture_stage(
-                    stage_name="Итоговый отчёт",
-                    model="gpt-4o",
-                    prompt=final_prompt_for_call,
-                    raw_response=summary_raw,
-                    usage=getattr(final_resp, "usage", None),
-                )
-            except Exception as research_err:  # noqa: BLE001
-                logger.warning(f"Research capture (summary) failed: {research_err}")
 
-        report_path = temp_dir / f"analysis_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.txt"
-        report_path.write_text(combined + "\n\n" + summary, encoding="utf-8")
+        await _finalize_analysis_and_report(
+            db, user_id, conversation_id, display_conv_id, progress_conversation_id,
+            temp_dir, combined, checklist_scores, dialogue_json_str, skipped_checklists,
+            research=research,
+        )
 
-        # Если прогресс показывается в другом диалоге, создаем сообщение там
-        if progress_conversation_id and progress_conversation_id != conversation_id:
-            msg_progress_done = Message(conversation_id=display_conv_id, user_id=None, role="bot",
-                                       text="✅ Анализ завершён! Результаты сохранены в аккаунт участника команды.")
-            db.add(msg_progress_done); db.commit()
-        
-        # Финальное сообщение с результатами - в диалог участника (где будут результаты)
-        msg_done = Message(conversation_id=conversation_id, user_id=None, role="bot",
-                           text="Готово ✅ Отчёт во вложении.")
-        db.add(msg_done); db.flush()
-        key_rep = os.path.relpath(report_path, start=UPLOAD_DIR)
-        _attach_file(db, msg_done.id, report_path.name, "text/plain", key_rep, report_path.stat().st_size)
-        db.commit()
-
-        # Win Probability: сохраняем оценки и рассчитываем вероятность
-        try:
-            from services.win_probability_service import (
-                save_checklist_scores, calculate_win_probability, generate_probability_report
-            )
-            if checklist_scores:
-                save_checklist_scores(conversation_id, checklist_scores, db)
-                win_prob = calculate_win_probability(conversation_id, db)
-                if win_prob:
-                    prob_report_path = generate_probability_report(win_prob, temp_dir, db)
-                    key_prob = os.path.relpath(prob_report_path, start=UPLOAD_DIR)
-                    _attach_file(db, msg_done.id, prob_report_path.name, "text/plain", key_prob, prob_report_path.stat().st_size)
-                    db.commit()
-        except Exception as e:
-            logger.error(f"Ошибка расчёта Win Probability: {e}", exc_info=True)
-        
-        # Извлекаем ошибки и коррекции из анализа
-        try:
-            from services.analytics_service import AnalyticsService
-            from models import TeamMember
-            
-            # Определяем team_id для пользователя
-            team_id = None
-            team_member = db.query(TeamMember).filter(
-                TeamMember.user_id == user_id
-            ).first()
-            if team_member:
-                team_id = team_member.team_id
-            
-            # Извлекаем ошибки из финального отчета
-            analysis_text = combined + "\n\n" + summary
-            AnalyticsService.extract_errors_from_analysis(
-                db, user_id, conversation_id, msg_done.id, analysis_text, team_id
-            )
-        except Exception as e:
-            logger.error(f"Ошибка извлечения ошибок из анализа: {e}", exc_info=True)
-        
-        # Извлечение структурированных параметров (Слой 2 — аналитика)
-        try:
-            from services.parameter_extraction import extract_parameters
-            await extract_parameters(conversation_id, dialogue_json_str, db, research=research)
-        except Exception as e:
-            logger.error(f"Ошибка извлечения параметров: {e}", exc_info=True)
-            try:
-                db.rollback()
-            except Exception:
-                pass
-        
-        # Паспорт продавца: оценка по 5 этапам и снимок динамики
-        try:
-            from services.seller_passport_service import update_seller_passport
-            analysis_text_full = combined + "\n\n" + summary
-            await update_seller_passport(db, user_id, conversation_id, dialogue_json_str, analysis_text_full, research=research)
-        except Exception as e:
-            logger.error(f"Ошибка обновления паспорта продавца: {e}", exc_info=True)
-        
-        # Сбор успешных/неуспешных действий менеджера
-        try:
-            from services.manager_actions_service import process_manager_actions
-            analysis_text_full = combined + "\n\n" + summary
-            await process_manager_actions(db, user_id, conversation_id, dialogue_json_str, analysis_text_full, research=research)
-        except Exception as e:
-            logger.error(f"Ошибка сбора действий менеджера: {e}", exc_info=True)
-        
-        # Завершаем операцию прогресса
         tracker.complete_operation(operation_id, "Готово ✅ Отчёт во вложении.")
+        pipeline_ok = True
 
     finally:
         if research is not None:
             try:
-                research.finalize(status="completed")
+                research.finalize(status="completed" if pipeline_ok else "failed")
             except Exception as research_err:  # noqa: BLE001
                 logger.warning(f"ResearchLogger finalize failed: {research_err}")
         db.close()
+    return pipeline_ok
 
 
 async def run_pipeline_from_raw_text(user_id: int, conversation_id: int, raw_text: str, progress_conversation_id: Optional[int] = None):
@@ -688,6 +801,7 @@ async def run_pipeline_from_raw_text(user_id: int, conversation_id: int, raw_tex
         logger.warning(f"ResearchLogger init failed: {research_err}")
         research = None
     
+    pipeline_ok = False
     try:
         text = raw_text.strip()
         if not text:
@@ -712,8 +826,8 @@ async def run_pipeline_from_raw_text(user_id: int, conversation_id: int, raw_tex
         temp_dir = Path(UPLOAD_DIR) / str(user_id) / str(conversation_id)
         temp_dir.mkdir(parents=True, exist_ok=True)
 
-        tr_txt = temp_dir / f"transcript_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.txt"
-        dialogue_path = temp_dir / f"dialogue_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
+        tr_txt = temp_dir / f"transcript_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.txt"
+        dialogue_path = temp_dir / f"dialogue_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.json"
 
         tr_txt.write_text(text, encoding="utf-8")
         dialogue_path.write_text(json.dumps(dialogue, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -734,179 +848,28 @@ async def run_pipeline_from_raw_text(user_id: int, conversation_id: int, raw_tex
                          text="Делаю анализ по чек-листам…")
         db.add(msg_an); db.commit()
 
-        check_dir = Path("checklists")
-        check_files = list(check_dir.glob("*.json"))
-        analyses: List[str] = []
-        checklist_scores: List[Dict] = []
         dialogue_json_str = dialogue_path.read_text(encoding="utf-8")
-
-        # Получаем скрипт команды для пользователя, если он есть
-        team_script = None
-        try:
-            from services.team_access import get_team_script_for_user
-            from models import User as UserModel
-            target_user_obj = db.get(UserModel, user_id)
-            if target_user_obj:
-                team_script = get_team_script_for_user(db, target_user_obj, user_id)
-        except Exception as e:
-            logger.warning(f"Ошибка получения скрипта команды: {e}")
-
-        # Обрабатываем стандартные чеклисты
-        for cf in check_files:
-            data = json.loads(cf.read_text(encoding="utf-8"))
-            script_title = cf.stem.upper()
-            await _analyze_checklist(data, script_title, dialogue_json_str, analyses, checklist_scores, research=research)
-        
-        # Обрабатываем скрипт команды, если он есть
-        if team_script:
-            script_title = team_script.get("title", "Скрипт команды")
-            await _analyze_checklist(team_script, script_title, dialogue_json_str, analyses, research=research)
-
-        combined = "\n".join(analyses)
-
-        # Получаем финальный промпт из базы данных
-        prompt_service = PromptService(db)
-        final_prompt_template = prompt_service.get_active_prompt("sales_audit_summary")
-        
-        if final_prompt_template:
-            final_prompt = final_prompt_template.content.format(
-                analyses=combined,
-                dialogue_json_str=dialogue_json_str
-            )
-            logger.info(f"🔍 ИСПОЛЬЗУЮ ФИНАЛЬНЫЙ ПРОМПТ ИЗ БД (версия {final_prompt_template.version}): {final_prompt[:100]}...")
-        else:
-            logger.warning("⚠️ FALLBACK: Использую старый финальный промпт из кода")
-            final_prompt = (
-                "Суммируй результаты аудита, опираясь на найденные роли manager/client и процитированные фразы менеджера.\n"
-                "Сформируй отчёт для РОПа:\n"
-                "1) Сильные стороны (3–6) — по делу.\n"
-                "2) Зоны роста (3–6) — с конкретными рекомендациями к поведению и формулировкам.\n"
-                "3) Примеры фраз МЕНЕДЖЕРА (5–10) из диалога: «фраза» [t=мм:сс–мм:сс].\n"
-                "4) Чек-лист исправлений на неделю (5–8 пунктов, измеримо).\n"
-                "Только факты из анализов и JSON-диалога — без домыслов.\n\n"
-                f"Анализы по чек-листам (с role mapping вверху):\n{combined}\n\n"
-                f"ДИАЛОГ_JSON (для ссылок на таймкоды):\n{dialogue_json_str}\n"
-            )
-        if research is not None:
-            final_prompt_for_call = final_prompt + REASONING_INSTRUCTION_SUMMARY
-            final_call_kwargs = {
-                "model": "gpt-4o",
-                "messages": [{"role": "user", "content": final_prompt_for_call}],
-                "temperature": 0.4,
-                "max_tokens": 8000,
-            }
-        else:
-            final_prompt_for_call = final_prompt
-            final_call_kwargs = {
-                "model": "gpt-4o",
-                "messages": [{"role": "user", "content": final_prompt_for_call}],
-                "temperature": 0.2,
-            }
-        final_resp = await asyncio.to_thread(
-            lambda: client.chat.completions.create(**final_call_kwargs)
+        combined, checklist_scores, skipped_checklists = await _run_all_checklists(
+            db, user_id, dialogue_json_str, research=research
         )
-        summary_raw = final_resp.choices[0].message.content.strip()
-        summary = "=== ИТОГОВЫЙ ОТЧЁТ ===\n" + summary_raw
-        if research is not None:
-            try:
-                research.capture_stage(
-                    stage_name="Итоговый отчёт",
-                    model="gpt-4o",
-                    prompt=final_prompt_for_call,
-                    raw_response=summary_raw,
-                    usage=getattr(final_resp, "usage", None),
-                )
-            except Exception as research_err:  # noqa: BLE001
-                logger.warning(f"Research capture (summary) failed: {research_err}")
 
-        report_path = temp_dir / f"analysis_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.txt"
-        report_path.write_text(combined + "\n\n" + summary, encoding="utf-8")
+        await _finalize_analysis_and_report(
+            db, user_id, conversation_id, display_conv_id, progress_conversation_id,
+            temp_dir, combined, checklist_scores, dialogue_json_str, skipped_checklists,
+            research=research,
+        )
 
-        # Если прогресс показывается в другом диалоге, создаем сообщение там
-        if progress_conversation_id and progress_conversation_id != conversation_id:
-            msg_progress_done = Message(conversation_id=display_conv_id, user_id=None, role="bot",
-                                       text="✅ Анализ завершён! Результаты сохранены в аккаунт участника команды.")
-            db.add(msg_progress_done); db.commit()
-        
-        # Финальное сообщение с результатами
-        msg_done = Message(conversation_id=conversation_id, user_id=None, role="bot",
-                           text="Готово ✅ Отчёт во вложении.")
-        db.add(msg_done); db.flush()
-        key_rep = os.path.relpath(report_path, start=UPLOAD_DIR)
-        _attach_file(db, msg_done.id, report_path.name, "text/plain", key_rep, report_path.stat().st_size)
-        db.commit()
-
-        # Win Probability: сохраняем оценки и рассчитываем вероятность
-        try:
-            from services.win_probability_service import (
-                save_checklist_scores, calculate_win_probability, generate_probability_report
-            )
-            if checklist_scores:
-                save_checklist_scores(conversation_id, checklist_scores, db)
-                win_prob = calculate_win_probability(conversation_id, db)
-                if win_prob:
-                    prob_report_path = generate_probability_report(win_prob, temp_dir, db)
-                    key_prob = os.path.relpath(prob_report_path, start=UPLOAD_DIR)
-                    _attach_file(db, msg_done.id, prob_report_path.name, "text/plain", key_prob, prob_report_path.stat().st_size)
-                    db.commit()
-        except Exception as e:
-            logger.error(f"Ошибка расчёта Win Probability: {e}", exc_info=True)
-        
-        # Извлекаем ошибки и коррекции из анализа
-        try:
-            from services.analytics_service import AnalyticsService
-            from models import TeamMember
-            
-            team_id = None
-            team_member = db.query(TeamMember).filter(
-                TeamMember.user_id == user_id
-            ).first()
-            if team_member:
-                team_id = team_member.team_id
-            
-            analysis_text = combined + "\n\n" + summary
-            AnalyticsService.extract_errors_from_analysis(
-                db, user_id, conversation_id, msg_done.id, analysis_text, team_id
-            )
-        except Exception as e:
-            logger.error(f"Ошибка извлечения ошибок из анализа: {e}", exc_info=True)
-        
-        # Извлечение структурированных параметров (Слой 2 — аналитика)
-        try:
-            from services.parameter_extraction import extract_parameters
-            await extract_parameters(conversation_id, dialogue_json_str, db, research=research)
-        except Exception as e:
-            logger.error(f"Ошибка извлечения параметров: {e}", exc_info=True)
-            try:
-                db.rollback()
-            except Exception:
-                pass
-        
-        # Паспорт продавца: оценка по 5 этапам и снимок динамики
-        try:
-            from services.seller_passport_service import update_seller_passport
-            analysis_text_full = combined + "\n\n" + summary
-            await update_seller_passport(db, user_id, conversation_id, dialogue_json_str, analysis_text_full, research=research)
-        except Exception as e:
-            logger.error(f"Ошибка обновления паспорта продавца: {e}", exc_info=True)
-        
-        # Сбор успешных/неуспешных действий менеджера
-        try:
-            from services.manager_actions_service import process_manager_actions
-            analysis_text_full = combined + "\n\n" + summary
-            await process_manager_actions(db, user_id, conversation_id, dialogue_json_str, analysis_text_full, research=research)
-        except Exception as e:
-            logger.error(f"Ошибка сбора действий менеджера: {e}", exc_info=True)
-        
         tracker.complete_operation(operation_id, "Готово ✅ Отчёт во вложении.")
+        pipeline_ok = True
 
     finally:
         if research is not None:
             try:
-                research.finalize(status="completed")
+                research.finalize(status="completed" if pipeline_ok else "failed")
             except Exception as research_err:  # noqa: BLE001
                 logger.warning(f"ResearchLogger finalize failed: {research_err}")
         db.close()
+    return pipeline_ok
 
 
 async def run_pipeline(user_id: int, conversation_id: int, audio_attachment_id: int, progress_conversation_id: Optional[int] = None):
@@ -947,6 +910,7 @@ async def run_pipeline(user_id: int, conversation_id: int, audio_attachment_id: 
         logger.warning(f"ResearchLogger init failed: {research_err}")
         research = None
     
+    pipeline_ok = False
     try:
         audio_att = db.get(Attachment, audio_attachment_id)
         if not audio_att:
@@ -1048,13 +1012,19 @@ async def run_pipeline(user_id: int, conversation_id: int, audio_attachment_id: 
         dialogue = redact_pii_in_dialogue(dialogue)
 
         # Сохраняем материалы транскрибации
-        tr_txt = temp_dir / f"transcript_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.txt"
-        tr_json = temp_dir / f"transcript_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
-        dialogue_path = temp_dir / f"dialogue_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
+        tr_txt = temp_dir / f"transcript_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.txt"
+        tr_json = temp_dir / f"transcript_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.json"
+        dialogue_path = temp_dir / f"dialogue_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.json"
 
         tr_txt.write_text(text, encoding="utf-8")
         tr_json.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         dialogue_path.write_text(json.dumps(dialogue, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        # Промежуточный WAV больше не нужен (транскрипт получен) — освобождаем диск
+        try:
+            wav_path.unlink(missing_ok=True)
+        except Exception as cleanup_err:  # noqa: BLE001
+            logger.warning(f"Не удалось удалить временный WAV {wav_path}: {cleanup_err}")
 
         # Сообщение о готовности транскрипта - в диалог для отображения прогресса
         msg_tr_done = Message(conversation_id=display_conv_id, user_id=None, role="bot",
@@ -1076,183 +1046,25 @@ async def run_pipeline(user_id: int, conversation_id: int, audio_attachment_id: 
                          text="Делаю анализ по чек-листам…")
         db.add(msg_an); db.commit()
 
-        check_dir = Path("checklists")
-        check_files = list(check_dir.glob("*.json"))
-        analyses: List[str] = []
-        checklist_scores: List[Dict] = []
         dialogue_json_str = dialogue_path.read_text(encoding="utf-8")
-
-        # Получаем скрипт команды для пользователя, если он есть
-        team_script = None
-        try:
-            from services.team_access import get_team_script_for_user
-            from models import User as UserModel
-            target_user_obj = db.get(UserModel, user_id)
-            if target_user_obj:
-                team_script = get_team_script_for_user(db, target_user_obj, user_id)
-        except Exception as e:
-            logger.warning(f"Ошибка получения скрипта команды: {e}")
-
-        # Обрабатываем стандартные чеклисты
-        for cf in check_files:
-            data = json.loads(cf.read_text(encoding="utf-8"))
-            script_title = cf.stem.upper()
-            
-            # Анализируем чеклист
-            await _analyze_checklist(data, script_title, dialogue_json_str, analyses, checklist_scores, research=research)
-        
-        # Обрабатываем скрипт команды, если он есть
-        if team_script:
-            script_title = team_script.get("title", "Скрипт команды")
-            await _analyze_checklist(team_script, script_title, dialogue_json_str, analyses, research=research)
-
-        combined = "\n".join(analyses)
-
-        # Получаем финальный промпт из базы данных
-        prompt_service = PromptService(db)
-        final_prompt_template = prompt_service.get_active_prompt("sales_audit_summary")
-        
-        if final_prompt_template:
-            # Используем промпт из базы данных
-            final_prompt = final_prompt_template.content.format(
-                analyses=combined,
-                dialogue_json_str=dialogue_json_str
-            )
-            logger.info(f"🔍 ИСПОЛЬЗУЮ ФИНАЛЬНЫЙ ПРОМПТ ИЗ БД (версия {final_prompt_template.version}): {final_prompt[:100]}...")
-        else:
-            # Fallback на старый промпт, если в БД нет активного
-            logger.warning("⚠️ FALLBACK: Использую старый финальный промпт из кода")
-            final_prompt = (
-                "Суммируй результаты аудита, опираясь на найденные роли manager/client и процитированные фразы менеджера.\n"
-                "Сформируй отчёт для РОПа:\n"
-                "1) Сильные стороны (3–6) — по делу.\n"
-                "2) Зоны роста (3–6) — с конкретными рекомендациями к поведению и формулировками.\n"
-                "3) Примеры фраз МЕНЕДЖЕРА (5–10) из диалога: «фраза» [t=мм:сс–мм:сс].\n"
-                "4) Чек-лист исправлений на неделю (5–8 пунктов, измеримо).\n"
-                "Только факты из анализов и JSON-диалога — без домыслов.\n\n"
-                f"Анализы по чек-листам (с role mapping вверху):\n{combined}\n\n"
-                f"ДИАЛОГ_JSON (для ссылок на таймкоды):\n{dialogue_json_str}\n"
-            )
-        if research is not None:
-            final_prompt_for_call = final_prompt + REASONING_INSTRUCTION_SUMMARY
-            final_call_kwargs = {
-                "model": "gpt-4o",
-                "messages": [{"role": "user", "content": final_prompt_for_call}],
-                "temperature": 0.4,
-                "max_tokens": 8000,
-            }
-        else:
-            final_prompt_for_call = final_prompt
-            final_call_kwargs = {
-                "model": "gpt-4o",
-                "messages": [{"role": "user", "content": final_prompt_for_call}],
-                "temperature": 0.2,
-            }
-        final_resp = await asyncio.to_thread(
-            lambda: client.chat.completions.create(**final_call_kwargs)
+        combined, checklist_scores, skipped_checklists = await _run_all_checklists(
+            db, user_id, dialogue_json_str, research=research
         )
-        summary_raw = final_resp.choices[0].message.content.strip()
-        summary = "=== ИТОГОВЫЙ ОТЧЁТ ===\n" + summary_raw
-        if research is not None:
-            try:
-                research.capture_stage(
-                    stage_name="Итоговый отчёт",
-                    model="gpt-4o",
-                    prompt=final_prompt_for_call,
-                    raw_response=summary_raw,
-                    usage=getattr(final_resp, "usage", None),
-                )
-            except Exception as research_err:  # noqa: BLE001
-                logger.warning(f"Research capture (summary) failed: {research_err}")
 
-        report_path = temp_dir / f"analysis_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.txt"
-        report_path.write_text(combined + "\n\n" + summary, encoding="utf-8")
+        await _finalize_analysis_and_report(
+            db, user_id, conversation_id, display_conv_id, progress_conversation_id,
+            temp_dir, combined, checklist_scores, dialogue_json_str, skipped_checklists,
+            research=research,
+        )
 
-        # Если прогресс показывается в другом диалоге, создаем сообщение там
-        if progress_conversation_id and progress_conversation_id != conversation_id:
-            msg_progress_done = Message(conversation_id=display_conv_id, user_id=None, role="bot",
-                                       text="✅ Анализ завершён! Результаты сохранены в аккаунт участника команды.")
-            db.add(msg_progress_done); db.commit()
-        
-        # Финальное сообщение с результатами - в диалог участника (где будут результаты)
-        msg_done = Message(conversation_id=conversation_id, user_id=None, role="bot",
-                           text="Готово ✅ Отчёт во вложении.")
-        db.add(msg_done); db.flush()
-        key_rep = os.path.relpath(report_path, start=UPLOAD_DIR)
-        _attach_file(db, msg_done.id, report_path.name, "text/plain", key_rep, report_path.stat().st_size)
-        db.commit()
-
-        # Win Probability: сохраняем оценки и рассчитываем вероятность
-        try:
-            from services.win_probability_service import (
-                save_checklist_scores, calculate_win_probability, generate_probability_report
-            )
-            if checklist_scores:
-                save_checklist_scores(conversation_id, checklist_scores, db)
-                win_prob = calculate_win_probability(conversation_id, db)
-                if win_prob:
-                    prob_report_path = generate_probability_report(win_prob, temp_dir, db)
-                    key_prob = os.path.relpath(prob_report_path, start=UPLOAD_DIR)
-                    _attach_file(db, msg_done.id, prob_report_path.name, "text/plain", key_prob, prob_report_path.stat().st_size)
-                    db.commit()
-        except Exception as e:
-            logger.error(f"Ошибка расчёта Win Probability: {e}", exc_info=True)
-        
-        # Извлекаем ошибки и коррекции из анализа
-        try:
-            from services.analytics_service import AnalyticsService
-            from models import TeamMember
-            
-            # Определяем team_id для пользователя
-            team_id = None
-            team_member = db.query(TeamMember).filter(
-                TeamMember.user_id == user_id
-            ).first()
-            if team_member:
-                team_id = team_member.team_id
-            
-            # Извлекаем ошибки из финального отчета
-            analysis_text = combined + "\n\n" + summary
-            AnalyticsService.extract_errors_from_analysis(
-                db, user_id, conversation_id, msg_done.id, analysis_text, team_id
-            )
-        except Exception as e:
-            logger.error(f"Ошибка извлечения ошибок из анализа: {e}", exc_info=True)
-        
-        # Извлечение структурированных параметров (Слой 2 — аналитика для РОПа)
-        try:
-            from services.parameter_extraction import extract_parameters
-            await extract_parameters(conversation_id, dialogue_json_str, db, research=research)
-        except Exception as e:
-            logger.error(f"Ошибка извлечения параметров: {e}", exc_info=True)
-            try:
-                db.rollback()
-            except Exception:
-                pass
-        
-        # Паспорт продавца: оценка по 5 этапам и снимок динамики
-        try:
-            from services.seller_passport_service import update_seller_passport
-            analysis_text_full = combined + "\n\n" + summary
-            await update_seller_passport(db, user_id, conversation_id, dialogue_json_str, analysis_text_full, research=research)
-        except Exception as e:
-            logger.error(f"Ошибка обновления паспорта продавца: {e}", exc_info=True)
-        
-        # Сбор успешных/неуспешных действий менеджера
-        try:
-            from services.manager_actions_service import process_manager_actions
-            analysis_text_full = combined + "\n\n" + summary
-            await process_manager_actions(db, user_id, conversation_id, dialogue_json_str, analysis_text_full, research=research)
-        except Exception as e:
-            logger.error(f"Ошибка сбора действий менеджера: {e}", exc_info=True)
-        
-        # Завершаем операцию прогресса
         tracker.complete_operation(operation_id, "Готово ✅ Отчёт во вложении.")
+        pipeline_ok = True
 
     finally:
         if research is not None:
             try:
-                research.finalize(status="completed")
+                research.finalize(status="completed" if pipeline_ok else "failed")
             except Exception as research_err:  # noqa: BLE001
                 logger.warning(f"ResearchLogger finalize failed: {research_err}")
         db.close()
+    return pipeline_ok

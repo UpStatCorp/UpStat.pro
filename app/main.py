@@ -1,8 +1,15 @@
 import os
+import uuid
+import asyncio
+from contextlib import asynccontextmanager
+from pathlib import Path
 from dotenv import load_dotenv
+
+_APP_DIR = Path(__file__).parent
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.responses import RedirectResponse, JSONResponse
@@ -13,493 +20,6 @@ import logging
 from database import Base, engine, SessionLocal
 from routers import auth, chat, chat_trener, dashboard, public, settings, zoom_meetings, webrtc_meetings, admin, admin_prompts, admin_research, tts_proxy, training_plans, crm_integration, teams, team_analytics, sales, analytics, owner_dashboard
 from routers import training_catalog, training_program, train_report
-import sqlite3
-
-
-def create_training_tables():
-    """Создает таблицы для системы тренировок"""
-    try:
-        # Получаем путь к базе данных из URL
-        database_url = os.getenv("DATABASE_URL", "sqlite:///./app.db")
-        if database_url.startswith("sqlite:///"):
-            db_path = database_url.replace("sqlite:///", "")
-            if db_path.startswith("./"):
-                db_path = db_path[2:]
-        else:
-            return  # Не SQLite база данных
-        
-        if not os.path.exists(db_path):
-            return  # База данных не существует
-        
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        
-        # Проверяем существует ли таблица analysis_training_plans
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='analysis_training_plans'")
-        if not cursor.fetchone():
-            print("Создаем таблицы для системы тренировок...")
-            
-            # Создаем таблицу analysis_training_plans
-            cursor.execute("""
-                CREATE TABLE analysis_training_plans (
-                    id INTEGER NOT NULL,
-                    user_id INTEGER NOT NULL,
-                    report_message_id INTEGER NOT NULL,
-                    title VARCHAR(255) NOT NULL,
-                    recommendations_json TEXT NOT NULL,
-                    total_trainings INTEGER DEFAULT 0,
-                    completed_trainings INTEGER DEFAULT 0,
-                    status VARCHAR(20) DEFAULT 'active',
-                    created_at DATETIME,
-                    PRIMARY KEY (id),
-                    FOREIGN KEY(user_id) REFERENCES users (id),
-                    FOREIGN KEY(report_message_id) REFERENCES messages (id)
-                )
-            """)
-            cursor.execute("CREATE INDEX ix_analysis_training_plans_id ON analysis_training_plans(id)")
-            cursor.execute("CREATE INDEX ix_analysis_training_plans_user_id ON analysis_training_plans(user_id)")
-            cursor.execute("CREATE INDEX ix_analysis_training_plans_report_message_id ON analysis_training_plans(report_message_id)")
-            print("Таблица analysis_training_plans создана")
-            
-            # Создаем таблицу trainings
-            cursor.execute("""
-                CREATE TABLE trainings (
-                    id INTEGER NOT NULL,
-                    plan_id INTEGER NOT NULL,
-                    "order" INTEGER NOT NULL,
-                    title VARCHAR(255) NOT NULL,
-                    description TEXT NOT NULL,
-                    recommendation TEXT NOT NULL,
-                    scenario_type VARCHAR(50) DEFAULT 'custom',
-                    checklist_json TEXT,
-                    status VARCHAR(20) DEFAULT 'locked',
-                    attempts INTEGER DEFAULT 0,
-                    best_score INTEGER,
-                    last_attempt_at DATETIME,
-                    completed_at DATETIME,
-                    created_at DATETIME,
-                    PRIMARY KEY (id),
-                    FOREIGN KEY(plan_id) REFERENCES analysis_training_plans (id)
-                )
-            """)
-            cursor.execute("CREATE INDEX ix_trainings_id ON trainings(id)")
-            cursor.execute("CREATE INDEX ix_trainings_plan_id ON trainings(plan_id)")
-            print("Таблица trainings создана")
-            
-            # Создаем таблицу training_sessions
-            cursor.execute("""
-                CREATE TABLE training_sessions (
-                    id INTEGER NOT NULL,
-                    training_id INTEGER NOT NULL,
-                    user_id INTEGER NOT NULL,
-                    started_at DATETIME,
-                    completed_at DATETIME,
-                    duration_seconds INTEGER,
-                    transcript TEXT,
-                    score INTEGER,
-                    feedback TEXT,
-                    checklist_results_json TEXT,
-                    user_responses_count INTEGER DEFAULT 0,
-                    ai_questions_count INTEGER DEFAULT 0,
-                    PRIMARY KEY (id),
-                    FOREIGN KEY(training_id) REFERENCES trainings (id),
-                    FOREIGN KEY(user_id) REFERENCES users (id)
-                )
-            """)
-            cursor.execute("CREATE INDEX ix_training_sessions_id ON training_sessions(id)")
-            cursor.execute("CREATE INDEX ix_training_sessions_training_id ON training_sessions(training_id)")
-            cursor.execute("CREATE INDEX ix_training_sessions_user_id ON training_sessions(user_id)")
-            print("Таблица training_sessions создана")
-            
-            # Создаём таблицу уведомлений
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS notifications (
-                    id INTEGER NOT NULL,
-                    user_id INTEGER NOT NULL,
-                    type VARCHAR(50) NOT NULL,
-                    title VARCHAR(255) NOT NULL,
-                    message TEXT NOT NULL,
-                    icon VARCHAR(10) DEFAULT '🔔',
-                    link VARCHAR(512),
-                    link_text VARCHAR(100),
-                    is_read BOOLEAN NOT NULL DEFAULT 0,
-                    created_at DATETIME,
-                    read_at DATETIME,
-                    metadata_json TEXT,
-                    PRIMARY KEY (id),
-                    FOREIGN KEY(user_id) REFERENCES users (id)
-                )
-            """)
-            cursor.execute("CREATE INDEX ix_notifications_id ON notifications(id)")
-            cursor.execute("CREATE INDEX ix_notifications_user_id ON notifications(user_id)")
-            cursor.execute("CREATE INDEX ix_notifications_created_at ON notifications(created_at)")
-            print("Таблица notifications создана")
-            
-            conn.commit()
-            print("Таблицы для системы тренировок успешно созданы")
-        else:
-            print("Таблицы для системы тренировок уже существуют")
-        
-        # Создаем таблицы для аналитики
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='training_conversion_metrics'")
-        if not cursor.fetchone():
-            print("Создаем таблицы для аналитики...")
-            
-            # Создаем таблицу training_conversion_metrics
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS training_conversion_metrics (
-                    id INTEGER NOT NULL,
-                    user_id INTEGER NOT NULL,
-                    team_id INTEGER,
-                    metric_date DATETIME NOT NULL,
-                    period_type VARCHAR(20) DEFAULT 'daily',
-                    conversion_rates_json TEXT NOT NULL,
-                    total_plans INTEGER DEFAULT 0,
-                    active_plans INTEGER DEFAULT 0,
-                    completed_plans INTEGER DEFAULT 0,
-                    total_trainings INTEGER DEFAULT 0,
-                    completed_trainings INTEGER DEFAULT 0,
-                    avg_score REAL,
-                    created_at DATETIME,
-                    PRIMARY KEY (id),
-                    FOREIGN KEY(user_id) REFERENCES users (id),
-                    FOREIGN KEY(team_id) REFERENCES teams (id)
-                )
-            """)
-            cursor.execute("CREATE INDEX IF NOT EXISTS ix_training_conversion_metrics_user_id ON training_conversion_metrics(user_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS ix_training_conversion_metrics_team_id ON training_conversion_metrics(team_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS ix_training_conversion_metrics_date ON training_conversion_metrics(metric_date)")
-            print("Таблица training_conversion_metrics создана")
-            
-            # Создаем таблицу training_errors_corrections
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS training_errors_corrections (
-                    id INTEGER NOT NULL,
-                    user_id INTEGER NOT NULL,
-                    team_id INTEGER,
-                    conversation_id INTEGER NOT NULL,
-                    message_id INTEGER NOT NULL,
-                    error_type VARCHAR(100) NOT NULL,
-                    error_description TEXT NOT NULL,
-                    error_severity VARCHAR(20) DEFAULT 'medium',
-                    correction_text TEXT NOT NULL,
-                    correction_applied BOOLEAN DEFAULT 0,
-                    correction_applied_at DATETIME,
-                    training_plan_id INTEGER,
-                    training_id INTEGER,
-                    detected_at DATETIME NOT NULL,
-                    created_at DATETIME,
-                    PRIMARY KEY (id),
-                    FOREIGN KEY(user_id) REFERENCES users (id),
-                    FOREIGN KEY(team_id) REFERENCES teams (id),
-                    FOREIGN KEY(conversation_id) REFERENCES conversations (id),
-                    FOREIGN KEY(message_id) REFERENCES messages (id),
-                    FOREIGN KEY(training_plan_id) REFERENCES analysis_training_plans (id),
-                    FOREIGN KEY(training_id) REFERENCES trainings (id)
-                )
-            """)
-            cursor.execute("CREATE INDEX IF NOT EXISTS ix_training_errors_corrections_user_id ON training_errors_corrections(user_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS ix_training_errors_corrections_team_id ON training_errors_corrections(team_id)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS ix_training_errors_corrections_detected_at ON training_errors_corrections(detected_at)")
-            print("Таблица training_errors_corrections создана")
-            
-            conn.commit()
-            print("Таблицы для аналитики успешно созданы")
-        else:
-            print("Таблицы для аналитики уже существуют")
-        
-        conn.close()
-        
-    except Exception as e:
-        print(f"Ошибка при создании таблиц для системы тренировок: {e}")
-
-
-def update_database_schema():
-    """Обновляет схему базы данных для поддержки Google OAuth"""
-    try:
-        # Получаем путь к базе данных из URL
-        database_url = os.getenv("DATABASE_URL", "sqlite:///./app.db")
-        if database_url.startswith("sqlite:///"):
-            db_path = database_url.replace("sqlite:///", "")
-            if db_path.startswith("./"):
-                db_path = db_path[2:]
-        else:
-            return  # Не SQLite база данных
-        
-        if not os.path.exists(db_path):
-            return  # База данных не существует
-        
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        
-        # Проверяем существующие колонки
-        cursor.execute("PRAGMA table_info(users)")
-        columns_info = cursor.fetchall()
-        columns = [column[1] for column in columns_info]
-        
-        # Проверяем, нужно ли исправлять ограничение NOT NULL для password_hash
-        password_hash_nullable = True
-        for col in columns_info:
-            if col[1] == 'password_hash':
-                password_hash_nullable = not col[3]  # col[3] = notnull flag
-                break
-        
-        # Если password_hash все еще NOT NULL, нужно пересоздать таблицу
-        if not password_hash_nullable:
-            print("Исправляем ограничение NOT NULL для password_hash...")
-            
-            # Создаем новую таблицу с правильной схемой
-            cursor.execute("""
-                CREATE TABLE users_new (
-                    id INTEGER NOT NULL,
-                    email VARCHAR(255) NOT NULL,
-                    password_hash VARCHAR(255),
-                    name VARCHAR(120) NOT NULL,
-                    phone VARCHAR(20),
-                    avatar VARCHAR(512),
-                    role VARCHAR(10) NOT NULL DEFAULT 'user',
-                    google_id VARCHAR(255),
-                    is_oauth_user BOOLEAN NOT NULL DEFAULT 0,
-                    created_at DATETIME,
-                    updated_at VARCHAR,
-                    PRIMARY KEY (id)
-                )
-            """)
-            
-            # Копируем данные из старой таблицы
-            cursor.execute("""
-                INSERT INTO users_new 
-                (id, email, password_hash, name, phone, avatar, role, google_id, is_oauth_user, created_at, updated_at)
-                SELECT 
-                    id, email, password_hash, name, phone, avatar, role, 
-                    COALESCE(google_id, NULL) as google_id,
-                    COALESCE(is_oauth_user, 0) as is_oauth_user,
-                    created_at, updated_at
-                FROM users
-            """)
-            
-            # Удаляем старую таблицу
-            cursor.execute("DROP TABLE users")
-            
-            # Переименовываем новую таблицу
-            cursor.execute("ALTER TABLE users_new RENAME TO users")
-            
-            # Создаем индексы
-            cursor.execute("CREATE UNIQUE INDEX ix_users_email ON users(email)")
-            cursor.execute("CREATE INDEX ix_users_id ON users(id)")
-            cursor.execute("CREATE INDEX ix_users_role ON users(role)")
-            cursor.execute("CREATE UNIQUE INDEX ix_users_google_id ON users(google_id)")
-            
-            print("Таблица users пересоздана с правильной схемой")
-        else:
-            # Добавляем поля если их нет
-            if 'google_id' not in columns:
-                cursor.execute("ALTER TABLE users ADD COLUMN google_id VARCHAR(255)")
-                print("Добавлено поле google_id")
-            
-            if 'is_oauth_user' not in columns:
-                cursor.execute("ALTER TABLE users ADD COLUMN is_oauth_user BOOLEAN DEFAULT 0")
-                print("Добавлено поле is_oauth_user")
-            
-            # Создаем индекс для google_id если его нет
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='index' AND name='ix_users_google_id'")
-            if not cursor.fetchone():
-                cursor.execute("CREATE UNIQUE INDEX ix_users_google_id ON users(google_id)")
-                print("Создан индекс ix_users_google_id")
-        
-        conn.commit()
-        conn.close()
-        print("Схема базы данных обновлена для Google OAuth")
-        
-    except Exception as e:
-        print(f"Ошибка при обновлении схемы базы данных: {e}")
-
-
-def update_premium_schema():
-    """Добавляет поля подписки/лимитов в таблицу users (PostgreSQL + SQLite)"""
-    try:
-        from sqlalchemy import inspect, text
-        inspector = inspect(engine)
-
-        # Проверяем, что таблица users существует
-        if 'users' not in inspector.get_table_names():
-            return
-
-        columns = [c['name'] for c in inspector.get_columns('users')]
-
-        with engine.begin() as conn:
-            if 'is_premium' not in columns:
-                conn.execute(text("ALTER TABLE users ADD COLUMN is_premium BOOLEAN NOT NULL DEFAULT FALSE"))
-                print("✅ Добавлено поле is_premium")
-
-            if 'free_analyses_limit' not in columns:
-                conn.execute(text("ALTER TABLE users ADD COLUMN free_analyses_limit INTEGER NOT NULL DEFAULT 5"))
-                print("✅ Добавлено поле free_analyses_limit")
-
-            if 'analyses_used' not in columns:
-                conn.execute(text("ALTER TABLE users ADD COLUMN analyses_used INTEGER NOT NULL DEFAULT 0"))
-                print("✅ Добавлено поле analyses_used")
-
-            if 'premium_granted_by' not in columns:
-                conn.execute(text("ALTER TABLE users ADD COLUMN premium_granted_by INTEGER"))
-                print("✅ Добавлено поле premium_granted_by")
-
-            if 'premium_granted_at' not in columns:
-                conn.execute(text("ALTER TABLE users ADD COLUMN premium_granted_at TIMESTAMP"))
-                print("✅ Добавлено поле premium_granted_at")
-
-            # Расширяем поле role до VARCHAR(20) если PostgreSQL
-            database_url = os.getenv("DATABASE_URL", "sqlite:///./app.db")
-            if database_url.startswith("postgresql://") or database_url.startswith("postgres://"):
-                try:
-                    conn.execute(text("ALTER TABLE users ALTER COLUMN role TYPE VARCHAR(20)"))
-                    print("✅ Расширено поле role до VARCHAR(20)")
-                except Exception:
-                    pass  # Уже правильного размера
-
-        print("✅ Схема подписок обновлена")
-    except Exception as e:
-        print(f"⚠️ Ошибка при обновлении схемы подписок: {e}")
-
-
-def create_org_capability_schema():
-    """
-    Идемпотентная миграция: создаёт таблицу organizations,
-    добавляет organization_id и product_mode в teams/users.
-    Поддерживает SQLite и PostgreSQL.
-    """
-    try:
-        from sqlalchemy import inspect, text
-        inspector = inspect(engine)
-        database_url = os.getenv("DATABASE_URL", "sqlite:///./app.db")
-        is_postgres = database_url.startswith("postgresql://") or database_url.startswith("postgres://")
-
-        with engine.begin() as conn:
-            # 1. Создаём таблицу organizations (если нет)
-            if "organizations" not in inspector.get_table_names():
-                conn.execute(text("""
-                    CREATE TABLE organizations (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        name VARCHAR(255) NOT NULL,
-                        sku VARCHAR(50) NOT NULL DEFAULT 'FULL',
-                        market VARCHAR(20),
-                        data_residency VARCHAR(20),
-                        capabilities_override TEXT,
-                        assigned_by INTEGER REFERENCES users(id),
-                        assigned_at TIMESTAMP,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                    )
-                """) if not is_postgres else text("""
-                    CREATE TABLE IF NOT EXISTS organizations (
-                        id SERIAL PRIMARY KEY,
-                        name VARCHAR(255) NOT NULL,
-                        sku VARCHAR(50) NOT NULL DEFAULT 'FULL',
-                        market VARCHAR(20),
-                        data_residency VARCHAR(20),
-                        capabilities_override TEXT,
-                        assigned_by INTEGER REFERENCES users(id),
-                        assigned_at TIMESTAMP,
-                        created_at TIMESTAMP DEFAULT NOW()
-                    )
-                """))
-                print("✅ Создана таблица organizations")
-
-        # Перечитываем инспектор после возможного создания таблицы
-        inspector = inspect(engine)
-
-        with engine.begin() as conn:
-            # 2. teams.organization_id
-            team_cols = [c["name"] for c in inspector.get_columns("teams")]
-            if "organization_id" not in team_cols:
-                conn.execute(text(
-                    "ALTER TABLE teams ADD COLUMN organization_id INTEGER REFERENCES organizations(id)"
-                ))
-                print("✅ Добавлено поле teams.organization_id")
-
-            # 3. users.organization_id
-            user_cols = [c["name"] for c in inspector.get_columns("users")]
-            if "organization_id" not in user_cols:
-                conn.execute(text(
-                    "ALTER TABLE users ADD COLUMN organization_id INTEGER REFERENCES organizations(id)"
-                ))
-                print("✅ Добавлено поле users.organization_id")
-
-            # 4. users.product_mode (nullable, NULL = full — обратная совместимость)
-            if "product_mode" not in user_cols:
-                conn.execute(text(
-                    "ALTER TABLE users ADD COLUMN product_mode VARCHAR(20)"
-                ))
-                print("✅ Добавлено поле users.product_mode")
-
-            # 5. analysis_training_plans.plan_source (nullable — безопасный ALTER)
-            plan_cols = [c["name"] for c in inspector.get_columns("analysis_training_plans")] \
-                if "analysis_training_plans" in inspector.get_table_names() else []
-            if plan_cols and "plan_source" not in plan_cols:
-                conn.execute(text(
-                    "ALTER TABLE analysis_training_plans ADD COLUMN plan_source VARCHAR(20) DEFAULT 'analysis'"
-                ))
-                print("✅ Добавлено поле analysis_training_plans.plan_source")
-
-        # 6. Таблицы программы тренировок (train-режим)
-        # Перечитываем список таблиц после предыдущих DDL
-        table_names = inspector.get_table_names()
-
-        with engine.begin() as conn2:
-            if "training_programs" not in table_names:
-                if is_postgres:
-                    conn2.execute(text("""
-                        CREATE TABLE IF NOT EXISTS training_programs (
-                            id SERIAL PRIMARY KEY,
-                            team_id INTEGER NOT NULL REFERENCES teams(id),
-                            created_by INTEGER NOT NULL REFERENCES users(id),
-                            name VARCHAR(255) NOT NULL DEFAULT 'Программа тренировок',
-                            start_date TIMESTAMP,
-                            cycle_days INTEGER NOT NULL DEFAULT 0,
-                            is_active BOOLEAN NOT NULL DEFAULT TRUE,
-                            created_at TIMESTAMP DEFAULT NOW()
-                        )
-                    """))
-                else:
-                    conn2.execute(text("""
-                        CREATE TABLE IF NOT EXISTS training_programs (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            team_id INTEGER NOT NULL REFERENCES teams(id),
-                            created_by INTEGER NOT NULL REFERENCES users(id),
-                            name VARCHAR(255) NOT NULL DEFAULT 'Программа тренировок',
-                            start_date TIMESTAMP,
-                            cycle_days INTEGER NOT NULL DEFAULT 0,
-                            is_active BOOLEAN NOT NULL DEFAULT TRUE,
-                            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                        )
-                    """))
-                print("✅ Создана таблица training_programs")
-
-            if "training_program_days" not in table_names:
-                if is_postgres:
-                    conn2.execute(text("""
-                        CREATE TABLE IF NOT EXISTS training_program_days (
-                            id SERIAL PRIMARY KEY,
-                            program_id INTEGER NOT NULL REFERENCES training_programs(id),
-                            day_index INTEGER NOT NULL,
-                            stage_key VARCHAR(50),
-                            training_id INTEGER REFERENCES trainings(id)
-                        )
-                    """))
-                else:
-                    conn2.execute(text("""
-                        CREATE TABLE IF NOT EXISTS training_program_days (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            program_id INTEGER NOT NULL REFERENCES training_programs(id),
-                            day_index INTEGER NOT NULL,
-                            stage_key VARCHAR(50),
-                            training_id INTEGER REFERENCES trainings(id)
-                        )
-                    """))
-                print("✅ Создана таблица training_program_days")
-
-        print("✅ Схема Organization/capabilities обновлена")
-    except Exception as e:
-        print(f"⚠️ Ошибка при обновлении схемы Organization/capabilities: {e}")
 
 
 class BrandMiddleware(BaseHTTPMiddleware):
@@ -530,12 +50,70 @@ class BrandMiddleware(BaseHTTPMiddleware):
         return response
 
 
+def _check_alembic_head(log: logging.Logger) -> None:
+    """
+    Warn if Alembic migrations haven't been applied.
+    Does not block startup — lets create_all handle the base schema.
+    """
+    try:
+        from sqlalchemy import text as _text
+        with engine.connect() as _conn:
+            result = _conn.execute(_text("SELECT version_num FROM alembic_version LIMIT 1"))
+            row = result.fetchone()
+            if row is None:
+                log.warning("alembic_version table is empty — run 'alembic upgrade head' before starting workers")
+            else:
+                ver = row[0]
+                if ver != "018":
+                    log.warning(
+                        "Alembic version mismatch",
+                        extra={"current": ver, "expected": "018"},
+                    )
+    except Exception as exc:
+        log.warning("Could not check Alembic version", extra={"error": str(exc)})
+
+
+async def _session_cleanup_loop():
+    """Фоновая задача: каждые 5 минут закрывает неактивные WS-сессии."""
+    log = logging.getLogger("session_cleanup")
+    while True:
+        await asyncio.sleep(300)
+        try:
+            from voice_assistant.session_manager import get_session_manager
+            mgr = get_session_manager()
+            await mgr.cleanup_inactive_sessions(timeout_seconds=3600)
+            stats = mgr.get_stats()
+            log.info("Session cleanup complete", extra={"sessions": stats["total_sessions"]})
+        except Exception as exc:
+            log.error("Session cleanup error", extra={"error": str(exc)}, exc_info=True)
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    task = asyncio.create_task(_session_cleanup_loop())
+    try:
+        yield
+    finally:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        # Закрываем arq-пул, если он создавался для постановки задач
+        try:
+            from services.queue import close_arq_pool
+            await close_arq_pool()
+        except Exception:  # noqa: BLE001
+            pass
+
+
 def create_app() -> FastAPI:
     """Create and configure a FastAPI application."""
     load_dotenv()
-    
-    # Настройка логирования (до использования logger)
-    logging.basicConfig(level=logging.INFO)
+
+    # Настройка структурированного логирования и Sentry (до любых logger-вызовов)
+    from logging_config import setup_logging
+    setup_logging()
     logger = logging.getLogger(__name__)
 
     secret_key = os.getenv("SECRET_KEY")
@@ -549,20 +127,11 @@ def create_app() -> FastAPI:
             f"SECRET_KEY слишком короткий ({len(secret_key)} байт). Минимум — 32 символа."
         )
 
-    # Миграции через Alembic лучше, но для MVP создадим таблицы автоматически
+    # Проверяем, что alembic upgrade head был выполнен.
+    # Base.metadata.create_all — страховка только для таблиц из исходной схемы
+    # (migration 001 empty). Новые таблицы/колонки добавляются через Alembic.
+    _check_alembic_head(logger)
     Base.metadata.create_all(bind=engine)
-    
-    # Обновляем схему базы данных для Google OAuth
-    update_database_schema()
-    
-    # Создаем таблицы для системы тренировок
-    create_training_tables()
-    
-    # Обновляем схему подписок/лимитов
-    update_premium_schema()
-
-    # Создаём схему Organization/SKU/capabilities
-    create_org_capability_schema()
 
     # Синхронизируем справочник пунктов чеклистов для Win Probability
     try:
@@ -575,11 +144,27 @@ def create_app() -> FastAPI:
     except Exception as e:
         logger.warning(f"Ошибка синхронизации справочника чеклистов: {e}")
 
-    app = FastAPI(title="SaaS MVP (FastAPI)")
+    app = FastAPI(title="SaaS MVP (FastAPI)", lifespan=_lifespan)
+
+    # CORS: разрешаем только явный список доменов из CORS_ORIGINS.
+    # В dev можно задать "*", в prod — конкретные домены через запятую.
+    _cors_raw = os.getenv("CORS_ORIGINS", "")
+    _cors_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()] or ["*"]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["*"],
+    )
 
     # Порядок add_middleware: последний добавленный = первый на входящий запрос.
     # SessionMiddleware должен быть самым внешним, чтобы request.session доступен ниже.
-    https_only = os.getenv("HTTPS_ONLY", "false").lower() == "true"
+    # В production cookie сессии помечается Secure по умолчанию (переопределяется HTTPS_ONLY).
+    _env = os.getenv("ENVIRONMENT", "").lower()
+    _https_default = "true" if _env in ("production", "prod") else "false"
+    https_only = os.getenv("HTTPS_ONLY", _https_default).lower() == "true"
+    session_max_age = int(os.getenv("SESSION_MAX_AGE", str(60 * 60 * 8)))  # 8 часов (было 14 дней)
 
     from security import SecurityHeaders as _SH
 
@@ -590,10 +175,35 @@ def create_app() -> FastAPI:
                 response.headers.setdefault(header, value)
             return response
 
+    # CSRF-защита для изменяющих запросов: Origin/Referer должны совпадать с хостом.
+    # Дополняет SameSite=lax cookie без необходимости вставлять токены во все формы.
+    class _CSRFOriginMiddleware(BaseHTTPMiddleware):
+        SAFE_METHODS = {"GET", "HEAD", "OPTIONS", "TRACE"}
+        EXEMPT_PREFIXES = ("/crm/webhook/",)  # внешние вебхуки без браузерного Origin
+
+        async def dispatch(self, request: Request, call_next):
+            from urllib.parse import urlparse
+            if request.method in self.SAFE_METHODS or any(
+                request.url.path.startswith(p) for p in self.EXEMPT_PREFIXES
+            ):
+                return await call_next(request)
+            host = request.headers.get("host", "")
+            origin = request.headers.get("origin")
+            if origin:
+                if urlparse(origin).netloc != host:
+                    return JSONResponse({"detail": "CSRF: origin mismatch"}, status_code=403)
+            else:
+                referer = request.headers.get("referer")
+                if referer and urlparse(referer).netloc != host:
+                    return JSONResponse({"detail": "CSRF: referer mismatch"}, status_code=403)
+            return await call_next(request)
+
     app.add_middleware(_SecurityHeadersMiddleware)
 
     from middleware.rate_limit import RateLimitMiddleware
     app.add_middleware(RateLimitMiddleware)
+
+    app.add_middleware(_CSRFOriginMiddleware)
 
     app.add_middleware(BrandMiddleware)
 
@@ -602,22 +212,45 @@ def create_app() -> FastAPI:
         secret_key=secret_key,
         https_only=https_only,
         same_site="lax",
+        max_age=session_max_age,
     )
 
     # templates + partials
-    templates = Jinja2Templates(directory="templates")
+    templates = Jinja2Templates(directory=str(_APP_DIR / "templates"))
     # Удобная глобальная функция: в шаблонах {{ brand }} = request.state.brand
     templates.env.globals["get_brand"] = lambda req: getattr(req.state, "brand", "full")
+
+    # i18n: context-aware перевод и локализованные даты.
+    # Локаль берётся из `user`/`current_user` в контексте (EN только для TRAIN_GLOBAL,
+    # иначе RU). Для RU перевод 1:1 — поведение существующих шаблонов не меняется.
+    try:
+        from services.i18n_service import (
+            make_jinja_translator,
+            make_jinja_dateformat,
+            resolve_locale,
+        )
+    except ImportError:
+        from app.services.i18n_service import (
+            make_jinja_translator,
+            make_jinja_dateformat,
+            resolve_locale,
+        )
+    _translator = make_jinja_translator()
+    templates.env.globals["_"] = _translator
+    templates.env.globals["gettext"] = _translator
+    templates.env.globals["resolve_locale"] = resolve_locale
+    templates.env.filters["localdate"] = make_jinja_dateformat()
+
     app.state.templates = templates
 
-    app.mount("/static", StaticFiles(directory="static"), name="static")
+    app.mount("/static", StaticFiles(directory=str(_APP_DIR / "static")), name="static")
 
     app.include_router(public.router)
     app.include_router(auth.router)
     app.include_router(chat.router)
     app.include_router(chat_trener.router)
-    app.include_router(dashboard.router)
     app.include_router(settings.router)
+    app.include_router(dashboard.router)
     app.include_router(zoom_meetings.router)
     app.include_router(webrtc_meetings.router)
     app.include_router(admin.router)
@@ -700,24 +333,49 @@ app = create_app()
 # Глобальный logger для middleware
 logger = logging.getLogger(__name__)
 
+
+@app.get("/health", include_in_schema=False)
+async def health():
+    return {"status": "ok"}
+
+def _safe_log_url(request: Request) -> str:
+    """URL для логов без чувствительных частей (секрет вебхука, токены в query)."""
+    path = request.url.path
+    # Секрет CRM-вебхука в пути: /crm/webhook/{id}/{secret} → маскируем secret
+    if path.startswith("/crm/webhook/"):
+        parts = path.split("/")
+        if len(parts) >= 5:
+            parts[4] = "***"
+            path = "/".join(parts)
+        return path
+    # query может содержать token=... → не логируем query целиком, только путь
+    if request.url.query:
+        return f"{path}?<redacted>"
+    return path
+
+
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
-    logger.info(f"Запрос: {request.method} {request.url}")
+    request_id = str(uuid.uuid4())
+    request.state.request_id = request_id
+    safe_url = _safe_log_url(request)
+    logger.info(f"Запрос: {request.method} {safe_url} request_id={request_id}")
     try:
         response = await call_next(request)
-        logger.info(f"Ответ: {response.status_code}")
+        response.headers["X-Request-Id"] = request_id
+        logger.info(f"Ответ: {response.status_code} request_id={request_id}")
         return response
     except Exception as e:
-        logger.error(f"❌ Ошибка при обработке запроса {request.method} {request.url}: {e}", exc_info=True)
+        logger.error(f"Ошибка при обработке запроса {request.method} {safe_url} request_id={request_id}: {e}", exc_info=True)
         raise
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """Глобальный обработчик исключений для логирования всех ошибок"""
-    logger.error(f"❌ Необработанное исключение: {type(exc).__name__}: {exc}", exc_info=True)
+    request_id = getattr(getattr(request, "state", None), "request_id", None)
+    logger.error(f"Необработанное исключение {type(exc).__name__} request_id={request_id}: {exc}", exc_info=True)
     return JSONResponse(
         status_code=500,
-        content={"detail": f"Внутренняя ошибка сервера: {str(exc)}"}
+        content={"detail": "Внутренняя ошибка сервера", "request_id": request_id},
     )
 
 @app.exception_handler(RequestValidationError)
