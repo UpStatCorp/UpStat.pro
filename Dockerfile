@@ -25,8 +25,13 @@ COPY voice_assistant/ ./voice_assistant/
 COPY checklists/ ./checklists/
 COPY checklists_trener/ ./checklists_trener/
 
-# Создание пользователя для безопасности
-RUN useradd --create-home --shell /bin/bash app && chown -R app:app /app
+# Создание пользователя для безопасности.
+# uploads — named volume; создаём каталог в образе и отдаём его app ДО chown,
+# чтобы на свежем томе Docker инициализировал права app:app (иначе том = root,
+# а непривилегированный app не сможет писать → Permission denied).
+RUN useradd --create-home --shell /bin/bash app \
+    && mkdir -p /app/uploads \
+    && chown -R app:app /app
 USER app
 
 # Установка переменной окружения для Python
