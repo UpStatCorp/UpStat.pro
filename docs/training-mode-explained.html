@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"/>
+<title>UpStat — Режим «Только тренировки» и доступ для российских клиентов</title>
+<style>
+  @page { size: A4; margin: 16mm 15mm 20mm 15mm; }
+
+  :root{
+    --primary:#2563eb;
+    --primary-dark:#1d4ed8;
+    --ink:#0f172a;
+    --muted:#64748b;
+    --border:#e2e8f0;
+    --success:#059669;
+    --warning:#d97706;
+    --danger:#dc2626;
+    --surface:#f8fafc;
+    --train:#0ea5e9;
+  }
+
+  *{box-sizing:border-box;margin:0;padding:0;}
+
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    font-size:10.5pt;
+    line-height:1.55;
+    color:var(--ink);
+    background:#fff;
+  }
+
+  /* ── Обложка ── */
+  .cover{
+    page-break-after:always;
+    min-height:262mm;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+    padding:22mm 14mm;
+    background:linear-gradient(150deg,#0f172a 0%,#1e3a8a 45%,#2563eb 100%);
+    color:#fff;
+  }
+  .cover-badge{
+    display:inline-block;
+    background:rgba(255,255,255,.15);
+    border:1px solid rgba(255,255,255,.28);
+    padding:6px 15px;
+    border-radius:999px;
+    font-size:9pt;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    margin-bottom:26px;
+    width:fit-content;
+  }
+  .cover h1{
+    font-size:30pt;
+    font-weight:800;
+    line-height:1.12;
+    margin-bottom:18px;
+    letter-spacing:-.02em;
+  }
+  .cover .subtitle{
+    font-size:13.5pt;
+    opacity:.92;
+    max-width:92%;
+    line-height:1.5;
+  }
+  .cover-meta{
+    margin-top:auto;
+    padding-top:28mm;
+    border-top:1px solid rgba(255,255,255,.2);
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:18px;
+    font-size:10pt;
+  }
+  .cover-meta dt{opacity:.7;font-size:8.5pt;text-transform:uppercase;letter-spacing:.06em;}
+  .cover-meta dd{font-weight:600;margin-top:4px;}
+
+  /* ── Типографика ── */
+  h2{
+    font-size:17pt;
+    font-weight:800;
+    color:var(--primary-dark);
+    margin:0 0 14px;
+    letter-spacing:-.02em;
+    page-break-after:avoid;
+  }
+  h3{
+    font-size:12pt;
+    font-weight:700;
+    margin:16px 0 8px;
+    color:var(--ink);
+    page-break-after:avoid;
+  }
+  p{margin-bottom:9px;}
+  ul,ol{margin:0 0 10px 18px;}
+  li{margin-bottom:5px;}
+  strong{font-weight:700;}
+
+  .lead{font-size:11.5pt;color:#334155;margin-bottom:14px;line-height:1.6;}
+
+  .section{page-break-inside:avoid;margin-bottom:18px;}
+  .section-break{page-break-before:always;}
+
+  .eyebrow{
+    font-size:8.5pt;
+    text-transform:uppercase;
+    letter-spacing:.1em;
+    color:var(--primary);
+    font-weight:700;
+    margin-bottom:6px;
+  }
+
+  /* ── Карточки и блоки ── */
+  .card{
+    border:1px solid var(--border);
+    border-radius:12px;
+    padding:14px 16px;
+    margin-bottom:12px;
+    background:#fff;
+  }
+  .card.surface{background:var(--surface);}
+
+  .callout{
+    border-left:4px solid var(--primary);
+    background:#eff6ff;
+    border-radius:0 8px 8px 0;
+    padding:12px 16px;
+    margin:12px 0;
+  }
+  .callout.success{border-color:var(--success);background:#ecfdf5;}
+  .callout.warning{border-color:var(--warning);background:#fffbeb;}
+  .callout .t{font-weight:700;margin-bottom:4px;}
+
+  /* ── Сравнение режимов ── */
+  .compare{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0;}
+  .mode-box{border:1px solid var(--border);border-radius:12px;overflow:hidden;}
+  .mode-box .head{padding:11px 14px;color:#fff;font-weight:700;font-size:11pt;}
+  .mode-box.full .head{background:linear-gradient(135deg,#1d4ed8,#2563eb);}
+  .mode-box.train .head{background:linear-gradient(135deg,#0284c7,#0ea5e9);}
+  .mode-box .body{padding:12px 14px;font-size:9.8pt;}
+  .mode-box .body li{margin-bottom:5px;}
+  .yes{color:var(--success);font-weight:700;}
+  .no{color:var(--danger);font-weight:700;}
+
+  /* ── Таблицы ── */
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:9.5pt;}
+  th,td{border:1px solid var(--border);padding:8px 10px;text-align:left;vertical-align:top;}
+  th{background:var(--surface);font-weight:700;color:var(--ink);}
+  tr:nth-child(even) td{background:#fafbfc;}
+
+  /* ── Шаги ── */
+  .steps{counter-reset:step;list-style:none;margin-left:0;}
+  .steps li{
+    position:relative;
+    padding-left:38px;
+    margin-bottom:11px;
+    min-height:26px;
+  }
+  .steps li::before{
+    counter-increment:step;
+    content:counter(step);
+    position:absolute;left:0;top:-1px;
+    width:26px;height:26px;
+    background:var(--primary);
+    color:#fff;
+    border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    font-weight:700;font-size:10pt;
+  }
+
+  /* ── Flow ── */
+  .flow{display:flex;align-items:stretch;gap:0;margin:12px 0;flex-wrap:wrap;}
+  .flow-step{
+    flex:1;min-width:90px;
+    border:1px solid var(--border);
+    border-radius:10px;
+    padding:10px 12px;
+    background:#fff;
+    text-align:center;
+    position:relative;
+  }
+  .flow-step .n{font-size:8pt;color:var(--primary);font-weight:700;text-transform:uppercase;letter-spacing:.06em;}
+  .flow-step .l{font-weight:700;font-size:9.5pt;margin-top:3px;}
+  .flow-step .d{font-size:8.5pt;color:var(--muted);margin-top:3px;line-height:1.35;}
+  .flow-arrow{display:flex;align-items:center;padding:0 4px;color:var(--primary);font-weight:700;font-size:14pt;}
+
+  .pill{
+    display:inline-block;
+    padding:2px 9px;
+    border-radius:999px;
+    font-size:8.5pt;
+    font-weight:700;
+  }
+  .pill.full{background:#dbeafe;color:#1d4ed8;}
+  .pill.train{background:#e0f2fe;color:#0369a1;}
+  .pill.free{background:#f1f5f9;color:#475569;}
+
+  .footer-note{
+    margin-top:14px;
+    padding-top:10px;
+    border-top:1px solid var(--border);
+    font-size:8.5pt;
+    color:var(--muted);
+  }
+
+  .toc{list-style:none;margin-left:0;}
+  .toc li{
+    display:flex;justify-content:space-between;
+    padding:8px 0;border-bottom:1px solid var(--border);
+    font-size:10.5pt;
+  }
+  .toc li .num{color:var(--primary);font-weight:700;margin-right:10px;}
+  .toc li .nm{font-weight:600;}
+</style>
+</head>
+<body>
+
+<!-- ОБЛОЖКА -->
+<div class="cover">
+  <span class="cover-badge">Внутренний документ · UpStat</span>
+  <h1>Режим «Только&nbsp;тренировки»<br/>и доступ для российских клиентов</h1>
+  <p class="subtitle">Простое и понятное объяснение: что мы сделали, как это работает и зачем. Без технических подробностей — для принятия решения.</p>
+  <dl class="cover-meta">
+    <div><dt>Документ для</dt><dd>Руководителя</dd></div>
+    <div><dt>Подготовил</dt><dd>Команда разработки UpStat</dd></div>
+    <div><dt>Тема</dt><dd>Новый продукт «UpStat TRAIN»</dd></div>
+    <div><dt>Статус</dt><dd>Реализовано, готово к запуску</dd></div>
+  </dl>
+</div>
+
+<!-- СОДЕРЖАНИЕ + ГЛАВНОЕ -->
+<div class="page">
+  <div class="section">
+    <div class="eyebrow">Коротко о главном</div>
+    <h2>Что мы сделали — в двух предложениях</h2>
+    <p class="lead">
+      Мы создали <strong>вторую, облегчённую версию UpStat</strong> — «UpStat TRAIN». В ней менеджеры
+      каждый день тренируются с ИИ по программе, но <strong>не имеют доступа к анализу звонков, CRM и аналитике</strong>.
+      Это отдельный продукт, который мы можем продавать дешевле и предлагать клиентам (в первую очередь
+      российским), которым нужны только тренировки.
+    </p>
+
+    <div class="callout success">
+      <div class="t">Зачем это бизнесу</div>
+      Один и тот же код, одна платформа — но <strong>два разных продукта</strong> с разной ценой.
+      Клиент платит только за то, что ему нужно. Российским клиентам мы открываем доступ
+      <strong>без всяких VPN и галочек при регистрации</strong> — доступом управляет наш отдел продаж.
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Содержание</h2>
+    <ul class="toc">
+      <li><span><span class="num">1</span><span class="nm">Проблема, которую мы решали</span></span></li>
+      <li><span><span class="num">2</span><span class="nm">Два продукта на одной платформе</span></span></li>
+      <li><span><span class="num">3</span><span class="nm">Что видит менеджер в режиме тренировок</span></span></li>
+      <li><span><span class="num">4</span><span class="nm">Как клиент получает доступ (роль продаж)</span></span></li>
+      <li><span><span class="num">5</span><span class="nm">Доступ для российских клиентов</span></span></li>
+      <li><span><span class="num">6</span><span class="nm">Как это работает по шагам</span></span></li>
+      <li><span><span class="num">7</span><span class="nm">Безопасность и защита от обхода</span></span></li>
+      <li><span><span class="num">8</span><span class="nm">Итог и преимущества</span></span></li>
+    </ul>
+  </div>
+</div>
+
+<!-- 1. ПРОБЛЕМА -->
+<div class="page section-break">
+  <div class="section">
+    <div class="eyebrow">Раздел 1</div>
+    <h2>Проблема, которую мы решали</h2>
+    <p>
+      Не всем клиентам нужен полный UpStat. Часть клиентов — особенно в России — заинтересована
+      <strong>только в тренировках менеджеров</strong>: чтобы сотрудники каждый день отрабатывали навыки
+      продаж с ИИ-тренажёром. Анализ реальных звонков, интеграция с CRM и сложная аналитика им не нужны.
+    </p>
+
+    <h3>Что было нужно</h3>
+    <ul>
+      <li>Дать таким клиентам <strong>упрощённую версию</strong> — только тренировки.</li>
+      <li>Продавать её <strong>как отдельный, более доступный продукт</strong>.</li>
+      <li>Открывать доступ российским клиентам <strong>надёжно</strong> — не через VPN и не через галочку «я из России» при регистрации (это легко обмануть).</li>
+      <li>Не создавать вторую копию платформы — чтобы <strong>не поддерживать два разных кода</strong> и не платить за это вдвойне.</li>
+    </ul>
+
+    <div class="callout warning">
+      <div class="t">Почему нельзя «просто галочку при регистрации»</div>
+      Если доступ зависит от того, что человек сам выбрал при регистрации, любой может выбрать что угодно
+      и получить платные функции бесплатно. Поэтому доступом должны управлять <strong>мы</strong>, а не клиент.
+    </div>
+  </div>
+</div>
+
+<!-- 2. ДВА ПРОДУКТА -->
+<div class="page section-break">
+  <div class="section">
+    <div class="eyebrow">Раздел 2</div>
+    <h2>Два продукта на одной платформе</h2>
+    <p class="lead">
+      Мы не делали вторую платформу. Вместо этого внутри одного UpStat появилось два «режима».
+      Что увидит пользователь — зависит от того, <strong>какой тариф ему назначил наш отдел продаж</strong>.
+    </p>
+
+    <div class="compare">
+      <div class="mode-box full">
+        <div class="head">UpStat FULL — полная версия</div>
+        <div class="body">
+          <ul>
+            <li><span class="yes">✓</span> Анализ звонков с ИИ</li>
+            <li><span class="yes">✓</span> Интеграция с CRM (Bitrix24, amoCRM)</li>
+            <li><span class="yes">✓</span> Аналитика команды и руководителя</li>
+            <li><span class="yes">✓</span> Голосовые тренировки с ИИ</li>
+            <li><span class="yes">✓</span> Программы тренировок</li>
+          </ul>
+          <p style="margin-top:6px;font-size:9pt;color:#64748b;">Для клиентов, которым нужно всё.</p>
+        </div>
+      </div>
+
+      <div class="mode-box train">
+        <div class="head">UpStat TRAIN — только тренировки</div>
+        <div class="body">
+          <ul>
+            <li><span class="no">✗</span> Анализ звонков — <strong>закрыт</strong></li>
+            <li><span class="no">✗</span> CRM — <strong>закрыт</strong></li>
+            <li><span class="no">✗</span> Аналитика звонков — <strong>закрыта</strong></li>
+            <li><span class="yes">✓</span> Голосовые тренировки с ИИ</li>
+            <li><span class="yes">✓</span> Каталог и программы тренировок</li>
+            <li><span class="yes">✓</span> Отчёт руководителю по тренировкам</li>
+          </ul>
+          <p style="margin-top:6px;font-size:9pt;color:#64748b;">Для клиентов, которым нужны только тренировки.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout">
+      <div class="t">Ключевая идея</div>
+      Это <strong>один продукт с «выключателями» функций</strong>. Каждому клиенту мы включаем ровно то,
+      за что он заплатил. Поддерживаем при этом <strong>одну платформу</strong>, а не две.
+    </div>
+  </div>
+</div>
+
+<!-- 3. ЧТО ВИДИТ МЕНЕДЖЕР -->
+<div class="page section-break">
+  <div class="section">
+    <div class="eyebrow">Раздел 3</div>
+    <h2>Что видит менеджер в режиме тренировок</h2>
+    <p>
+      Менеджер клиента-«тренировочника» заходит в систему и видит <strong>отдельный, упрощённый интерфейс</strong>
+      под брендом <span class="pill train">UpStat TRAIN</span>. Никаких лишних кнопок — только то, что нужно для тренировок.
+    </p>
+
+    <h3>Его рабочий день</h3>
+    <ul>
+      <li><strong>Личный кабинет</strong> — видит свой прогресс: серию дней подряд (streak), средний балл, последние тренировки.</li>
+      <li><strong>Каталог тренировок</strong> — выбирает этап продаж (вступление в контакт, работа с потребностями, презентация, работа с возражениями, завершение сделки) и запускает тренировку.</li>
+      <li><strong>Голосовая тренировка с ИИ</strong> — общается голосом с ИИ-тренажёром, который играет роль клиента. После завершения получает оценку.</li>
+    </ul>
+
+    <h3>Что видит руководитель отдела продаж (РОП) клиента</h3>
+    <ul>
+      <li><strong>Программа тренировок</strong> — назначает команде программу: какие этапы тренировать по дням.</li>
+      <li><strong>Отчёт по команде</strong> — видит, кто сегодня тренировался, средний балл, серию дней, последний пройденный этап.</li>
+    </ul>
+
+    <div class="callout success">
+      <div class="t">Важно для клиента</div>
+      Менеджер физически <strong>не видит</strong> функций анализа звонков и CRM — их просто нет в меню.
+      Даже если он попробует открыть такую страницу напрямую по ссылке — система его <strong>не пустит</strong>.
+    </div>
+  </div>
+</div>
+
+<!-- 4. ДОСТУП ЧЕРЕЗ ПРОДАЖИ -->
+<div class="page section-break">
+  <div class="section">
+    <div class="eyebrow">Раздел 4</div>
+    <h2>Как клиент получает доступ (роль отдела продаж)</h2>
+    <p class="lead">
+      Доступом управляет <strong>наш менеджер по продажам</strong> — это ключевой момент. Клиент не может
+      сам себе выдать функции. Всё решается через специальную панель продаж.
+    </p>
+
+    <h3>Что делает наш отдел продаж</h3>
+    <ol class="steps">
+      <li>Заходит в <strong>панель продаж</strong> внутри UpStat.</li>
+      <li>Находит клиента (компанию или конкретного пользователя).</li>
+      <li>Выбирает тариф из списка: <span class="pill full">FULL</span> <span class="pill train">TRAIN (Россия)</span> <span class="pill train">TRAIN (другие страны)</span></li>
+      <li>Нажимает «Назначить» — и нужные функции <strong>сразу включаются</strong> у клиента.</li>
+    </ol>
+
+    <h3>Что происходит автоматически</h3>
+    <table>
+      <thead>
+        <tr><th>Назначенный тариф</th><th>Что включается у клиента</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><span class="pill full">FULL</span></td><td>Все функции: анализ звонков, CRM, аналитика, тренировки</td></tr>
+        <tr><td><span class="pill train">TRAIN</span></td><td>Только тренировки (анализ и CRM остаются закрытыми)</td></tr>
+        <tr><td><span class="pill free">Без тарифа</span></td><td>Пользователь видит страницу «Доступ не активирован» — ждёт назначения</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout">
+      <div class="t">Приглашение сотрудников — как и раньше</div>
+      Руководитель клиента приглашает своих менеджеров <strong>по почте</strong>, как и сейчас.
+      Новые сотрудники автоматически получают тот же режим, что и их команда. Ничего нового
+      клиенту изучать не нужно.
+    </div>
+  </div>
+</div>
+
+<!-- 5. РОССИЙСКИЕ КЛИЕНТЫ -->
+<div class="page section-break">
+  <div class="section">
+    <div class="eyebrow">Раздел 5</div>
+    <h2>Доступ для российских клиентов</h2>
+    <p class="lead">
+      Это была отдельная задача: открыть доступ российским клиентам <strong>надёжно</strong>,
+      без VPN и без честного слова клиента «я из России».
+    </p>
+
+    <h3>Как мы это сделали</h3>
+    <p>
+      Доступ для российского клиента — это <strong>просто отдельный тариф</strong>
+      (<span class="pill train">TRAIN — Россия</span>), который назначает наш отдел продаж тому клиенту,
+      с которым мы заключили договор. То есть:
+    </p>
+    <ul>
+      <li>Доступ <strong>не зависит</strong> от того, откуда человек заходит (VPN не нужен и не мешает).</li>
+      <li>Доступ <strong>не зависит</strong> от галочки при регистрации — её просто нет.</li>
+      <li>Доступ <strong>зависит только от нас</strong>: с кем мы договорились, тому продажи и включают тариф.</li>
+    </ul>
+
+    <h3>Отдельный «вход» для российского бренда</h3>
+    <p>
+      Для российских клиентов можно открыть <strong>отдельный адрес сайта</strong> (например, train.upstat.pro).
+      Кто заходит туда — сразу попадает в тренировочную версию с правильным брендом. Это удобно для маркетинга
+      и для того, чтобы российский клиент не видел «лишнего».
+    </p>
+
+    <div class="callout success">
+      <div class="t">Главное преимущество подхода</div>
+      Мы <strong>полностью контролируем</strong>, кто и какой доступ имеет. Никаких лазеек: клиент не может
+      обойти ограничение через VPN, регистрацию или прямую ссылку. Захотим — включим, захотим — отключим,
+      в любой момент, из панели продаж.
+    </div>
+  </div>
+</div>
+
+<!-- 6. КАК РАБОТАЕТ ПО ШАГАМ -->
+<div class="page section-break">
+  <div class="section">
+    <div class="eyebrow">Раздел 6</div>
+    <h2>Как это работает по шагам</h2>
+    <p>Полный путь от договора до ежедневных тренировок менеджеров клиента.</p>
+
+    <div class="flow">
+      <div class="flow-step">
+        <div class="n">Шаг 1</div>
+        <div class="l">Договор</div>
+        <div class="d">Заключаем сделку с клиентом на тариф TRAIN</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">
+        <div class="n">Шаг 2</div>
+        <div class="l">Назначение</div>
+        <div class="d">Продажи включают клиенту тариф в панели</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">
+        <div class="n">Шаг 3</div>
+        <div class="l">Приглашение</div>
+        <div class="d">РОП клиента зовёт менеджеров по почте</div>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">
+        <div class="n">Шаг 4</div>
+        <div class="l">Тренировки</div>
+        <div class="d">Менеджеры тренируются каждый день</div>
+      </div>
+    </div>
+
+    <h3>Что происходит дальше каждый день</h3>
+    <ol class="steps">
+      <li>Менеджер заходит в систему и видит <strong>тренировочный кабинет</strong>.</li>
+      <li>Открывает <strong>программу на сегодня</strong> или выбирает этап из каталога.</li>
+      <li>Проходит <strong>голосовую тренировку с ИИ</strong> (ИИ играет клиента).</li>
+      <li>Получает <strong>оценку и обратную связь</strong>.</li>
+      <li>Руководитель видит результат в <strong>отчёте по команде</strong>.</li>
+    </ol>
+
+    <div class="callout">
+      <div class="t">Тренировочное ядро — то же самое</div>
+      Сам ИИ-тренажёр (голос, диалоги, оценка) — это <strong>проверенная технология</strong>, которая уже
+      работает в полной версии. Мы её не переписывали, а аккуратно <strong>отделили доступ</strong> к ней.
+      Значит, качество тренировок одинаковое в обоих продуктах.
+    </div>
+  </div>
+</div>
+
+<!-- 7. БЕЗОПАСНОСТЬ -->
+<div class="page section-break">
+  <div class="section">
+    <div class="eyebrow">Раздел 7</div>
+    <h2>Безопасность и защита от обхода</h2>
+    <p class="lead">
+      Мы специально проверили, чтобы клиент-«тренировочник» <strong>никак не мог получить платные функции бесплатно</strong>.
+    </p>
+
+    <table>
+      <thead>
+        <tr><th>Возможная попытка обхода</th><th>Как мы защитили</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Открыть анализ звонков или CRM напрямую по ссылке</td>
+          <td>Система проверяет права на <strong>каждой</strong> странице и не пускает</td>
+        </tr>
+        <tr>
+          <td>Зарегистрироваться самому и получить полный доступ</td>
+          <td>Новый пользователь без тарифа не получает платных функций — видит «Доступ не активирован»</td>
+        </tr>
+        <tr>
+          <td>Посмотреть чужие тренировки / результаты</td>
+          <td>Каждый видит только свои данные — доступ привязан к личному входу</td>
+        </tr>
+        <tr>
+          <td>Подделать вход в систему</td>
+          <td>Усилена защита сессий и входа; добавлена защита от перебора паролей</td>
+        </tr>
+        <tr>
+          <td>Зайти через VPN, чтобы сменить «страну»</td>
+          <td>Доступ вообще не зависит от страны входа — только от назначенного тарифа</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="callout success">
+      <div class="t">Дополнительно мы провели аудит безопасности</div>
+      В рамках этой работы мы проверили платформу на уязвимости и <strong>закрыли найденные риски</strong>:
+      защита входа, защита сессий, ограничение доступа к чужим данным. Платформа стала безопаснее не только
+      в новом режиме, но и в целом.
+    </div>
+  </div>
+</div>
+
+<!-- 8. ИТОГ -->
+<div class="page section-break">
+  <div class="section">
+    <div class="eyebrow">Раздел 8</div>
+    <h2>Итог и преимущества</h2>
+
+    <h3>Что мы получили</h3>
+    <table>
+      <thead>
+        <tr><th>Преимущество</th><th>Что это даёт бизнесу</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Новый продукт</strong></td><td>Можем продавать «только тренировки» дешевле и охватить больше клиентов</td></tr>
+        <tr><td><strong>Один код</strong></td><td>Не нужно поддерживать две платформы — экономия на разработке</td></tr>
+        <tr><td><strong>Полный контроль доступа</strong></td><td>Продажи включают/отключают функции в любой момент</td></tr>
+        <tr><td><strong>Надёжность для России</strong></td><td>Доступ без VPN и лазеек — управляем только мы</td></tr>
+        <tr><td><strong>Безопасность</strong></td><td>Закрыты риски, никто не получит платное бесплатно</td></tr>
+        <tr><td><strong>Гибкость на будущее</strong></td><td>Легко добавить новые тарифы и комбинации функций</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout success">
+      <div class="t">Вывод одной фразой</div>
+      Мы превратили UpStat в <strong>гибкую платформу с несколькими продуктами</strong>: продаём клиенту ровно то,
+      что ему нужно, полностью контролируем доступ — и всё это на одной кодовой базе, без VPN и без рисков обхода.
+    </div>
+
+    <div class="footer-note">
+      UpStat · Внутренний документ для руководителя · Режим «Только тренировки» и доступ для российских клиентов · Реализовано и готово к запуску
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

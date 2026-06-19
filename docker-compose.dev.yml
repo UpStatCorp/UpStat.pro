@@ -1,0 +1,57 @@
+# Overrides для локальной разработки.
+# Использование: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# Отличия от прод-compose:
+#   - bind-mounts кода (hot-reload без rebuild)
+#   - pgAdmin для удобной работы с БД
+#   - открыты порты БД/Redis наружу
+#   - uvicorn с --reload
+
+services:
+  postgres:
+    ports:
+      - "${DATABASE_PORT:-5432}:5432"
+
+  redis:
+    ports:
+      - "${REDIS_HOST_PORT:-6379}:6379"
+
+  backend:
+    environment:
+      - ENVIRONMENT=development
+    volumes:
+      - ./app:/app/app
+      - ./alembic:/app/alembic
+      - ./alembic.ini:/app/alembic.ini
+      - ./voice_assistant:/app/voice_assistant
+      - ./uploads:/app/uploads
+      - ./checklists:/app/checklists
+      - ./checklists_trener:/app/checklists_trener
+    command: [
+      "uvicorn", "main:app",
+      "--host", "0.0.0.0",
+      "--port", "8000",
+      "--reload",
+      "--ws-ping-interval", "30",
+      "--ws-ping-timeout", "120"
+    ]
+    healthcheck:
+      disable: true
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-dev@localhost}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-changeme}
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    networks:
+      - saas-network
+    restart: unless-stopped
+
+volumes:
+  pgadmin_data:

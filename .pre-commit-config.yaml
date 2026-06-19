@@ -1,0 +1,29 @@
+repos:
+  # Ruff: fast Python linter (replaces flake8/isort/pyupgrade)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.4
+    hooks:
+      - id: ruff
+        args: [--select, "E,F,W,I", --ignore, "E501,E402", --fix]
+        files: ^(app|voice_assistant)/.*\.py$
+
+  # Detect secrets: blocks commits containing credentials
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.5.0
+    hooks:
+      - id: detect-secrets
+        args:
+          - --exclude-files
+          - (\.secrets\.baseline|\.env\.example|backup\.sql|init\.sql|alembic/versions/.*\.py)
+        exclude: (\.secrets\.baseline|backup\.sql|init\.sql)
+
+  # Trailing whitespace / end-of-file newline
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-yaml
+      - id: check-added-large-files
+        args: [--maxkb=500]
