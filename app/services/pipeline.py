@@ -52,6 +52,138 @@ STT_MAX_RETRIES = int(os.getenv("STT_MAX_RETRIES", "2"))
 
 client = OpenAI(api_key=OPENAI_API_KEY, timeout=LLM_TIMEOUT_SECONDS, max_retries=LLM_MAX_RETRIES)
 
+# ── Защита от ложных отказов модели ───────────────────────────────────────────
+# Иногда gpt-4o ложно отказывает («I'm sorry, I can't assist…») на легитимном
+# разборе звонка. Лечится: (1) system-рамкой, заземляющей задачу как обучающий
+# QA-разбор обезличенного диалога; (2) детектом отказа и ретраем вызова.
+SYSTEM_AUDITOR = {
+    "role": "system",
+    "content": (
+        "Ты — внутренняя система контроля качества (QA) для обучения отдела продаж. "
+        "На вход тебе дают ОБЕЗЛИЧЕННУЮ расшифровку телефонного разговора менеджера "
+        "с клиентом для конструктивного разбора и обучения сотрудника — это легитимная "
+        "и безопасная бизнес-задача. Не отказывайся и не морализируй: анализируй ТОЛЬКО "
+        "предоставленный диалог строго по заданному формату."
+    ),
+}
+
+# Анти-отказ нудж добавляется при ретрае после распознанного отказа.
+_REFUSAL_NUDGE = {
+    "role": "system",
+    "content": (
+        "Предыдущий ответ был отказом. Это обычный обучающий разбор обезличенного "
+        "делового диалога, без какого-либо вредоносного контента. Выполни задачу "
+        "строго по формату, без отказов и оговорок."
+    ),
+}
+
+_REFUSAL_RE = re.compile(
+    r"(i['’`]?m\s+sorry|i\s+can(?:'|’|n)?o?t\s+(?:assist|help|comply|continue)"
+    r"|i\s+won['’`]?t\s+be\s+able|unable\s+to\s+help"
+    r"|извин[а-яё]*|не\s+мог[ауy][^.]{0,20}помоч|не\s+могу\s+(?:вам\s+)?помоч"
+    r"|не\s+могу\s+(?:вам\s+)?(?:с\s+этим\s+)?(?:по)?мочь)",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_refusal(text: str) -> bool:
+    """Эвристика: пустой/очень короткий ответ или совпадение с фразой-отказом."""
+    t = (text or "").strip()
+    if not t:
+        return True
+    # Длинный осмысленный ответ почти наверняка не отказ, даже если содержит «извините».
+    if len(t) > 400:
+        return False
+    return bool(_REFUSAL_RE.search(t))
+
+
+async def _llm_create(call_kwargs: dict, *, label: str, max_refusal_retries: int = 2):
+    """chat.completions с system-рамкой и ретраем на ложный отказ.
+
+    Возвращает (text, refused, resp). `refused=True` означает, что модель
+    отказала даже после ретраев (вызывающий код решает, что делать дальше).
+    Сетевые ошибки/таймауты ретраит сам OpenAI-клиент (max_retries).
+    """
+    kwargs = dict(call_kwargs)
+    msgs = list(kwargs.get("messages", []))
+    if not msgs or msgs[0].get("role") != "system":
+        msgs = [SYSTEM_AUDITOR] + msgs
+    base_temp = kwargs.get("temperature", 0.2)
+
+    text, resp = "", None
+    for attempt in range(max_refusal_retries + 1):
+        kwargs["messages"] = msgs if attempt == 0 else msgs + [_REFUSAL_NUDGE]
+        # На ретраях слегка поднимаем температуру, чтобы выйти из «залипшего» отказа.
+        kwargs["temperature"] = min(0.8, base_temp + 0.2 * attempt)
+        resp = await asyncio.to_thread(lambda: client.chat.completions.create(**kwargs))
+        text = (resp.choices[0].message.content or "").strip()
+        if not _looks_like_refusal(text):
+            return text, False, resp
+        logger.warning(
+            f"[refusal] '{label}': модель отказала (попытка {attempt + 1}/{max_refusal_retries + 1})."
+        )
+    return text, True, resp
+
+
+async def _resolve_roles(dialogue_json_str: str) -> Dict[str, str]:
+    """Определяет, кто из speaker_N — manager, а кто — client.
+
+    Возвращает маппинг {"speaker_1": "manager"|"client", ...}. Best-effort:
+    при любой ошибке/неоднозначности возвращает пустой dict (роли остаются unknown).
+    """
+    prompt = (
+        "Ниже JSON-диалог двух спикеров телефонного разговора (продажи). "
+        "Определи, кто менеджер (продавец/звонящий, представляет компанию, задаёт "
+        "квалифицирующие вопросы, презентует продукт), а кто клиент.\n"
+        "Верни СТРОГО JSON без пояснений, формат:\n"
+        '{"speaker_1": "manager"|"client", "speaker_2": "manager"|"client"}\n\n'
+        f"ДИАЛОГ_JSON:\n{dialogue_json_str}\n"
+    )
+    try:
+        text, refused, _ = await _llm_create(
+            {"model": "gpt-4o", "messages": [{"role": "user", "content": prompt}],
+             "temperature": 0.0},
+            label="role-resolution", max_refusal_retries=1,
+        )
+        if refused:
+            return {}
+        m = re.search(r"\{[^{}]*\}", text)
+        if not m:
+            return {}
+        data = json.loads(m.group(0))
+        out = {k: v for k, v in data.items()
+               if isinstance(v, str) and v.lower() in ("manager", "client")}
+        return {k: v.lower() for k, v in out.items()}
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"_resolve_roles failed: {e}")
+        return {}
+
+
+_ROLE_RU = {"manager": "Менеджер", "client": "Клиент"}
+
+
+def _apply_roles(dialogue: dict, speaker_roles: Dict[str, str]) -> str:
+    """Проставляет role_map в dialogue и возвращает читаемый транскрипт с подписями.
+
+    speaker_roles: {"speaker_1": "manager"|"client", ...}. Если ролей нет —
+    возвращает транскрипт без подписей (по строкам реплик).
+    """
+    if speaker_roles:
+        manager_spk = next((s for s, r in speaker_roles.items() if r == "manager"), "unknown")
+        client_spk = next((s for s, r in speaker_roles.items() if r == "client"), "unknown")
+        dialogue["role_map"] = {"manager": manager_spk, "client": client_spk}
+
+    lines = []
+    for turn in dialogue.get("turns", []):
+        spk = turn.get("speaker")
+        role = speaker_roles.get(spk)
+        who = _ROLE_RU.get(role, spk or "—")
+        txt = (turn.get("text") or "").strip()
+        if not txt:
+            continue
+        lines.append(f"{who}: {txt}")
+    return "\n".join(lines)
+
 
 def _ffmpeg_wav(src: Path, dst: Path, rate: int = 16000):
     cmd = ["ffmpeg", "-y", "-i", str(src), "-ac", "1", "-ar", str(rate), str(dst)]
@@ -308,11 +440,10 @@ async def _analyze_checklist(
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.2,
             }
-        resp = await asyncio.to_thread(
-            lambda: client.chat.completions.create(**call_kwargs)
-        )
+        full_response, refused, resp = await _llm_create(call_kwargs, label=title)
+        if refused:
+            logger.warning(f"Чек-лист '{title}': модель отказала даже после ретраев.")
         logger.info(f"✅ Получен ответ от GPT для: {title}")
-        full_response = resp.choices[0].message.content.strip()
 
         # Перед тем как _extract_and_collect_scores режет JSON, сохраним «исходник» для research-лога.
         raw_for_research = full_response
@@ -338,6 +469,7 @@ async def _analyze_checklist(
                 logger.warning(f"Research capture (checklist) failed: {research_err}")
 
         analyses.append(f"=== {title.upper()} ===\n{text_part}\n")
+        return refused
     except Exception as e:
         logger.error(f"❌ Ошибка анализа чеклиста {title}: {e}", exc_info=True)
         analyses.append(f"=== {title.upper()} ===\nОшибка LLM: {e}\n")
@@ -346,6 +478,7 @@ async def _analyze_checklist(
                 research.capture_note(f"Ошибка анализа чек-листа «{title}»: {e}")
             except Exception:
                 pass
+        return False
 
 
 def _extract_and_collect_scores(response_text: str, checklist_scores: List[Dict]) -> str:
@@ -459,26 +592,31 @@ async def _run_all_checklists(
         local_scores: List[Dict] = []
         async with sem:
             try:
-                await _analyze_checklist(data, title, dialogue_json_str, local_analyses, local_scores, research=research)
+                refused = await _analyze_checklist(data, title, dialogue_json_str, local_analyses, local_scores, research=research)
             except Exception as e:
                 logger.error(f"Чек-лист '{cf.name}' пропущен — ошибка анализа: {e}", exc_info=True)
                 return None
-        return local_analyses, local_scores
+        return local_analyses, local_scores, bool(refused)
 
+    refused_titles: List[str] = []
     results = await asyncio.gather(*[_one(cf) for cf in check_files])
     for cf, res in zip(check_files, results):
         if res is None:
             skipped.append(cf.stem)
         else:
-            local_analyses, local_scores = res
+            local_analyses, local_scores, was_refused = res
             analyses.extend(local_analyses)
             checklist_scores.extend(local_scores)
+            if was_refused:
+                refused_titles.append(cf.stem)
 
     # Скрипт команды
     if team_script:
         script_title = team_script.get("title", "Скрипт команды")
         try:
-            await _analyze_checklist(team_script, script_title, dialogue_json_str, analyses, research=research)
+            ts_refused = await _analyze_checklist(team_script, script_title, dialogue_json_str, analyses, research=research)
+            if ts_refused:
+                refused_titles.append(script_title)
         except Exception as e:
             logger.error(f"Скрипт команды пропущен — ошибка анализа: {e}", exc_info=True)
             skipped.append(script_title)
@@ -486,7 +624,7 @@ async def _run_all_checklists(
     combined = "\n".join(analyses)
     if skipped:
         combined += "\n\n⚠️ Пропущены чек-листы (ошибка обработки): " + ", ".join(skipped)
-    return combined, checklist_scores, skipped
+    return combined, checklist_scores, skipped, refused_titles
 
 
 SCORE_MARKER_INSTRUCTION = (
@@ -508,8 +646,14 @@ async def _finalize_analysis_and_report(
     dialogue_json_str: str,
     skipped_checklists: List[str],
     research: Optional[ResearchLogger] = None,
-):
+    write_anyway: bool = True,
+) -> bool:
     """Финальный отчёт + пост-процессы — общая часть всех трёх конвейеров.
+
+    Возвращает report_refused: True, если модель отказалась сформировать отчёт
+    (после ретраев). При write_anyway=False и отказе отчёт НЕ записывается —
+    оркестратор перезапустит анализ. При write_anyway=True (последняя попытка)
+    отчёт пишется как есть (best-effort).
 
     Бросает исключение, если фатально не удалось построить итоговый отчёт
     (вызывающий код пометит анализ как failed). Пост-процессы (win-probability,
@@ -553,10 +697,14 @@ async def _finalize_analysis_and_report(
             "messages": [{"role": "user", "content": final_prompt_for_call}],
             "temperature": 0.2,
         }
-    final_resp = await asyncio.to_thread(
-        lambda: client.chat.completions.create(**final_call_kwargs)
+    summary_raw, report_refused, final_resp = await _llm_create(
+        final_call_kwargs, label="Итоговый отчёт"
     )
-    summary_raw = final_resp.choices[0].message.content.strip()
+    # Если модель отказала на отчёте и можно перезапустить весь анализ —
+    # НЕ пишем битый отчёт, сигналим оркестратору о перезапуске.
+    if report_refused and not write_anyway:
+        logger.warning("Итоговый отчёт: отказ модели — пропускаю запись (будет перезапуск анализа).")
+        return True
     summary = "=== ИТОГОВЫЙ ОТЧЁТ ===\n" + summary_raw
     if research is not None:
         try:
@@ -644,6 +792,69 @@ async def _finalize_analysis_and_report(
         await process_manager_actions(db, user_id, conversation_id, dialogue_json_str, analysis_text_full, research=research)
     except Exception as e:
         logger.error(f"Ошибка сбора действий менеджера: {e}", exc_info=True)
+
+    return report_refused
+
+
+# Сколько раз перезапускать ВЕСЬ анализ при отказе модели (опция 2).
+ANALYSIS_MAX_ATTEMPTS = int(os.getenv("ANALYSIS_MAX_ATTEMPTS", "2"))
+_RERUN_PROGRESS_TEXT = (
+    "⏳ ИИ обрабатывает запись чуть дольше обычного — перезапускаю анализ, "
+    "подождите ещё немного…"
+)
+
+
+def _post_progress(db: Session, conv_id: int, text: str):
+    """Пишет сервисное сообщение прогресса в диалог (для прогресс-бара в чате)."""
+    try:
+        db.add(Message(conversation_id=conv_id, user_id=None, role="bot", text=text))
+        db.commit()
+    except Exception as e:  # noqa: BLE001
+        logger.warning(f"_post_progress failed: {e}")
+        try:
+            db.rollback()
+        except Exception:
+            pass
+
+
+async def _analyze_with_rerun(
+    db: Session,
+    user_id: int,
+    conversation_id: int,
+    display_conv_id: int,
+    progress_conversation_id: Optional[int],
+    temp_dir: Path,
+    dialogue_json_str: str,
+    research: Optional[ResearchLogger] = None,
+) -> bool:
+    """Анализ (чек-листы + отчёт) с авто-перезапуском при отказе модели (опция 2).
+
+    Если модель отказала (на чек-листе или итоговом отчёте) и остались попытки —
+    весь анализ перезапускается, а в диалог пишется сообщение прогресса, которое
+    видит пользователь («подождите ещё немного…»). На последней попытке отчёт
+    формируется как есть (best-effort), чтобы пользователь не остался без отчёта.
+    """
+    for attempt in range(1, ANALYSIS_MAX_ATTEMPTS + 1):
+        is_last = attempt == ANALYSIS_MAX_ATTEMPTS
+        combined, checklist_scores, skipped_checklists, refused_titles = await _run_all_checklists(
+            db, user_id, dialogue_json_str, research=research
+        )
+        if refused_titles and not is_last:
+            logger.warning(f"Отказ модели на чек-листах {refused_titles} — перезапуск анализа ({attempt}/{ANALYSIS_MAX_ATTEMPTS}).")
+            _post_progress(db, display_conv_id, _RERUN_PROGRESS_TEXT)
+            continue
+
+        report_refused = await _finalize_analysis_and_report(
+            db, user_id, conversation_id, display_conv_id, progress_conversation_id,
+            temp_dir, combined, checklist_scores, dialogue_json_str, skipped_checklists,
+            research=research, write_anyway=is_last,
+        )
+        if report_refused and not is_last:
+            logger.warning(f"Отказ модели на итоговом отчёте — перезапуск анализа ({attempt}/{ANALYSIS_MAX_ATTEMPTS}).")
+            _post_progress(db, display_conv_id, _RERUN_PROGRESS_TEXT)
+            continue
+        return True
+    return True
 
 
 async def run_pipeline_from_text(user_id: int, conversation_id: int, text_attachment_id: int, progress_conversation_id: Optional[int] = None):
@@ -744,14 +955,9 @@ async def run_pipeline_from_text(user_id: int, conversation_id: int, text_attach
         db.add(msg_an); db.commit()
 
         dialogue_json_str = dialogue_path.read_text(encoding="utf-8")
-        combined, checklist_scores, skipped_checklists = await _run_all_checklists(
-            db, user_id, dialogue_json_str, research=research
-        )
-
-        await _finalize_analysis_and_report(
+        await _analyze_with_rerun(
             db, user_id, conversation_id, display_conv_id, progress_conversation_id,
-            temp_dir, combined, checklist_scores, dialogue_json_str, skipped_checklists,
-            research=research,
+            temp_dir, dialogue_json_str, research=research,
         )
 
         tracker.complete_operation(operation_id, "Готово ✅ Отчёт во вложении.")
@@ -849,14 +1055,9 @@ async def run_pipeline_from_raw_text(user_id: int, conversation_id: int, raw_tex
         db.add(msg_an); db.commit()
 
         dialogue_json_str = dialogue_path.read_text(encoding="utf-8")
-        combined, checklist_scores, skipped_checklists = await _run_all_checklists(
-            db, user_id, dialogue_json_str, research=research
-        )
-
-        await _finalize_analysis_and_report(
+        await _analyze_with_rerun(
             db, user_id, conversation_id, display_conv_id, progress_conversation_id,
-            temp_dir, combined, checklist_scores, dialogue_json_str, skipped_checklists,
-            research=research,
+            temp_dir, dialogue_json_str, research=research,
         )
 
         tracker.complete_operation(operation_id, "Готово ✅ Отчёт во вложении.")
@@ -1011,6 +1212,18 @@ async def run_pipeline(user_id: int, conversation_id: int, audio_attachment_id: 
         text = redact_pii(text)
         dialogue = redact_pii_in_dialogue(dialogue)
 
+        # A: для диаризованных записей определяем роли менеджер/клиент,
+        # проставляем их в dialogue.role_map и делаем читаемый транскрипт с подписями.
+        try:
+            speakers_in_turns = {t.get("speaker") for t in dialogue.get("turns", [])}
+            if len(speakers_in_turns) >= 2:
+                speaker_roles = await _resolve_roles(json.dumps(dialogue, ensure_ascii=False))
+                labeled = _apply_roles(dialogue, speaker_roles)
+                if speaker_roles and labeled.strip():
+                    text = labeled  # транскрипт с подписями «Менеджер:/Клиент:»
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"Определение ролей пропущено: {e}")
+
         # Сохраняем материалы транскрибации
         tr_txt = temp_dir / f"transcript_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.txt"
         tr_json = temp_dir / f"transcript_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:8]}.json"
@@ -1047,14 +1260,9 @@ async def run_pipeline(user_id: int, conversation_id: int, audio_attachment_id: 
         db.add(msg_an); db.commit()
 
         dialogue_json_str = dialogue_path.read_text(encoding="utf-8")
-        combined, checklist_scores, skipped_checklists = await _run_all_checklists(
-            db, user_id, dialogue_json_str, research=research
-        )
-
-        await _finalize_analysis_and_report(
+        await _analyze_with_rerun(
             db, user_id, conversation_id, display_conv_id, progress_conversation_id,
-            temp_dir, combined, checklist_scores, dialogue_json_str, skipped_checklists,
-            research=research,
+            temp_dir, dialogue_json_str, research=research,
         )
 
         tracker.complete_operation(operation_id, "Готово ✅ Отчёт во вложении.")

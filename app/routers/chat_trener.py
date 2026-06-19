@@ -382,7 +382,10 @@ def get_attachment(attachment_id: int, request: Request, db: Session = Depends(g
     if not conv or conv.user_id != user.id:
         raise HTTPException(status_code=403)
     abs_path = os.path.join(UPLOAD_DIR, att.storage_key)
-    return FileResponse(abs_path, media_type=att.mime_type, filename=att.file_name)
+    media_type = att.mime_type or "application/octet-stream"
+    if media_type.startswith("text/") or media_type == "application/json":
+        media_type = f"{media_type}; charset=utf-8"
+    return FileResponse(abs_path, media_type=media_type, filename=att.file_name)
 
 @router.get("/chat_trener/export/by-report/{report_message_id}")
 def export_zip_by_report(report_message_id: int, request: Request, db: Session = Depends(get_db)):
