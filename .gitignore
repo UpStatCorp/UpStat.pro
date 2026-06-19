@@ -39,6 +39,9 @@ docker-compose.override.yml
 
 # Cookies / secrets
 cookies.txt
+*.bak
+.crm_encryption_key
+app/.crm_encryption_key
 
 # Node modules
 node_modules/
