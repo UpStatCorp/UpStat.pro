@@ -564,11 +564,11 @@ class VoiceTraining {
         });
         document.getElementById('vt-end-btn').addEventListener('click', () => {
             overlay.remove();
-            if (typeof this.endTraining === 'function') {
-                this.endTraining();
-            } else if (typeof this.finishTraining === 'function') {
-                this.finishTraining();
-            }
+            // Корректное завершение через confirmStopTraining: прогоняет AI-валидатор и
+            // сохраняет результат (POST /training/complete идёт по HTTP — работает и без
+            // живого WS). Раньше звались несуществующие endTraining/finishTraining, поэтому
+            // кнопка просто закрывала оверлей и ничего не завершала.
+            this.confirmStopTraining();
         });
     }
     
@@ -1607,7 +1607,10 @@ class VoiceTraining {
         
         // Останавливаем запись
         if (this.isRecording) {
-            this.stopRecording();
+            // Метод называется stopContinuousListening() (не stopRecording — такого нет).
+            // try/catch: ошибка остановки микрофона НЕ должна срывать запуск AI-валидатора
+            // (баг: при включённом микрофоне завершение падало до saveTrainingResults).
+            try { this.stopContinuousListening(); } catch (e) { console.error('Ошибка остановки записи при завершении:', e); }
         }
         if (this.timerInterval) {
             clearInterval(this.timerInterval);
@@ -2360,7 +2363,10 @@ class VoiceTraining {
         
         // Останавливаем все
         if (this.isRecording) {
-            this.stopRecording();
+            // Метод называется stopContinuousListening() (не stopRecording — такого нет).
+            // try/catch: ошибка остановки микрофона НЕ должна срывать запуск AI-валидатора
+            // (баг: при включённом микрофоне завершение падало до saveTrainingResults).
+            try { this.stopContinuousListening(); } catch (e) { console.error('Ошибка остановки записи при завершении:', e); }
         }
         
         if (this.timerInterval) {
