@@ -547,7 +547,9 @@
 <link rel="stylesheet" href="/static/css/voice-training.css?v=2">
 
 <!-- Подключение скриптов -->
-<script src="/static/js/voice-training.js"></script>
+<!-- ?v= обязателен: без него браузеры кешируют voice-training.js навсегда и
+     продолжают крутить старый код после деплоя. Бампить при каждом изменении JS. -->
+<script src="/static/js/voice-training.js?v=2"></script>
 
 <script>
 // Инициализация при загрузке страницы
