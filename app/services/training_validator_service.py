@@ -8,6 +8,7 @@ import asyncio
 import json
 import os
 import logging
+from datetime import datetime
 from typing import Dict, Optional
 
 from openai import (
@@ -25,6 +26,24 @@ _TRANSIENT = (APITimeoutError, APIConnectionError, InternalServerError, RateLimi
 
 # Модель по умолчанию; переопределяется через OPENAI_VALIDATOR_MODEL
 _DEFAULT_MODEL = "gpt-4o-mini"
+
+# Лимит длины транскрипта (символы). gpt-4o-mini держит 128k токенов, поэтому
+# 8000 было слишком жёстко и срезало ВТОРУЮ половину диалога — а рубрика
+# оценивает именно её («правильный вариант» + разбор итогов в конце).
+_MAX_TRANSCRIPT_CHARS = int(os.getenv("OPENAI_VALIDATOR_MAX_CHARS", "40000"))
+
+# Порог прохождения (выносим из «магического» 70 в код в одно место)
+_PASS_SCORE = int(os.getenv("OPENAI_VALIDATOR_PASS_SCORE", "70"))
+
+# Переиспользуемый async-клиент: создание на каждый вызов пересоздаёт httpx-пул.
+_client: Optional[AsyncOpenAI] = None
+
+
+def _get_client() -> AsyncOpenAI:
+    global _client
+    if _client is None:
+        _client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    return _client
 
 VALIDATION_PROMPT = """Ты — валидатор тренировки по продажам. Твоя задача — проверить, правильно ли менеджер прошёл тренировку.
 
@@ -139,16 +158,22 @@ class TrainingValidatorService:
 
         model = os.getenv("OPENAI_VALIDATOR_MODEL", _DEFAULT_MODEL)
 
+        # Усечение с сохранением ХВОСТА (а не начала): концовка диалога несёт
+        # «правильный вариант» и выводы, по которым и выставляется балл.
+        trimmed = transcript
+        if len(trimmed) > _MAX_TRANSCRIPT_CHARS:
+            trimmed = trimmed[-_MAX_TRANSCRIPT_CHARS:]
+
         prompt = VALIDATION_PROMPT.format(
             training_title=training_title,
             training_description=training_description,
             training_recommendation=training_recommendation,
             training_stage=_STAGE_NAMES.get(training_stage, training_stage or "Не указан"),
             system_prompt=system_prompt or "(стандартный промпт тренера)",
-            transcript=transcript[:8000],
+            transcript=trimmed,
         )
 
-        client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        client = _get_client()
         last_exc: Optional[Exception] = None
 
         for attempt in range(3):
@@ -166,7 +191,7 @@ class TrainingValidatorService:
 
                 score = max(0, min(100, int(result.get("score", 0))))
                 result["score"] = score
-                result["passed"] = score >= 70
+                result["passed"] = score >= _PASS_SCORE
 
                 # Логируем usage для наблюдаемости (токены и модель)
                 usage = response.usage
@@ -226,6 +251,37 @@ class TrainingValidatorService:
         raise ValidationTransientError("Unexpected exit from retry loop")  # pragma: no cover
 
     @staticmethod
+    async def _resolve_transcript(
+        db, session_id: int, client_transcript: str, expected_messages: int = 0
+    ) -> str:
+        """Возвращает СЕРВЕРНЫЙ транскрипт из сохранённых сообщений сессии —
+        источник правды, который нельзя подделать с клиента.
+
+        Клиентский `client_transcript` используется ТОЛЬКО как fallback, если в
+        БД реально нет реплик (например, не голосовая/ручная сессия).
+
+        Защита от гонки последней реплики (план, раздел C): делаем одну короткую
+        повторную попытку, если в БД пусто ИЛИ реплик меньше, чем заявил клиент
+        (`expected_messages` = user_responses + ai_questions) — фоновые сохранения
+        WebSocket могли ещё не закоммититься. Клиентский счётчик используется лишь
+        как ХИНТ для ретрая, а не как оценка, поэтому подделать балл им нельзя.
+        """
+        try:
+            from voice_assistant.db_service import VoiceTrainingDBService as _DB
+        except ImportError:
+            from db_service import VoiceTrainingDBService as _DB
+
+        def _line_count(t: str) -> int:
+            return t.count("\n") + 1 if t.strip() else 0
+
+        server = _DB.build_transcript(db, session_id)
+        if not server.strip() or (expected_messages and _line_count(server) < expected_messages):
+            await asyncio.sleep(0.4)
+            server = _DB.build_transcript(db, session_id)
+
+        return server if server.strip() else (client_transcript or "")
+
+    @staticmethod
     async def validate_and_complete_training(
         db,
         session_id: int,
@@ -258,10 +314,15 @@ class TrainingValidatorService:
                 "plan_completed": False,
             }
 
+        # Транскрипт берём из БД (серверный источник правды), клиентский — fallback
+        effective_transcript = await TrainingValidatorService._resolve_transcript(
+            db, session_id, transcript
+        )
+
         # Попытка валидации — может поднять ValidationTransientError
         try:
             validation_result = await TrainingValidatorService.validate_training(
-                transcript=transcript,
+                transcript=effective_transcript,
                 training_title=training.title,
                 training_description=training.description,
                 training_recommendation=training.recommendation,
@@ -285,6 +346,35 @@ class TrainingValidatorService:
                 "plan_completed": False,
                 "validation_error": True,
             }
+
+        return TrainingValidatorService.persist_validation(
+            db, session_id, training_id, validation_result
+        )
+
+    @staticmethod
+    def persist_validation(
+        db, session_id: int, training_id: int, validation_result: Dict
+    ) -> Dict:
+        """Идемпотентно записывает результат валидации в БД.
+
+        ВАЖНО: вызывающий код ДОЛЖЕН держать блокировку строки сессии
+        (SELECT ... FOR UPDATE). Gate `was_completed` и инкремент плана обязаны
+        выполняться атомарно — иначе гонка автозавершения и ручной кнопки дважды
+        увеличит plan.completed_trainings и дважды разблокирует следующий шаг.
+
+        Синхронный метод: короткая транзакция, БЕЗ удержания соединения на время
+        LLM-вызова (см. план, раздел D). LLM выполняется ДО вызова этого метода.
+        """
+        try:
+            from models import TrainingSession, Training, User
+        except ImportError:
+            from app.models import TrainingSession, Training, User
+
+        training = db.query(Training).filter_by(id=training_id).first()
+        if not training:
+            validation_result["training_completed"] = False
+            validation_result["plan_completed"] = False
+            return validation_result
 
         score = validation_result["score"]
         passed = validation_result["passed"]
@@ -341,7 +431,9 @@ class TrainingValidatorService:
         # Стрик пользователя (хранимый, TZ-устойчивый) — пересчитываем после коммита
         try:
             from services.streak_service import refresh_streak
-            from models import User
+        except ImportError:
+            from app.services.streak_service import refresh_streak
+        try:
             if completed_user_id:
                 u = db.query(User).get(completed_user_id)
                 if u:
@@ -350,7 +442,7 @@ class TrainingValidatorService:
             logger.exception("refresh_streak failed after training completion")
 
         logger.info(
-            "Validation and completion done",
+            "Validation persisted",
             extra={
                 "training_id": training_id,
                 "session_id": session_id,

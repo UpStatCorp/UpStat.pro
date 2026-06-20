@@ -9,14 +9,20 @@ if not DATABASE_URL:
 if "sqlite" in DATABASE_URL.lower():
     raise ValueError("SQLite не поддерживается. Используйте PostgreSQL: DATABASE_URL=postgresql://...")
 
-# Определяем параметры пула для PostgreSQL
+# Параметры пула для PostgreSQL — конфигурируемые через env, чтобы у каждой
+# роли процесса был свой бюджет соединений. Суммарно по всем процессам должно
+# выполняться: (web_workers + arq_replicas) * (pool_size + max_overflow)
+# <= POSTGRES_MAX_CONNECTIONS (с запасом на админ/миграции). Напр. arq-воркерам
+# можно задать меньший DB_POOL_SIZE/DB_MAX_OVERFLOW, чем веб-процессам.
+# После того как голосовые WebSocket перестали «прибивать» соединение на всю
+# сессию, реальный одновременный спрос на соединения существенно ниже теоретического.
 engine = create_engine(
     DATABASE_URL,
-    pool_size=20,           # Базовый размер пула
-    max_overflow=40,        # Дополнительные соединения при нагрузке
-    pool_timeout=30,        # Таймаут ожидания соединения
+    pool_size=int(os.getenv("DB_POOL_SIZE", "20")),
+    max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "40")),
+    pool_timeout=int(os.getenv("DB_POOL_TIMEOUT", "30")),
     pool_pre_ping=True,     # Проверка соединений перед использованием
-    pool_recycle=3600,      # Пересоздание соединений каждый час
+    pool_recycle=int(os.getenv("DB_POOL_RECYCLE", "3600")),
     echo=False              # Логирование SQL (False для production)
 )
 

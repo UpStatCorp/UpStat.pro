@@ -1,6 +1,6 @@
 from datetime import datetime, date
 from typing import Optional
-from sqlalchemy import Column, Integer, String, DateTime, Date, ForeignKey, Text, Boolean, UniqueConstraint, Float, func as sa_func
+from sqlalchemy import Column, Integer, String, DateTime, Date, ForeignKey, Text, Boolean, UniqueConstraint, Index, Float, func as sa_func
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from database import Base
 
@@ -249,8 +249,14 @@ class TrainingSession(Base):
     session_type: Mapped[str] = mapped_column(String(50), default="text")
     websocket_session_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
     conversation_history_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    status: Mapped[str] = mapped_column(String(20), default="active")
-    
+    # status часто фильтруется (стрик, выборки активных/завершённых) — индексируем.
+    status: Mapped[str] = mapped_column(String(20), default="active", index=True)
+
+    # Композитный индекс под per-user расчёт стрика (см. миграцию 021)
+    __table_args__ = (
+        Index("ix_training_sessions_user_id_status", "user_id", "status"),
+    )
+
     # Связи
     training = relationship("Training", back_populates="sessions")
     user = relationship("User", back_populates="training_sessions")

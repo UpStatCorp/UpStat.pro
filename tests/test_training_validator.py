@@ -26,6 +26,17 @@ from services.training_validator_service import (
     _EMPTY_CRITERIA,
 )
 
+
+@pytest.fixture(autouse=True)
+def _reset_validator_client():
+    """Сбрасываем кэш переиспользуемого AsyncOpenAI-клиента между тестами —
+    иначе закэшированный клиент игнорировал бы patch('...AsyncOpenAI')."""
+    import services.training_validator_service as _svc
+    _svc._client = None
+    yield
+    _svc._client = None
+
+
 # ─── Helpers ──────────────────────────────────────────────────────────────────
 
 LONG_TRANSCRIPT = "Manager: Hello. Client: Hi. " * 20  # > 50 chars
@@ -434,7 +445,9 @@ class TestValidateAndCompleteTraining:
         session.started_at = None
         session.duration_seconds = None
 
-        db.query.return_value.filter_by.return_value.first.side_effect = [training, session]
+        # Порядок filter_by().first(): training (validate_and_complete) →
+        # training (persist_validation) → session (persist_validation).
+        db.query.return_value.filter_by.return_value.first.side_effect = [training, training, session]
         return db, training, session
 
     @pytest.mark.asyncio
@@ -486,8 +499,8 @@ class TestValidateAndCompleteTraining:
     async def test_happy_path_commits_db(self):
         """On successful validation, DB commit must be called."""
         db, training, session = self._make_db_with_training()
-        # Reset side_effect to return in sequence
-        db.query.return_value.filter_by.return_value.first.side_effect = [training, session]
+        # Reset side_effect: training (validate_and_complete) → training + session (persist)
+        db.query.return_value.filter_by.return_value.first.side_effect = [training, training, session]
 
         validation_result = {
             "score": 80,
@@ -531,3 +544,110 @@ class TestValidateAndCompleteTraining:
         assert result["score"] == 0
         assert result["training_completed"] is False
         db.commit.assert_not_called()
+
+    def test_persist_no_double_increment_when_already_completed(self):
+        """Идемпотентность плана: если тренировка уже была completed, повторный
+        passed-результат НЕ инкрементит plan.completed_trainings (гонка авто+кнопка)."""
+        db = MagicMock()
+        training = MagicMock()
+        training.best_score = 50
+        training.status = "completed"  # уже завершена ранее
+        plan = MagicMock()
+        plan.completed_trainings = 1
+        plan.total_trainings = 3
+        plan.status = "active"
+        training.plan = plan
+        session = MagicMock()
+        session.started_at = None
+        session.duration_seconds = None
+        session.user_id = 7
+        db.query.return_value.filter_by.return_value.first.side_effect = [training, session]
+
+        vr = {"score": 90, "passed": True, "criteria": _EMPTY_CRITERIA.copy(), "feedback": "ok", "details": "d"}
+        TrainingValidatorService.persist_validation(db, 999, 1, vr)
+
+        assert plan.completed_trainings == 1  # НЕ увеличился
+
+
+# ─── Server transcript & tail-keeping truncation ──────────────────────────────
+
+
+class TestServerTranscriptAndTruncation:
+    @pytest.mark.asyncio
+    async def test_truncation_keeps_tail_not_head(self):
+        """Длинный транскрипт усекается с сохранением ХВОСТА (концовка важнее)."""
+        from services import training_validator_service as svc
+
+        head = "HEAD_MARKER_должна_исчезнуть "
+        tail = " TAIL_MARKER_должна_остаться"
+        big = head + ("ё" * (svc._MAX_TRANSCRIPT_CHARS)) + tail
+
+        response = _make_openai_response(VALID_RESPONSE_JSON)
+        mock_cls, mock_instance = _mock_client(create_return=response)
+        with patch("services.training_validator_service.AsyncOpenAI", mock_cls):
+            await TrainingValidatorService.validate_training(
+                transcript=big,
+                training_title="T",
+                training_description="D",
+                training_recommendation="R",
+            )
+
+        sent = mock_instance.chat.completions.create.call_args.kwargs["messages"][0]["content"]
+        assert "TAIL_MARKER" in sent
+        assert "HEAD_MARKER" not in sent
+
+    @pytest.mark.asyncio
+    async def test_resolve_transcript_prefers_server(self):
+        """Серверный транскрипт из БД имеет приоритет над клиентским (анти-подделка)."""
+        # Патчим живой объект класса (import гарантирует ту же запись в sys.modules,
+        # что и ленивый импорт внутри _resolve_transcript — устойчиво к перезагрузке
+        # модуля другими тестами через patch.dict(sys.modules)).
+        import voice_assistant.db_service as _dbs
+        db = MagicMock()
+        with patch.object(_dbs.VoiceTrainingDBService, "build_transcript", return_value="SERVER_SIDE"):
+            out = await TrainingValidatorService._resolve_transcript(db, 1, "CLIENT_FAKE")
+        assert out == "SERVER_SIDE"
+
+    @pytest.mark.asyncio
+    async def test_resolve_transcript_falls_back_to_client_when_db_empty(self):
+        """Если в БД нет реплик — fallback на клиентский транскрипт (не голосовая сессия)."""
+        import voice_assistant.db_service as _dbs
+        db = MagicMock()
+        with patch.object(_dbs.VoiceTrainingDBService, "build_transcript", return_value=""), \
+             patch("asyncio.sleep", new_callable=AsyncMock):
+            out = await TrainingValidatorService._resolve_transcript(db, 1, "CLIENT_FALLBACK")
+        assert out == "CLIENT_FALLBACK"
+
+    @pytest.mark.asyncio
+    async def test_resolve_transcript_retries_when_fewer_than_expected(self):
+        """Гонка последней реплики: серверных реплик меньше, чем заявил клиент →
+        одна повторная попытка (фоновое сохранение успевает закоммититься)."""
+        import voice_assistant.db_service as _dbs
+        db = MagicMock()
+        # 1-й вызов: 1 реплика; 2-й: 2 реплики (последняя долетела)
+        with patch.object(
+            _dbs.VoiceTrainingDBService,
+            "build_transcript",
+            side_effect=["Менеджер: a", "Менеджер: a\nТренер: b"],
+        ) as m, patch("asyncio.sleep", new_callable=AsyncMock):
+            out = await TrainingValidatorService._resolve_transcript(
+                db, 1, "client", expected_messages=2
+            )
+        assert m.call_count == 2  # был ретрай
+        assert out == "Менеджер: a\nТренер: b"
+
+    @pytest.mark.asyncio
+    async def test_resolve_transcript_no_retry_when_count_satisfied(self):
+        """Если серверных реплик достаточно — повторного чтения нет."""
+        import voice_assistant.db_service as _dbs
+        db = MagicMock()
+        with patch.object(
+            _dbs.VoiceTrainingDBService,
+            "build_transcript",
+            return_value="Менеджер: a\nТренер: b",
+        ) as m, patch("asyncio.sleep", new_callable=AsyncMock):
+            out = await TrainingValidatorService._resolve_transcript(
+                db, 1, "client", expected_messages=2
+            )
+        assert m.call_count == 1  # ретрая не было
+        assert out == "Менеджер: a\nТренер: b"

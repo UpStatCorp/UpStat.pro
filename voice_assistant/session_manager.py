@@ -80,6 +80,11 @@ class UserSession:
         self.current_audio = []
         self.is_speaking = False
         self.silence_start = None
+
+        # Незавершённые фоновые записи в БД (сохранения реплик).
+        # Дренируем их перед завершением сессии, чтобы AI-валидатор видел
+        # последнюю реплику, а не гонку «сохранение ещё в полёте».
+        self.pending_saves: set = set()
         
         # Многоэтапная тренировка (если применимо).
         # stages: список объектов TrainingStage из training_stages_service.

@@ -50,7 +50,6 @@ async def websocket_training_endpoint(
     websocket: WebSocket,
     training_id: int = Query(1, description="ID тренировки"),
     db_session_id: Optional[int] = Query(None, description="ID существующей TrainingSession для реконнекта"),
-    db: Session = Depends(get_db)
 ):
     """
     WebSocket endpoint для голосовой тренировки.
@@ -126,34 +125,37 @@ async def websocket_training_endpoint(
                 await websocket.close(code=1008, reason="Unauthorized")
                 return
 
-        # Проверяем что пользователь существует
+        # Проверяем пользователя и доступ в КОРОТКОЙ сессии БД, которая сразу
+        # закрывается — соединение не держится на всю WebSocket-тренировку.
+        try:
+            from database import SessionLocal
+        except ImportError:
+            from app.database import SessionLocal
         try:
             from models import User
         except ImportError:
             from app.models import User
-        
-        user = db.query(User).filter(User.id == user_id).first()
-        
-        if not user:
-            await websocket.send_json({
-                "type": "error",
-                "message": "⚠️ Пользователь не найден"
-            })
-            await websocket.close(code=1008, reason="User not found")
-            return
-
-        # Проверяем capability voice_training
         try:
             from services.capability_service import has_capability
         except ImportError:
             from app.services.capability_service import has_capability
-        if not has_capability(user, "voice_training"):
-            await websocket.send_json({
-                "type": "error",
-                "message": "⚠️ Голосовые тренировки не входят в ваш тарифный план"
-            })
-            await websocket.close(code=1008, reason="voice_training capability required")
-            return
+
+        with SessionLocal() as _auth_db:
+            user = _auth_db.query(User).filter(User.id == user_id).first()
+            if not user:
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "⚠️ Пользователь не найден"
+                })
+                await websocket.close(code=1008, reason="User not found")
+                return
+            if not has_capability(user, "voice_training"):
+                await websocket.send_json({
+                    "type": "error",
+                    "message": "⚠️ Голосовые тренировки не входят в ваш тарифный план"
+                })
+                await websocket.close(code=1008, reason="voice_training capability required")
+                return
 
         logger.info(f"🔐 Аутентификация успешна: user_id={user_id}, training_id={training_id}")
         
@@ -167,8 +169,9 @@ async def websocket_training_endpoint(
         await websocket.close(code=1011, reason="Authentication error")
         return
     
-    # Передаём управление обработчику (db_session_id для реконнекта)
-    await handle_websocket_connection(websocket, user_id, training_id, db, db_session_id)
+    # Передаём управление обработчику (db_session_id для реконнекта).
+    # БД обработчику НЕ передаём: он открывает короткие сессии через run_db.
+    await handle_websocket_connection(websocket, user_id, training_id, db_session_id)
 
 
 @router.get("/stats")
@@ -193,7 +196,11 @@ async def get_training_stats(request: Request, db: Session = Depends(get_db)):
 
     return {
         "status": "ok",
-        "sessions": stats
+        "sessions": stats,
+        # ВАЖНО: цифры — ПО ОДНОМУ воркеру. SessionManager — синглтон процесса,
+        # поэтому при WEB_CONCURRENCY>1 суммарная ёмкость = max_sessions * число
+        # воркеров, а лимит «одна сессия на юзера» действует в пределах воркера.
+        "scope": "per-worker",
     }
 
 
@@ -474,9 +481,9 @@ async def complete_training(request: Request, db: Session = Depends(get_db)):
         from app.models import TrainingSession, Training
     
     try:
-        from services.training_validator_service import TrainingValidatorService
+        from services.training_validator_service import TrainingValidatorService, ValidationTransientError
     except ImportError:
-        from app.services.training_validator_service import TrainingValidatorService
+        from app.services.training_validator_service import TrainingValidatorService, ValidationTransientError
     
     try:
         data = await request.json()
@@ -527,72 +534,141 @@ async def complete_training(request: Request, db: Session = Depends(get_db)):
                 "plan_completed": training.plan.status == "completed" if training and training.plan else False,
                 "session_id": session_id
             }
-        
+
         session.user_responses_count = user_responses_count
         session.ai_questions_count = ai_questions_count
-        
+
         # Если это тренировка из плана — запускаем AI-валидатор
         if training_id and str(training_id) != 'new':
+            # Контекст читаем ПОД блокировкой и сохраняем плоские значения, затем
+            # СНИМАЕМ блокировку перед LLM-вызовом — чтобы не держать соединение и
+            # строку на время ≤180 c при «шторме завершений» (план, раздел D).
             training = db.query(Training).filter_by(id=int(training_id)).first()
-            
-            if training:
-                from .config import SYSTEM_PROMPT
-                
-                # Для многоэтапных тренировок собираем промпты всех этапов
-                effective_prompt = SYSTEM_PROMPT
-                if training.stage:
-                    try:
-                        try:
-                            from services.training_stages_service import load_stages
-                        except ImportError:
-                            from app.services.training_stages_service import load_stages
-                        stages = load_stages(training.stage)
-                        if stages:
-                            effective_prompt = "\n\n---\n\n".join(
-                                f"=== ЭТАП {s.number} (роль ИИ: {s.ai_role}) ===\n{s.prompt}"
-                                for s in stages
-                            )
-                    except Exception as e:
-                        logger.warning("Failed to load stages for validation", extra={"error": str(e)})
-
-                validation_result = await TrainingValidatorService.validate_and_complete_training(
-                    db=db,
-                    session_id=session_id,
-                    training_id=int(training_id),
-                    transcript=transcript,
-                    system_prompt=effective_prompt
-                )
-
-                is_error = validation_result.get("validation_error", False)
-                logger.info(
-                    "AI validation result",
-                    extra={
-                        "score": validation_result["score"],
-                        "passed": validation_result["passed"],
-                        "training_id": training_id,
-                        "validation_error": is_error,
-                    },
-                )
-
+            if not training:
+                db.commit()  # фиксируем счётчики и снимаем блокировку
                 return {
-                    "success": not is_error,
-                    "message": (
-                        "Сервис проверки временно недоступен. Попробуйте ещё раз."
-                        if is_error
-                        else "Тренировка проверена AI-валидатором"
-                    ),
-                    "score": validation_result["score"],
-                    "passed": validation_result["passed"],
-                    "feedback": validation_result.get("feedback", ""),
-                    "criteria": validation_result.get("criteria", {}),
-                    "details": validation_result.get("details", ""),
-                    "training_completed": validation_result.get("training_completed", False),
-                    "plan_completed": validation_result.get("plan_completed", False),
-                    "validation_error": is_error,
+                    "success": True,
+                    "message": "Тренировка завершена (тренировка не найдена)",
+                    "score": 0,
+                    "passed": False,
                     "session_id": session_id,
                 }
-        
-        # Обычная тренировка (не из плана) — просто сохраняем
+
+            from .config import SYSTEM_PROMPT
+
+            t_title = training.title
+            t_desc = training.description
+            t_rec = training.recommendation
+            t_stage = training.stage
+
+            # Для многоэтапных тренировок собираем промпты всех этапов
+            effective_prompt = SYSTEM_PROMPT
+            if t_stage:
+                try:
+                    try:
+                        from services.training_stages_service import load_stages
+                    except ImportError:
+                        from app.services.training_stages_service import load_stages
+                    stages = load_stages(t_stage)
+                    if stages:
+                        effective_prompt = "\n\n---\n\n".join(
+                            f"=== ЭТАП {s.number} (роль ИИ: {s.ai_role}) ===\n{s.prompt}"
+                            for s in stages
+                        )
+                except Exception as e:
+                    logger.warning("Failed to load stages for validation", extra={"error": str(e)})
+
+            db.commit()  # фиксируем счётчики и СНИМАЕМ блокировку строки перед LLM
+
+            # Серверный транскрипт (нельзя подделать с клиента) — чтение без блокировки.
+            # expected_messages — хинт для ретрая на гонке последней реплики (не оценка).
+            effective_transcript = await TrainingValidatorService._resolve_transcript(
+                db, session_id, transcript,
+                expected_messages=(user_responses_count or 0) + (ai_questions_count or 0),
+            )
+
+            # --- LLM-вызов БЕЗ удержания блокировки/строки ---
+            try:
+                validation_result = await TrainingValidatorService.validate_training(
+                    transcript=effective_transcript,
+                    training_title=t_title,
+                    training_description=t_desc,
+                    training_recommendation=t_rec,
+                    training_stage=t_stage,
+                    system_prompt=effective_prompt,
+                )
+            except ValidationTransientError:
+                # Временная недоступность OpenAI — сессия остаётся active, юзер повторит
+                logger.warning("Validation transient — session left active", extra={"session_id": session_id, "training_id": training_id})
+                return {
+                    "success": False,
+                    "message": "Сервис проверки временно недоступен. Попробуйте ещё раз.",
+                    "score": 0,
+                    "passed": False,
+                    "feedback": "Сервис проверки временно недоступен. Попробуйте завершить тренировку ещё раз через несколько минут.",
+                    "criteria": {},
+                    "validation_error": True,
+                    "session_id": session_id,
+                }
+
+            # --- Повторная блокировка + идемпотентная запись ---
+            # Если параллельный racer уже записал результат — возвращаем сохранённое
+            # и НЕ запускаем persist повторно (иначе двойной инкремент плана).
+            locked = (
+                db.query(TrainingSession)
+                .filter_by(id=session_id)
+                .with_for_update()
+                .first()
+            )
+            if locked and locked.status == "completed" and locked.score is not None:
+                training_row = db.query(Training).filter_by(id=int(training_id)).first()
+                logger.info("Session completed by concurrent request, returning cached", extra={"session_id": session_id, "score": locked.score})
+                return {
+                    "success": True,
+                    "message": "Тренировка уже была проверена",
+                    "score": locked.score,
+                    "passed": (locked.score or 0) >= 70,
+                    "feedback": locked.feedback or "",
+                    "criteria": {},
+                    "training_completed": (locked.score or 0) >= 70,
+                    "plan_completed": training_row.plan.status == "completed" if training_row and training_row.plan else False,
+                    "session_id": session_id,
+                }
+
+            validation_result = TrainingValidatorService.persist_validation(
+                db, session_id, int(training_id), validation_result
+            )
+
+            is_error = validation_result.get("validation_error", False)
+            logger.info(
+                "AI validation result",
+                extra={
+                    "score": validation_result["score"],
+                    "passed": validation_result["passed"],
+                    "training_id": training_id,
+                    "validation_error": is_error,
+                },
+            )
+
+            return {
+                "success": not is_error,
+                "message": (
+                    "Сервис проверки временно недоступен. Попробуйте ещё раз."
+                    if is_error
+                    else "Тренировка проверена AI-валидатором"
+                ),
+                "score": validation_result["score"],
+                "passed": validation_result["passed"],
+                "feedback": validation_result.get("feedback", ""),
+                "criteria": validation_result.get("criteria", {}),
+                "details": validation_result.get("details", ""),
+                "training_completed": validation_result.get("training_completed", False),
+                "plan_completed": validation_result.get("plan_completed", False),
+                "validation_error": is_error,
+                "session_id": session_id,
+            }
+
+        # Обычная тренировка (не из плана) — просто сохраняем (блокировка короткая)
         session.status = "completed"
         session.completed_at = datetime.utcnow()
         if session.started_at and not session.duration_seconds:

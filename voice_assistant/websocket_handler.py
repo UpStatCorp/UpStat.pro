@@ -21,7 +21,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 
 from .session_manager import get_session_manager, UserSession
-from .db_service import VoiceTrainingDBService
+from .db_service import VoiceTrainingDBService, run_db
 from .config import (
     USE_AZURE_VOICE_LIVE,
     AZURE_VOICE_LIVE_ENDPOINT,
@@ -70,17 +70,19 @@ async def handle_websocket_connection(
     websocket: WebSocket,
     user_id: int,
     training_id: int,
-    db: Session,
     existing_db_session_id: Optional[int] = None,
 ):
     """
     Обрабатывает WebSocket подключение для голосовой тренировки с Azure Voice Live API.
 
+    БД НЕ прибивается к соединению: каждая операция выполняется через run_db()
+    в собственной короткоживущей сессии вне event loop. Так 100+ сессий не
+    исчерпывают пул соединений и не блокируют обработку звука.
+
     Args:
         websocket: WebSocket соединение
         user_id: ID пользователя
         training_id: ID тренировки
-        db: Сессия БД
         existing_db_session_id: если передан — пытаемся переиспользовать существующую
                                 TrainingSession (реконнект клиента), иначе создаём новую.
     """
@@ -132,44 +134,43 @@ async def handle_websocket_connection(
             await websocket.close(code=1008, reason="Server capacity reached")
             return
         
-        # Создаём запись в БД (или переиспользуем существующую при реконнекте)
-        db_session_id = None
-        is_reconnect = False
+        # Создаём запись в БД (или переиспользуем существующую при реконнекте).
+        # Вся работа — в одной короткоживущей сессии через run_db (вне event loop).
+        ws_session_id = user_session.session_id
 
-        if existing_db_session_id:
+        def _reconnect_or_create(s):
             try:
                 from models import TrainingSession  # type: ignore
             except ImportError:
                 from app.models import TrainingSession  # type: ignore
 
-            existing = (
-                db.query(TrainingSession)
-                .filter(TrainingSession.id == existing_db_session_id)
-                .first()
-            )
-            if (
-                existing
-                and existing.user_id == user_id
-                and existing.training_id == training_id
-                and existing.status in ("active", "in_progress")
-                and existing.completed_at is None
-            ):
-                db_session_id = existing.id
-                is_reconnect = True
-                try:
-                    existing.websocket_session_id = user_session.session_id
-                    db.commit()
-                except Exception as e:
-                    logger.warning(f"⚠️ Не удалось обновить websocket_session_id при реконнекте: {e}")
-                    db.rollback()
-                logger.info(
-                    f"🔁 Реконнект: переиспользуем TrainingSession id={db_session_id} "
-                    f"для user_id={user_id}, training_id={training_id}"
+            if existing_db_session_id:
+                existing = (
+                    s.query(TrainingSession)
+                    .filter(TrainingSession.id == existing_db_session_id)
+                    .first()
                 )
+                if (
+                    existing
+                    and existing.user_id == user_id
+                    and existing.training_id == training_id
+                    and existing.status in ("active", "in_progress")
+                    and existing.completed_at is None
+                ):
+                    existing.websocket_session_id = ws_session_id
+                    s.commit()
+                    return existing.id, True
 
-        if db_session_id is None:
-            db_session_id = await VoiceTrainingDBService.create_training_session(
-                db, user_id, training_id, user_session.session_id
+            new_id = VoiceTrainingDBService.create_training_session(
+                s, user_id, training_id, ws_session_id
+            )
+            return new_id, False
+
+        db_session_id, is_reconnect = await run_db(_reconnect_or_create)
+        if is_reconnect:
+            logger.info(
+                f"🔁 Реконнект: переиспользуем TrainingSession id={db_session_id} "
+                f"для user_id={user_id}, training_id={training_id}"
             )
 
         user_session.db_session_id = db_session_id
@@ -255,39 +256,51 @@ async def handle_websocket_connection(
         # иначе работаем по старой одно-промптовой схеме.
         # Определяем локаль пользователя (EN только для TRAIN_GLOBAL, иначе RU).
         # Строгий gate: влияет на промпты только если EN-контент явно создан.
-        user_locale = "ru"
-        try:
+        # Локаль пользователя + поля тренировки — одной короткой сессией,
+        # извлекаем ТОЛЬКО плоские значения (ORM-объекты detached после закрытия).
+        def _load_setup(s):
+            locale = "ru"
             try:
-                from models import User
-            except ImportError:
-                from app.models import User
-            try:
-                from services.i18n_service import resolve_locale
-            except ImportError:
-                from app.services.i18n_service import resolve_locale
+                try:
+                    from models import User
+                except ImportError:
+                    from app.models import User
+                try:
+                    from services.i18n_service import resolve_locale
+                except ImportError:
+                    from app.services.i18n_service import resolve_locale
+                u = s.query(User).filter_by(id=user_id).first()
+                if u is not None:
+                    locale = resolve_locale(u)
+            except Exception as e:
+                logger.warning(f"⚠️ Не удалось определить локаль пользователя: {e}")
 
-            _user = db.query(User).filter_by(id=user_id).first()
-            if _user is not None:
-                user_locale = resolve_locale(_user)
-        except Exception as e:
-            logger.warning(f"⚠️ Не удалось определить локаль пользователя: {e}")
+            info = None
+            try:
+                try:
+                    from models import Training
+                except ImportError:
+                    from app.models import Training
+                tr = s.query(Training).filter_by(id=training_id).first()
+                if tr is not None:
+                    info = {
+                        "title": tr.title,
+                        "description": tr.description,
+                        "recommendation": tr.recommendation,
+                        "stage": tr.stage,
+                    }
+            except Exception as e:
+                logger.warning(f"⚠️ Не удалось загрузить данные тренировки: {e}")
+            return locale, info
+
+        user_locale, training_info = await run_db(_load_setup)
 
         session_instructions = get_system_prompt(user_locale)
-        training_record = None
-        try:
-            try:
-                from models import Training
-            except ImportError:
-                from app.models import Training
-
-            training_record = db.query(Training).filter_by(id=training_id).first()
-        except Exception as e:
-            logger.warning(f"⚠️ Не удалось загрузить данные тренировки: {e}")
 
         stages: list = []
-        if training_record and getattr(training_record, "stage", None):
+        if training_info and training_info.get("stage"):
             try:
-                stages = load_stages(training_record.stage, locale=user_locale)
+                stages = load_stages(training_info["stage"], locale=user_locale)
             except Exception as e:
                 logger.warning(f"⚠️ Ошибка загрузки этапов тренировки: {e}")
 
@@ -296,24 +309,24 @@ async def handle_websocket_connection(
             user_session.current_stage_index = 0
             session_instructions = stages[0].prompt
             logger.info(
-                f"🎯 Многоэтапная тренировка '{training_record.stage}': "
+                f"🎯 Многоэтапная тренировка '{training_info['stage']}': "
                 f"{len(stages)} этапов, стартуем с этапа #{stages[0].number} "
                 f"(роль ИИ: {stages[0].ai_role})"
             )
-        elif training_record and training_record.recommendation:
+        elif training_info and training_info.get("recommendation"):
             training_context = (
                 f"\n\n===== КОНТЕКСТ ТЕКУЩЕЙ ТРЕНИРОВКИ =====\n"
-                f"Тема тренировки: {training_record.title}\n"
-                f"Проблема менеджера: {training_record.description}\n"
-                f"Что нужно отработать: {training_record.recommendation}\n"
-                f"Этап продаж: {training_record.stage or 'не указан'}\n"
+                f"Тема тренировки: {training_info['title']}\n"
+                f"Проблема менеджера: {training_info['description']}\n"
+                f"Что нужно отработать: {training_info['recommendation']}\n"
+                f"Этап продаж: {training_info['stage'] or 'не указан'}\n"
                 f"========================================\n\n"
                 f"ВАЖНО: Адаптируй тренировку именно под эту проблему. "
                 f"Используй общую структуру тренировки из основного промпта, "
-                f"но примеры и ситуации подбирай под тему \"{training_record.title}\"."
+                f"но примеры и ситуации подбирай под тему \"{training_info['title']}\"."
             )
             session_instructions = get_system_prompt(user_locale) + training_context
-            logger.info(f"📋 Промпт дополнен контекстом тренировки: {training_record.title}")
+            logger.info(f"📋 Промпт дополнен контекстом тренировки: {training_info['title']}")
         
         # Для многоэтапных тренировок регистрируем tool-функции,
         # через которые ИИ будет сигнализировать завершение этапа/тренировки
@@ -368,7 +381,7 @@ async def handle_websocket_connection(
         
         # Запускаем задачу для получения сообщений от Azure
         azure_receive_task = asyncio.create_task(
-            receive_from_azure(azure_connection, websocket, user_session, db)
+            receive_from_azure(azure_connection, websocket, user_session)
         )
         
         # Основной цикл обработки сообщений от клиента
@@ -503,7 +516,7 @@ async def handle_websocket_connection(
 
                 elif msg_type == "end_session":
                     # Завершение сессии
-                    await handle_end_session(user_session, websocket, db, azure_connection)
+                    await handle_end_session(user_session, websocket, azure_connection)
                     break
         
         except WebSocketDisconnect as wsd:
@@ -532,15 +545,24 @@ async def handle_websocket_connection(
         # Закрываем Azure соединение
         if azure_connection:
             await azure_connection.close()
-        
+
         # Закрываем сессию
         if user_session:
-            # Сохраняем в БД как прерванную если не завершена
+            # Дренируем незавершённые фоновые сохранения, затем помечаем сессию
+            # прерванной — но ТОЛЬКО если она ещё не была завершена (guard внутри
+            # abort_training_session не даст перетереть "completed").
             if user_session.db_session_id:
-                await VoiceTrainingDBService.abort_training_session(db, user_session.db_session_id)
-            
+                try:
+                    await _drain_saves(user_session)
+                    await run_db(
+                        VoiceTrainingDBService.abort_training_session,
+                        user_session.db_session_id,
+                    )
+                except Exception:
+                    logger.warning("abort on disconnect failed", exc_info=True)
+
             await session_manager.close_session(user_session.session_id)
-        
+
         try:
             await websocket.close()
         except:
@@ -551,16 +573,17 @@ async def receive_from_azure(
     azure_connection: AzureVoiceLiveConnection,
     websocket: WebSocket,
     user_session: UserSession,
-    db: Session
 ):
     """
     Получает сообщения от Azure Voice Live API и отправляет их клиенту.
-    
+
+    Записи в БД выполняются фоном через _fire_save (каждая в своей короткой
+    сессии), а не на общей долгоживущей сессии.
+
     Args:
         azure_connection: Соединение с Azure
         websocket: WebSocket соединение с клиентом
         user_session: Сессия пользователя
-        db: Сессия БД
     """
     pending_user_transcript = ""
     current_response_id = None
@@ -591,11 +614,10 @@ async def receive_from_azure(
                 event = json.loads(message)
                 event_type = event.get("type")
                 
-                # Логируем все события для отладки
-                logger.info(f"📨 Получено событие от Azure: {event_type}")
-                # Детальное логирование для важных событий
-                if event_type in ["response.audio.delta", "response.audio.done", "response.created", "response.audio_transcript.delta", "response.audio_transcript.done"]:
-                    logger.info(f"🔍 Детали события {event_type}: {json.dumps(event, indent=2, ensure_ascii=False)[:500]}")
+                # Тип события — только на DEBUG: на 100 сессиях INFO по каждому
+                # событию = потоп логов, а полный дамп события содержит сырой
+                # (НЕ редактированный) транскрипт — не пишем его ради приватности.
+                logger.debug(f"📨 Событие от Azure: {event_type}")
                 
                 # Проверяем что WebSocket с клиентом еще открыт
                 try:
@@ -624,7 +646,7 @@ async def receive_from_azure(
                     user_transcript = event.get("transcript", "")
                     if user_transcript:
                         user_transcript = redact_pii(user_transcript)
-                        logger.info(f"📝 Распознано: '{user_transcript}'")
+                        logger.debug(f"📝 Распознано: '{user_transcript}'")
                         
                         # Отправляем клиенту
                         await websocket.send_json({
@@ -632,14 +654,10 @@ async def receive_from_azure(
                             "text": user_transcript
                         })
                         
-                        # Сохраняем в БД
-                        try:
-                            await VoiceTrainingDBService.save_voice_message(
-                                db, user_session.db_session_id, "user", user_transcript
-                            )
-                        except Exception as e:
-                            logger.error(f"⚠️ Ошибка сохранения сообщения пользователя: {e}")
-                        
+                        # Сохраняем в БД фоном (своя короткая сессия), задачу трекаем
+                        # чтобы дренировать перед завершением сессии.
+                        _fire_save(user_session, "user", user_transcript)
+
                         pending_user_transcript = ""
                 
                 elif event_type == "conversation.item.input_audio_transcription.delta":
@@ -702,7 +720,7 @@ async def receive_from_azure(
                                 )
                             final_text = strip_tags(final_text)
                         
-                        logger.info(f"💬 ИИ ответил: '{final_text}'")
+                        logger.debug(f"💬 ИИ ответил: '{final_text}'")
                         logger.info(f"Ожидаем аудио для response_id: {response_id}")
                         
                         # Отправляем полный текст клиенту (уже без тегов)
@@ -711,10 +729,8 @@ async def receive_from_azure(
                             "text": final_text
                         })
                         
-                        # Сохраняем в БД
-                        asyncio.create_task(_save_ai_response_async(
-                            db, user_session.db_session_id, final_text, []
-                        ))
+                        # Сохраняем реплику ИИ в БД фоном (своя короткая сессия) + трекинг
+                        _fire_save(user_session, "assistant", final_text)
                     else:
                         logger.warning(f"⚠️ response.audio_transcript.done без текста для response_id: {response_id}")
                 
@@ -761,7 +777,6 @@ async def receive_from_azure(
                                 user_session=user_session,
                                 websocket=websocket,
                                 azure_connection=azure_connection,
-                                db=db,
                             )
                         except Exception as e:
                             logger.error(f"❌ Ошибка обработки перехода этапа: {e}", exc_info=True)
@@ -829,7 +844,7 @@ async def receive_from_azure(
                     error_message = error.get("message", "Неизвестная ошибка")
                     error_code = error.get("code", "unknown")
                     logger.error(f"❌ Ошибка от Azure: {error_code} - {error_message}")
-                    logger.error(f"Полное событие ошибки: {json.dumps(event, indent=2)}")
+                    logger.debug(f"Полное событие ошибки: {json.dumps(event, ensure_ascii=False)}")
                     
                     # Не критичные ошибки не прерывают соединение
                     if error_code in ["rate_limit", "quota_exceeded"]:
@@ -844,9 +859,9 @@ async def receive_from_azure(
                         })
                 
                 else:
-                    # Логируем неизвестные события для отладки
-                    logger.info(f"⚠️ Неизвестное событие от Azure: {event_type}")
-                    logger.info(f"Полное событие: {json.dumps(event, ensure_ascii=False)[:1000]}")
+                    # Неизвестные события — на DEBUG (полный дамп может содержать транскрипт)
+                    logger.debug(f"⚠️ Неизвестное событие от Azure: {event_type}")
+                    logger.debug(f"Полное событие: {json.dumps(event, ensure_ascii=False)[:1000]}")
             
             except json.JSONDecodeError as e:
                 logger.error(f"Ошибка парсинга JSON от Azure: {e}, message: {message[:100]}")
@@ -860,24 +875,39 @@ async def receive_from_azure(
         logger.error(f"Ошибка в receive_from_azure: {e}", exc_info=True)
 
 
-async def _save_ai_response_async(
-    db: Session,
-    session_id: int,
-    ai_response: str,
-    conversation_history: list
-):
-    """
-    Асинхронно сохраняет ответ ИИ в БД (не блокирует основной поток).
-    """
-    try:
-        await VoiceTrainingDBService.save_voice_message(
-            db, session_id, "assistant", ai_response
+def _fire_save(user_session: UserSession, role: str, text: str):
+    """Фоновое сохранение реплики в БД (каждая — в своей короткой сессии через
+    run_db, вне event loop). Задачу трекаем в user_session.pending_saves, чтобы
+    дренировать перед завершением сессии."""
+    if not user_session.db_session_id:
+        return
+    task = asyncio.create_task(
+        run_db(
+            VoiceTrainingDBService.save_voice_message,
+            user_session.db_session_id,
+            role,
+            text,
         )
-        await VoiceTrainingDBService.update_conversation_history(
-            db, session_id, conversation_history
-        )
-    except Exception as e:
-        logger.error(f"⚠️ Ошибка сохранения ответа ИИ (асинхронно): {e}")
+    )
+    user_session.pending_saves.add(task)
+
+    def _done(t: "asyncio.Task"):
+        user_session.pending_saves.discard(t)
+        # Достаём исключение (иначе "Task exception was never retrieved") и логируем.
+        if not t.cancelled() and t.exception() is not None:
+            logger.error("Background voice-save task failed", exc_info=t.exception())
+
+    task.add_done_callback(_done)
+
+
+async def _drain_saves(user_session: UserSession):
+    """Дожидается завершения всех незавершённых фоновых сохранений.
+
+    Вызывается перед завершением/прерыванием сессии, чтобы AI-валидатор видел
+    последнюю реплику, а не гонку «сохранение ещё в полёте» (план, раздел C)."""
+    pending = list(getattr(user_session, "pending_saves", ()))
+    if pending:
+        await asyncio.gather(*pending, return_exceptions=True)
 
 
 async def _handle_stage_action(
@@ -885,20 +915,18 @@ async def _handle_stage_action(
     user_session: UserSession,
     websocket: WebSocket,
     azure_connection: AzureVoiceLiveConnection,
-    db: Session,
 ):
     """
     Выполняет переход к следующему этапу или завершение всей тренировки.
-    
+
     Вызывается ТОЛЬКО после того как ИИ доиграл прощальную фразу
     предыдущего этапа (response.audio.done).
-    
+
     Args:
         action: "next_stage" или "complete_training"
         user_session: сессия пользователя со списком stages и current_stage_index
         websocket: WebSocket клиента — сюда отправляется stage_changed/training_completed
         azure_connection: Azure-соединение, в которое уходит session.update с новым промптом
-        db: сессия БД (для сохранения статуса завершения)
     """
     if not user_session.stages:
         return
@@ -1064,52 +1092,52 @@ async def handle_stop(user_session: UserSession, websocket: WebSocket, azure_con
     })
 
 
-async def handle_end_session(user_session: UserSession, websocket: WebSocket, db: Session, azure_connection: Optional[AzureVoiceLiveConnection] = None):
+async def handle_end_session(user_session: UserSession, websocket: WebSocket, azure_connection: Optional[AzureVoiceLiveConnection] = None):
     """
     Обрабатывает завершение сессии тренировки.
-    
+
     Args:
         user_session: Сессия пользователя
         websocket: WebSocket соединение
-        db: Сессия БД
         azure_connection: Соединение с Azure (опционально)
     """
     if not user_session.db_session_id:
         return
-    
+
     try:
-        # Получаем историю из БД
-        try:
-            from models import VoiceTrainingMessage
-        except ImportError:
-            from app.models import VoiceTrainingMessage
-        
-        messages = db.query(VoiceTrainingMessage).filter(
-            VoiceTrainingMessage.session_id == user_session.db_session_id
-        ).all()
-        
-        user_responses = sum(1 for msg in messages if msg.role == "user")
-        ai_questions = sum(1 for msg in messages if msg.role == "assistant")
-        
-        # Вычисляем длительность
-        duration = int((datetime.utcnow() - user_session.created_at).total_seconds())
-        
-        # Сохраняем в БД
-        await VoiceTrainingDBService.complete_training_session(
-            db,
-            user_session.db_session_id,
-            duration,
-            user_responses,
-            ai_questions
-        )
-        
-        logger.info(f"✅ Сессия {user_session.session_id} завершена: {duration}s, {user_responses} ответов")
-        
+        # Сначала дренируем фоновые сохранения, чтобы посчитать реплики корректно
+        await _drain_saves(user_session)
+
+        session_db_id = user_session.db_session_id
+        created_at = user_session.created_at
+
+        def _finalize(s):
+            try:
+                from models import VoiceTrainingMessage
+            except ImportError:
+                from app.models import VoiceTrainingMessage
+
+            messages = s.query(VoiceTrainingMessage).filter(
+                VoiceTrainingMessage.session_id == session_db_id
+            ).all()
+            user_responses = sum(1 for m in messages if m.role == "user")
+            ai_questions = sum(1 for m in messages if m.role == "assistant")
+            duration = int((datetime.utcnow() - created_at).total_seconds())
+
+            VoiceTrainingDBService.complete_training_session(
+                s, session_db_id, duration, user_responses, ai_questions
+            )
+            return duration, len(messages)
+
+        duration, messages_count = await run_db(_finalize)
+
+        logger.info(f"✅ Сессия {user_session.session_id} завершена: {duration}s, {messages_count} сообщений")
+
         await websocket.send_json({
             "type": "session_ended",
             "duration": duration,
-            "messages_count": len(messages)
+            "messages_count": messages_count
         })
-    
+
     except Exception as e:
         logger.error(f"❌ Ошибка завершения сессии: {e}")
