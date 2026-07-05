@@ -21,12 +21,20 @@ from models import Message, Attachment
 from database import SessionLocal
 from dotenv import load_dotenv
 
+from services.ai_provider import get_llm_client, model_vision, vision_enabled, json_mode_kwargs, extract_json
+
 load_dotenv()
 logger = logging.getLogger("main")
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 UPLOAD_DIR = os.path.abspath("uploads")
-client = OpenAI(api_key=OPENAI_API_KEY)
+client = get_llm_client()
+
+
+class VisionUnavailableError(RuntimeError):
+    """Анализ изображений (vision) недоступен у текущего LLM-провайдера.
+    В yandex-режиме endpoint vision не поддерживает (см. план §6.4) — фичу нужно
+    отключать (VISION_ENABLED=off) или выносить на провайдера с мультимодальностью."""
 
 
 # ========== Утилиты ==========
@@ -107,6 +115,12 @@ async def extract_dialogue_from_images(image_paths: List[Path]) -> Dict[str, Any
     Отправляет скриншоты в GPT-4o Vision и извлекает структурированный диалог.
     Поддерживает до 20 изображений в одном запросе.
     """
+    if not vision_enabled():
+        raise VisionUnavailableError(
+            "Vision отключён для текущего LLM-провайдера "
+            "(VISION_ENABLED=off либо провайдер без мультимодальности, напр. YandexGPT)."
+        )
+
     content: List[Dict[str, Any]] = [{"type": "text", "text": EXTRACT_DIALOGUE_PROMPT}]
 
     for img_path in image_paths:
@@ -124,18 +138,18 @@ async def extract_dialogue_from_images(image_paths: List[Path]) -> Dict[str, Any
 
     resp = await asyncio.to_thread(
         lambda: client.chat.completions.create(
-            model="gpt-4o",
+            model=model_vision(),
             messages=[{"role": "user", "content": content}],
             temperature=0.1,
             max_tokens=4096,
-            response_format={"type": "json_object"},
+            **json_mode_kwargs(),
         )
     )
 
     raw = resp.choices[0].message.content.strip()
     logger.info(f"✅ Получен ответ от GPT-4o Vision ({len(raw)} символов)")
-    
-    return json.loads(raw)
+
+    return extract_json(raw)
 
 
 # ========== Этап 2: Конвертация диалога в текстовый транскрипт ==========
@@ -223,6 +237,12 @@ async def run_pipeline_from_images(
         # 3. Извлекаем диалог через GPT-4o Vision
         try:
             dialogue_data = await extract_dialogue_from_images(image_paths)
+        except VisionUnavailableError as e:
+            logger.warning(f"Vision недоступен: {e}")
+            _send_bot_message(db, display_conv_id,
+                "❌ Анализ скриншотов недоступен в текущей конфигурации системы. "
+                "Пришлите переписку текстом или обратитесь к администратору.")
+            return
         except json.JSONDecodeError as e:
             logger.error(f"Ошибка парсинга JSON от GPT-4o Vision: {e}", exc_info=True)
             _send_bot_message(db, display_conv_id,
@@ -323,6 +343,12 @@ async def run_pipeline_from_images_trener(
         # 3. Извлекаем диалог через GPT-4o Vision
         try:
             dialogue_data = await extract_dialogue_from_images(image_paths)
+        except VisionUnavailableError as e:
+            logger.warning(f"ТРЕНЕР: Vision недоступен: {e}")
+            _send_bot_message(db, conversation_id,
+                "❌ Анализ скриншотов недоступен в текущей конфигурации системы. "
+                "Пришлите переписку текстом или обратитесь к администратору.")
+            return
         except json.JSONDecodeError as e:
             logger.error(f"ТРЕНЕР: Ошибка парсинга JSON от GPT-4o Vision: {e}", exc_info=True)
             _send_bot_message(db, conversation_id,

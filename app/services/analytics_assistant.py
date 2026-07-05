@@ -26,8 +26,10 @@ load_dotenv()
 
 logger = logging.getLogger("main")
 
+from services.ai_provider import get_llm_client, model_main  # noqa: E402
+
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-_client = OpenAI(api_key=OPENAI_API_KEY)
+_client = get_llm_client()
 
 
 SYSTEM_PROMPT = """Ты — ИИ-аналитик продаж платформы UpStat. Ты помогаешь РОПу (руководителю отдела продаж) анализировать звонки своей команды.
@@ -405,7 +407,7 @@ async def get_ai_response(db: Session, user_id: int, question: str) -> str:
         
         response = await asyncio.to_thread(
             lambda: _client.chat.completions.create(
-                model="gpt-4o",
+                model=model_main(),
                 messages=messages,
                 temperature=0.3,
                 max_tokens=2000,

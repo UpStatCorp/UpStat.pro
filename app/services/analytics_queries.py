@@ -23,8 +23,10 @@ from models import (
 load_dotenv()
 logger = logging.getLogger("main")
 
+from services.ai_provider import get_llm_client, model_mini  # noqa: E402
+
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-_client = OpenAI(api_key=OPENAI_API_KEY)
+_client = get_llm_client()
 
 
 def get_team_member_ids(db: Session, user_id: int) -> List[int]:
@@ -342,7 +344,7 @@ async def format_with_ai(question_label: str, raw_data: Dict[str, Any]) -> str:
     try:
         response = await asyncio.to_thread(
             lambda: _client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=model_mini(),
                 messages=[
                     {"role": "system", "content": _FORMAT_SYSTEM},
                     {"role": "user", "content": f"Вопрос: {question_label}\n\nДанные:\n{data_str}"},

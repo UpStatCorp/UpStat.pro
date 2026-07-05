@@ -11,7 +11,7 @@ from typing import Optional, Callable
 from .utils.logger import setup_logger
 from .config import (
     WHISPER_MODEL, WHISPER_DEVICE, WHISPER_COMPUTE_TYPE, SAMPLE_RATE,
-    STT_PROVIDER, OPENAI_API_KEY, ELEVENLABS_API_KEY
+    STT_PROVIDER, OPENAI_API_KEY, ELEVENLABS_API_KEY, LOG_AI_CONTENT
 )
 
 logger = setup_logger("stt")
@@ -467,7 +467,8 @@ class STTEngine:
                 text = segment.text.strip()
                 if text:  # Пропускаем пустые сегменты
                     text_parts.append(text)
-                    logger.debug(f"Сегмент: {text} (время: {segment.start:.2f}-{segment.end:.2f} сек, вероятность: {segment.no_speech_prob:.2f})")
+                    _seg = text if LOG_AI_CONTENT else f"({len(text)} симв.)"
+                    logger.debug(f"Сегмент: {_seg} (время: {segment.start:.2f}-{segment.end:.2f} сек, вероятность: {segment.no_speech_prob:.2f})")
             
             full_text = " ".join(text_parts).strip()
             

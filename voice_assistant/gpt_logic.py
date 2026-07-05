@@ -5,11 +5,17 @@
 
 import asyncio
 from typing import Optional, AsyncGenerator, List
-from openai import AsyncOpenAI
+from services.ai_provider import get_async_llm_client, resolve_model, effective_api_key
 from .utils.logger import setup_logger
-from .config import OPENAI_API_KEY, GPT_MODEL, SYSTEM_PROMPT, MAX_TOKENS, GPT_MAX_TOKENS, GPT_TEMPERATURE
+from .config import OPENAI_API_KEY, GPT_MODEL, SYSTEM_PROMPT, MAX_TOKENS, GPT_MAX_TOKENS, GPT_TEMPERATURE, LOG_AI_CONTENT
 
 logger = setup_logger("gpt")
+
+
+def _snip(text: str, n: int) -> str:
+    """Фрагмент реплики для лога только при LOG_AI_CONTENT=true; иначе — длина
+    без сырого контента (чтобы транскрипт/ПД не попадали в логи и Sentry)."""
+    return f"{text[:n]}..." if LOG_AI_CONTENT else f"({len(text)} симв.)"
 
 class GPTDialogue:
     """
@@ -25,15 +31,18 @@ class GPTDialogue:
             model: Модель GPT для использования
             system_prompt: Системный промпт для настройки поведения ассистента
         """
-        self.api_key = api_key or OPENAI_API_KEY
+        # Ключ берём с учётом провайдера (openai => OPENAI_API_KEY, yandex => YANDEX_API_KEY).
+        self.api_key = api_key or effective_api_key()
         if not self.api_key:
-            raise ValueError("OPENAI_API_KEY не установлен! Установите переменную окружения или передайте ключ явно.")
-        
-        self.model = model or GPT_MODEL
+            raise ValueError("API-ключ LLM не установлен! Задайте OPENAI_API_KEY (или YANDEX_API_KEY для LLM_PROVIDER=yandex) либо передайте ключ явно.")
+
+        # Имя модели из конфига GPT_MODEL, но с провайдер-резолвингом
+        # (в yandex-режиме соберётся gpt://<folder>/<model>/latest).
+        self.model = resolve_model(model or GPT_MODEL)
         self.system_prompt = system_prompt or SYSTEM_PROMPT
-        
-        # Инициализируем клиент OpenAI
-        self.client = AsyncOpenAI(api_key=self.api_key)
+
+        # Клиент через единую фабрику (учитывает LLM_PROVIDER/base_url).
+        self.client = get_async_llm_client(api_key=self.api_key)
         
         # История диалога
         self.conversation_history: List[dict] = [
@@ -51,7 +60,7 @@ class GPTDialogue:
         """
         if text.strip():
             self.conversation_history.append({"role": "user", "content": text})
-            logger.debug(f"Добавлено сообщение пользователя: {text[:50]}...")
+            logger.debug(f"Добавлено сообщение пользователя: {_snip(text, 50)}")
     
     def add_assistant_message(self, text: str):
         """
@@ -62,7 +71,7 @@ class GPTDialogue:
         """
         if text.strip():
             self.conversation_history.append({"role": "assistant", "content": text})
-            logger.debug(f"Добавлено сообщение ассистента: {text[:50]}...")
+            logger.debug(f"Добавлено сообщение ассистента: {_snip(text, 50)}")
     
     async def get_response_stream(self, user_message: Optional[str] = None) -> AsyncGenerator[str, None]:
         """
@@ -101,7 +110,7 @@ class GPTDialogue:
             # Сохраняем полный ответ в историю
             if full_response.strip():
                 self.add_assistant_message(full_response)
-                logger.info(f"🤖 GPT ответил: {full_response[:100]}...")
+                logger.info(f"🤖 GPT ответил: {_snip(full_response, 100)}")
             
         except Exception as e:
             logger.error(f"Ошибка при получении ответа от GPT: {e}")
@@ -133,7 +142,7 @@ class GPTDialogue:
             full_response = response.choices[0].message.content
             self.add_assistant_message(full_response)
             
-            logger.info(f"🤖 GPT ответил: {full_response[:100]}...")
+            logger.info(f"🤖 GPT ответил: {_snip(full_response, 100)}")
             return full_response
             
         except Exception as e:

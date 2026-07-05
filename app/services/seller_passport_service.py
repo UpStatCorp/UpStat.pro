@@ -44,9 +44,9 @@ async def evaluate_stage_scores(
     модель должна вернуть stage_reasoning по каждому этапу, и результат
     логируется в research-файл.
     """
-    from openai import AsyncOpenAI
+    from services.ai_provider import get_async_llm_client, model_mini, json_mode_kwargs, extract_json, clamp_max_tokens
 
-    client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    client = get_async_llm_client()
 
     research_schema = (
         ',\n  "stage_reasoning": {\n'
@@ -115,17 +115,17 @@ async def evaluate_stage_scores(
         # В research-режиме нужно много токенов для развёрнутого stage_reasoning
         # (5 этапов × 8–12 предложений) и больший timeout.
         call_kwargs = {
-            "model": "gpt-4o-mini",
+            "model": model_mini(),
             "messages": [{"role": "user", "content": prompt}],
-            "response_format": {"type": "json_object"},
+            **json_mode_kwargs(),
             "temperature": 0.4 if research is not None else 0.3,
             "timeout": 90.0 if research is not None else 30.0,
         }
         if research is not None:
-            call_kwargs["max_tokens"] = 8000
+            call_kwargs["max_tokens"] = clamp_max_tokens(8000)
         response = await client.chat.completions.create(**call_kwargs)
         raw_content = response.choices[0].message.content
-        result = json.loads(raw_content)
+        result = extract_json(raw_content)
         scores = result.get("stage_scores", {})
 
         for stage in STAGES:
@@ -166,7 +166,7 @@ async def evaluate_stage_scores(
 
                 research.capture_stage(
                     stage_name="Паспорт продавца (5 этапов)",
-                    model="gpt-4o-mini",
+                    model=model_mini(),
                     prompt=prompt,
                     raw_response=raw_content or "",
                     parsed_decisions=result,

@@ -55,7 +55,7 @@ if USE_OPENAI_WHISPER and STT_PROVIDER == "whisper_local":
     STT_PROVIDER = "whisper_openai"
 
 # Параметры TTS
-TTS_PROVIDER = os.getenv("TTS_PROVIDER", "elevenlabs")  # "openai" или "elevenlabs"
+TTS_PROVIDER = os.getenv("TTS_PROVIDER", "elevenlabs")  # "openai" | "elevenlabs" | "speechkit" (Yandex, РФ)
 TTS_VOICE = os.getenv("TTS_VOICE", "nova")  # Для OpenAI: "alloy", "echo", "fable", "onyx", "nova", "shimmer"
 TTS_MODEL = os.getenv("TTS_MODEL", "tts-1")  # "tts-1" (быстрее) или "tts-1-hd" (качественнее, медленнее)
 # Поддержка обоих вариантов имени переменной (ELEVENLABS_VOICE_ID и ELEVENLABS_VOICE_ID из .env)
@@ -142,6 +142,10 @@ TEMP_DIR.mkdir(exist_ok=True)
 
 # Логирование
 LOG_LEVEL = "INFO"  # "DEBUG", "INFO", "WARNING", "ERROR"
+# Писать ли в логи фрагменты речи/ответов (сырой контент). По умолчанию ВЫКЛ:
+# в РФ-режиме сырой транскрипт/ПД не должны попадать в логи и Sentry.
+# Включать только локально для отладки: LOG_AI_CONTENT=true.
+LOG_AI_CONTENT = os.getenv("LOG_AI_CONTENT", "false").lower() == "true"
 
 # Горячее слово для активации (опционально)
 HOTWORD_ENABLED = False

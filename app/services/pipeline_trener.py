@@ -18,6 +18,7 @@ from models import Message, Attachment
 from database import SessionLocal
 from services.prompt_service import PromptService
 from services.pii_redactor import redact_pii, redact_pii_in_dialogue
+from services.ai_provider import get_llm_client, model_main
 from dotenv import load_dotenv
 
 logger = logging.getLogger("main")
@@ -28,7 +29,7 @@ ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 UPLOAD_DIR = os.path.abspath("uploads")
 
-client = OpenAI(api_key=OPENAI_API_KEY)
+client = get_llm_client()
 
 
 def safe_format_prompt(template: str, **kwargs) -> str:
@@ -370,7 +371,7 @@ async def run_pipeline_from_text_trener(user_id: int, conversation_id: int, text
                 
                 resp = await asyncio.to_thread(
                     lambda: client.chat.completions.create(
-                        model="gpt-4o",
+                        model=model_main(),
                         messages=[{"role": "user", "content": prompt}],
                         temperature=0.2,
                     )
@@ -413,7 +414,7 @@ async def run_pipeline_from_text_trener(user_id: int, conversation_id: int, text
             print(f"⚠️ ТРЕНЕР: ИСПОЛЬЗУЕТСЯ FALLBACK ФИНАЛЬНЫЙ ПРОМПТ")
         final_resp = await asyncio.to_thread(
             lambda: client.chat.completions.create(
-                model="gpt-4o",
+                model=model_main(),
                 messages=[{"role": "user", "content": final_prompt}],
                 temperature=0.2,
             )
@@ -541,7 +542,7 @@ async def run_pipeline_from_raw_text_trener(user_id: int, conversation_id: int, 
                 print(f"🤖 ТРЕНЕР RAW TEXT: Отправка в GPT-4o для анализа {cf.stem}")
                 resp = await asyncio.to_thread(
                     lambda: client.chat.completions.create(
-                        model="gpt-4o",
+                        model=model_main(),
                         messages=[{"role": "user", "content": prompt}],
                         temperature=0.2,
                     )
@@ -579,7 +580,7 @@ async def run_pipeline_from_raw_text_trener(user_id: int, conversation_id: int, 
             print(f"⚠️ ТРЕНЕР RAW TEXT: ИСПОЛЬЗУЕТСЯ FALLBACK ФИНАЛЬНЫЙ ПРОМПТ")
         final_resp = await asyncio.to_thread(
             lambda: client.chat.completions.create(
-                model="gpt-4o",
+                model=model_main(),
                 messages=[{"role": "user", "content": final_prompt}],
                 temperature=0.2,
             )
@@ -764,7 +765,7 @@ async def run_pipeline_trener(user_id: int, conversation_id: int, audio_attachme
                 
                 resp = await asyncio.to_thread(
                     lambda: client.chat.completions.create(
-                        model="gpt-4o",
+                        model=model_main(),
                         messages=[{"role": "user", "content": prompt}],
                         temperature=0.2,
                     )
@@ -807,7 +808,7 @@ async def run_pipeline_trener(user_id: int, conversation_id: int, audio_attachme
             print(f"⚠️ ТРЕНЕР: ИСПОЛЬЗУЕТСЯ FALLBACK ФИНАЛЬНЫЙ ПРОМПТ")
         final_resp = await asyncio.to_thread(
             lambda: client.chat.completions.create(
-                model="gpt-4o",
+                model=model_main(),
                 messages=[{"role": "user", "content": final_prompt}],
                 temperature=0.2,
             )

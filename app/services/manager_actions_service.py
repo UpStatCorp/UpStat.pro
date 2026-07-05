@@ -36,9 +36,9 @@ async def extract_manager_actions(
     Если передан research (ResearchLogger), включает расширенный режим:
     в каждое действие добавляется поле reasoning, и результат логируется.
     """
-    from openai import AsyncOpenAI
+    from services.ai_provider import get_async_llm_client, model_mini, json_mode_kwargs, extract_json, clamp_max_tokens
 
-    client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    client = get_async_llm_client()
 
     reasoning_field = (
         ',\n      "reasoning": "РАЗВЁРНУТОЕ обоснование на 6–10 предложений: '
@@ -105,17 +105,17 @@ async def extract_manager_actions(
     try:
         # В research-режиме reasoning длиннее → больше токенов и таймаут
         call_kwargs = {
-            "model": "gpt-4o-mini",
+            "model": model_mini(),
             "messages": [{"role": "user", "content": prompt}],
-            "response_format": {"type": "json_object"},
+            **json_mode_kwargs(),
             "temperature": 0.4 if research is not None else 0.3,
             "timeout": 90.0 if research is not None else 30.0,
         }
         if research is not None:
-            call_kwargs["max_tokens"] = 8000
+            call_kwargs["max_tokens"] = clamp_max_tokens(8000)
         response = await client.chat.completions.create(**call_kwargs)
         raw_content = response.choices[0].message.content
-        result = json.loads(raw_content)
+        result = extract_json(raw_content)
         actions = result.get("actions", [])
 
         valid = []
@@ -164,7 +164,7 @@ async def extract_manager_actions(
 
                 research.capture_stage(
                     stage_name="Действия менеджера (positive/negative)",
-                    model="gpt-4o-mini",
+                    model=model_mini(),
                     prompt=prompt,
                     raw_response=raw_content or "",
                     parsed_decisions={"actions_total": len(actions), "valid_actions": valid},

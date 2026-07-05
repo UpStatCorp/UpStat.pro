@@ -23,8 +23,10 @@ load_dotenv()
 
 logger = logging.getLogger("main")
 
+from services.ai_provider import get_llm_client, model_main, json_mode_kwargs, extract_json, clamp_max_tokens  # noqa: E402
+
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-_client = OpenAI(api_key=OPENAI_API_KEY)
+_client = get_llm_client()
 
 
 def _build_extraction_prompt(
@@ -144,19 +146,19 @@ async def extract_parameters(
 
         # В research-режиме reasoning по каждому параметру → больше токенов
         param_call_kwargs = {
-            "model": "gpt-4o",
+            "model": model_main(),
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.1,
-            "response_format": {"type": "json_object"},
+            **json_mode_kwargs(),
         }
         if research is not None:
-            param_call_kwargs["max_tokens"] = 16000
+            param_call_kwargs["max_tokens"] = clamp_max_tokens(16000)
         response = await asyncio.to_thread(
             lambda: _client.chat.completions.create(**param_call_kwargs)
         )
 
         raw = response.choices[0].message.content.strip()
-        data = json.loads(raw)
+        data = extract_json(raw)
 
         if research is not None:
             try:
@@ -190,7 +192,7 @@ async def extract_parameters(
 
                 research.capture_stage(
                     stage_name="Извлечение параметров (динамический справочник)",
-                    model="gpt-4o",
+                    model=model_main(),
                     prompt=prompt,
                     raw_response=raw,
                     parsed_decisions=data,

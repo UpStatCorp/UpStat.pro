@@ -80,10 +80,10 @@ class TrainingPlanService:
 
         Если forced_stage указан — GPT формулирует рекомендацию именно по этому этапу.
         """
-        from openai import AsyncOpenAI
         import os
+        from services.ai_provider import get_async_llm_client, model_mini, json_mode_kwargs, extract_json
 
-        client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        client = get_async_llm_client()
 
         if forced_stage:
             stage_label = STAGE_LABELS.get(forced_stage, forced_stage)
@@ -160,13 +160,13 @@ class TrainingPlanService:
 
         try:
             response = await client.chat.completions.create(
-                model="gpt-4o-mini",
+                model=model_mini(),
                 messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"},
+                **json_mode_kwargs(),
                 timeout=30.0,
             )
 
-            result = json.loads(response.choices[0].message.content)
+            result = extract_json(response.choices[0].message.content)
             recs = result.get("recommendations", [])
 
             # Гарантируем правильный stage, если был forced

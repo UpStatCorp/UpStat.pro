@@ -32,6 +32,7 @@ from .config import (
     AZURE_VOICE_LIVE_TRANSCRIPTION_MODEL,
     AZURE_VOICE_LIVE_TRANSCRIPTION_LANGUAGE,
     get_system_prompt,
+    LOG_AI_CONTENT,
 )
 from .azure_voice_live import AzureVoiceLiveConnection, get_azure_token
 
@@ -91,24 +92,16 @@ async def handle_websocket_connection(
     azure_connection: Optional[AzureVoiceLiveConnection] = None
     
     try:
-        # Проверяем, используется ли Azure Voice Live
+        # Azure выключен → локальный realtime (STT→LLM→TTS без Azure).
+        # Ленивый импорт, чтобы избежать циклической зависимости
+        # (realtime.handler импортирует _fire_save/_drain_saves из этого модуля).
         if not USE_AZURE_VOICE_LIVE:
-            error_msg = (
-                "⚠️ Azure Voice Live API не настроен.\n\n"
-                "Для работы голосовой тренировки необходимо:\n"
-                "1. Установить USE_AZURE_VOICE_LIVE=true в .env файле\n"
-                "2. Установить AZURE_VOICE_LIVE_ENDPOINT (URL вашего Azure ресурса)\n"
-                "3. Установить AZURE_VOICE_LIVE_API_KEY (API ключ Azure)\n\n"
-                "Или установите USE_AZURE_VOICE_LIVE=false для использования локального режима."
+            from .realtime.handler import handle_local_realtime_connection
+            logger.info("🎙️ Локальный realtime-режим (USE_AZURE_VOICE_LIVE=false)")
+            return await handle_local_realtime_connection(
+                websocket, user_id, training_id, existing_db_session_id
             )
-            logger.error(error_msg)
-            await websocket.send_json({
-                "type": "error",
-                "message": error_msg
-            })
-            await websocket.close(code=1008, reason="Azure Voice Live not configured")
-            return
-        
+
         if not AZURE_VOICE_LIVE_ENDPOINT:
             error_msg = (
                 "⚠️ AZURE_VOICE_LIVE_ENDPOINT не настроен.\n\n"
@@ -646,7 +639,10 @@ async def receive_from_azure(
                     user_transcript = event.get("transcript", "")
                     if user_transcript:
                         user_transcript = redact_pii(user_transcript)
-                        logger.debug(f"📝 Распознано: '{user_transcript}'")
+                        logger.debug(
+                            f"📝 Распознано: '{user_transcript}'" if LOG_AI_CONTENT
+                            else f"📝 Распознано ({len(user_transcript)} симв.)"
+                        )
                         
                         # Отправляем клиенту
                         await websocket.send_json({

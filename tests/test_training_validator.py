@@ -105,7 +105,7 @@ class TestShortTranscript:
     @pytest.mark.asyncio
     async def test_short_transcript_does_not_call_openai(self):
         mock_cls, _ = _mock_client(create_return=MagicMock())
-        with patch("services.training_validator_service.AsyncOpenAI", mock_cls):
+        with patch("services.training_validator_service.get_async_llm_client", mock_cls):
             await TrainingValidatorService.validate_training(
                 transcript="short",
                 training_title="T",
@@ -124,7 +124,7 @@ class TestHappyPath:
         response = _make_openai_response(VALID_RESPONSE_JSON)
         mock_cls, _ = _mock_client(create_return=response)
 
-        with patch("services.training_validator_service.AsyncOpenAI", mock_cls):
+        with patch("services.training_validator_service.get_async_llm_client", mock_cls):
             result = await TrainingValidatorService.validate_training(
                 transcript=LONG_TRANSCRIPT,
                 training_title="Test",
@@ -142,7 +142,7 @@ class TestHappyPath:
         response = _make_openai_response(over_json)
         mock_cls, _ = _mock_client(create_return=response)
 
-        with patch("services.training_validator_service.AsyncOpenAI", mock_cls):
+        with patch("services.training_validator_service.get_async_llm_client", mock_cls):
             result = await TrainingValidatorService.validate_training(
                 transcript=LONG_TRANSCRIPT,
                 training_title="T",
@@ -158,7 +158,7 @@ class TestHappyPath:
         response = _make_openai_response(neg_json)
         mock_cls, _ = _mock_client(create_return=response)
 
-        with patch("services.training_validator_service.AsyncOpenAI", mock_cls):
+        with patch("services.training_validator_service.get_async_llm_client", mock_cls):
             result = await TrainingValidatorService.validate_training(
                 transcript=LONG_TRANSCRIPT,
                 training_title="T",
@@ -173,7 +173,7 @@ class TestHappyPath:
         response = _make_openai_response(low_json)
         mock_cls, _ = _mock_client(create_return=response)
 
-        with patch("services.training_validator_service.AsyncOpenAI", mock_cls):
+        with patch("services.training_validator_service.get_async_llm_client", mock_cls):
             result = await TrainingValidatorService.validate_training(
                 transcript=LONG_TRANSCRIPT,
                 training_title="T",
@@ -188,7 +188,7 @@ class TestHappyPath:
         response = _make_openai_response(VALID_RESPONSE_JSON)
         mock_cls, mock_instance = _mock_client(create_return=response)
 
-        with patch("services.training_validator_service.AsyncOpenAI", mock_cls):
+        with patch("services.training_validator_service.get_async_llm_client", mock_cls):
             await TrainingValidatorService.validate_training(
                 transcript=LONG_TRANSCRIPT,
                 training_title="T",
@@ -205,7 +205,7 @@ class TestHappyPath:
         response = _make_openai_response(VALID_RESPONSE_JSON)
         mock_cls, mock_instance = _mock_client(create_return=response)
 
-        with patch("services.training_validator_service.AsyncOpenAI", mock_cls):
+        with patch("services.training_validator_service.get_async_llm_client", mock_cls):
             await TrainingValidatorService.validate_training(
                 transcript=LONG_TRANSCRIPT,
                 training_title="T",
@@ -221,7 +221,7 @@ class TestHappyPath:
         response = _make_openai_response(VALID_RESPONSE_JSON)
         mock_cls, mock_instance = _mock_client(create_return=response)
 
-        with patch("services.training_validator_service.AsyncOpenAI", mock_cls):
+        with patch("services.training_validator_service.get_async_llm_client", mock_cls):
             await TrainingValidatorService.validate_training(
                 transcript=LONG_TRANSCRIPT,
                 training_title="T",
@@ -247,7 +247,7 @@ class TestTransientErrors:
         ]
         mock_cls, mock_instance = _mock_client(create_side_effect=side_effects)
 
-        with patch("services.training_validator_service.AsyncOpenAI", mock_cls), \
+        with patch("services.training_validator_service.get_async_llm_client", mock_cls), \
              patch("asyncio.sleep", new_callable=AsyncMock):
             with pytest.raises(ValidationTransientError):
                 await TrainingValidatorService.validate_training(
@@ -264,7 +264,7 @@ class TestTransientErrors:
         side_effects = [APIConnectionError(request=MagicMock())] * 3
         mock_cls, mock_instance = _mock_client(create_side_effect=side_effects)
 
-        with patch("services.training_validator_service.AsyncOpenAI", mock_cls), \
+        with patch("services.training_validator_service.get_async_llm_client", mock_cls), \
              patch("asyncio.sleep", new_callable=AsyncMock):
             with pytest.raises(ValidationTransientError):
                 await TrainingValidatorService.validate_training(
@@ -283,7 +283,7 @@ class TestTransientErrors:
         side_effects = [APITimeoutError("t")] * 3
         mock_cls, _ = _mock_client(create_side_effect=side_effects)
 
-        with patch("services.training_validator_service.AsyncOpenAI", mock_cls), \
+        with patch("services.training_validator_service.get_async_llm_client", mock_cls), \
              patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
             with pytest.raises(ValidationTransientError):
                 await TrainingValidatorService.validate_training(
@@ -303,7 +303,7 @@ class TestTransientErrors:
         side_effects = [RateLimitError(message="rate limited", response=MagicMock(), body={})] * 3
         mock_cls, mock_instance = _mock_client(create_side_effect=side_effects)
 
-        with patch("services.training_validator_service.AsyncOpenAI", mock_cls), \
+        with patch("services.training_validator_service.get_async_llm_client", mock_cls), \
              patch("asyncio.sleep", new_callable=AsyncMock):
             with pytest.raises(ValidationTransientError):
                 await TrainingValidatorService.validate_training(
@@ -326,7 +326,7 @@ class TestTransientErrors:
         ]
         mock_cls, mock_instance = _mock_client(create_side_effect=side_effects)
 
-        with patch("services.training_validator_service.AsyncOpenAI", mock_cls), \
+        with patch("services.training_validator_service.get_async_llm_client", mock_cls), \
              patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
             result = await TrainingValidatorService.validate_training(
                 transcript=LONG_TRANSCRIPT,
@@ -349,7 +349,7 @@ class TestNonTransientErrors:
         """Non-transient errors must return score=0 without retry."""
         mock_cls, mock_instance = _mock_client(create_side_effect=ValueError("bad config"))
 
-        with patch("services.training_validator_service.AsyncOpenAI", mock_cls), \
+        with patch("services.training_validator_service.get_async_llm_client", mock_cls), \
              patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
             result = await TrainingValidatorService.validate_training(
                 transcript=LONG_TRANSCRIPT,
@@ -369,7 +369,7 @@ class TestNonTransientErrors:
         bad_response = _make_openai_response("not-json-at-all{{{")
         mock_cls, mock_instance = _mock_client(create_return=bad_response)
 
-        with patch("services.training_validator_service.AsyncOpenAI", mock_cls), \
+        with patch("services.training_validator_service.get_async_llm_client", mock_cls), \
              patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
             result = await TrainingValidatorService.validate_training(
                 transcript=LONG_TRANSCRIPT,
@@ -387,7 +387,7 @@ class TestNonTransientErrors:
         """Client-facing details must not include internal error messages."""
         mock_cls, _ = _mock_client(create_side_effect=ValueError("INTERNAL: key=sk-xxx..."))
 
-        with patch("services.training_validator_service.AsyncOpenAI", mock_cls):
+        with patch("services.training_validator_service.get_async_llm_client", mock_cls):
             result = await TrainingValidatorService.validate_training(
                 transcript=LONG_TRANSCRIPT,
                 training_title="T",
@@ -584,7 +584,7 @@ class TestServerTranscriptAndTruncation:
 
         response = _make_openai_response(VALID_RESPONSE_JSON)
         mock_cls, mock_instance = _mock_client(create_return=response)
-        with patch("services.training_validator_service.AsyncOpenAI", mock_cls):
+        with patch("services.training_validator_service.get_async_llm_client", mock_cls):
             await TrainingValidatorService.validate_training(
                 transcript=big,
                 training_title="T",

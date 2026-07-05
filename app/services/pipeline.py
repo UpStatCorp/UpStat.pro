@@ -29,6 +29,7 @@ from services.error_handler import (
 from services.progress_tracker import get_progress_tracker, ProgressStage
 from services.notification_service import get_notification_service, NotificationType, NotificationPriority
 from services.pii_redactor import redact_pii, redact_pii_in_dialogue
+from services.ai_provider import get_llm_client, get_stt_client, model_main, clamp_max_tokens
 from services.research_service import (
     ResearchLogger,
     REASONING_INSTRUCTION_CHECKLIST,
@@ -50,7 +51,12 @@ LLM_MAX_RETRIES = int(os.getenv("LLM_MAX_RETRIES", "3"))
 STT_TIMEOUT_SECONDS = float(os.getenv("STT_TIMEOUT_SECONDS", "120"))
 STT_MAX_RETRIES = int(os.getenv("STT_MAX_RETRIES", "2"))
 
-client = OpenAI(api_key=OPENAI_API_KEY, timeout=LLM_TIMEOUT_SECONDS, max_retries=LLM_MAX_RETRIES)
+# Провайдер STT для анализа звонков (нужна диаризация):
+#   elevenlabs — как раньше (по умолчанию, поведение не меняется)
+#   speechkit  — Yandex SpeechKit v3 (РФ), см. services/speechkit_stt.py (этап 3)
+CALL_STT_PROVIDER = os.getenv("CALL_STT_PROVIDER", "elevenlabs").strip().lower()
+
+client = get_llm_client()
 
 # ── Защита от ложных отказов модели ───────────────────────────────────────────
 # Иногда gpt-4o ложно отказывает («I'm sorry, I can't assist…») на легитимном
@@ -141,7 +147,7 @@ async def _resolve_roles(dialogue_json_str: str) -> Dict[str, str]:
     )
     try:
         text, refused, _ = await _llm_create(
-            {"model": "gpt-4o", "messages": [{"role": "user", "content": prompt}],
+            {"model": model_main(), "messages": [{"role": "user", "content": prompt}],
              "temperature": 0.0},
             label="role-resolution", max_refusal_retries=1,
         )
@@ -235,10 +241,23 @@ async def _elevenlabs_transcribe(wav_path: Path) -> Dict[str, Any]:
     raise last_exc
 
 
+async def _transcribe_primary(wav_path: Path) -> Dict[str, Any]:
+    """Основной STT анализа звонков по CALL_STT_PROVIDER. Возвращает {"text","words"}
+    в едином формате (диаризованные words со speaker_id) для _words_to_turns.
+    При отказе основного провайдера caller падает на Whisper (без диаризации)."""
+    if CALL_STT_PROVIDER == "speechkit":
+        from services.speechkit_stt import transcribe as _speechkit_transcribe
+        return await _speechkit_transcribe(wav_path)
+    return await _elevenlabs_transcribe(wav_path)
+
+
 def _openai_whisper_transcribe(audio_path: Path):
-    """Фолбэк — простая транскрибация без диаризации (Whisper)."""
+    """Фолбэк — простая транскрибация без диаризации (Whisper).
+    Использует отдельный STT-клиент, чтобы смена LLM-провайдера (напр. на YandexGPT)
+    не переключала распознавание. Полная замена STT — этап 3."""
+    stt_client = get_stt_client()
     with open(audio_path, "rb") as f:
-        tr = client.audio.transcriptions.create(model="whisper-1", file=f)
+        tr = stt_client.audio.transcriptions.create(model="whisper-1", file=f)
     return {"text": tr.text or "", "words": []}
 
 
@@ -429,14 +448,14 @@ async def _analyze_checklist(
         # т.к. модель всё равно следует scoring instruction.
         if research is not None:
             call_kwargs = {
-                "model": "gpt-4o",
+                "model": model_main(),
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.4,
-                "max_tokens": 12000,
+                "max_tokens": clamp_max_tokens(12000),
             }
         else:
             call_kwargs = {
-                "model": "gpt-4o",
+                "model": model_main(),
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.2,
             }
@@ -459,7 +478,7 @@ async def _analyze_checklist(
             try:
                 research.capture_stage(
                     stage_name=f"Чек-лист: {title}",
-                    model="gpt-4o",
+                    model=model_main(),
                     prompt=prompt,
                     raw_response=raw_for_research,
                     parsed_decisions=stage_scores_snapshot,
@@ -685,15 +704,15 @@ async def _finalize_analysis_and_report(
     if research is not None:
         final_prompt_for_call = final_prompt + REASONING_INSTRUCTION_SUMMARY + SCORE_MARKER_INSTRUCTION
         final_call_kwargs = {
-            "model": "gpt-4o",
+            "model": model_main(),
             "messages": [{"role": "user", "content": final_prompt_for_call}],
             "temperature": 0.4,
-            "max_tokens": 8000,
+            "max_tokens": clamp_max_tokens(8000),
         }
     else:
         final_prompt_for_call = final_prompt + SCORE_MARKER_INSTRUCTION
         final_call_kwargs = {
-            "model": "gpt-4o",
+            "model": model_main(),
             "messages": [{"role": "user", "content": final_prompt_for_call}],
             "temperature": 0.2,
         }
@@ -709,7 +728,7 @@ async def _finalize_analysis_and_report(
     if research is not None:
         try:
             research.capture_stage(
-                stage_name="Итоговый отчёт", model="gpt-4o",
+                stage_name="Итоговый отчёт", model=model_main(),
                 prompt=final_prompt_for_call, raw_response=summary_raw,
                 usage=getattr(final_resp, "usage", None),
             )
@@ -1148,9 +1167,9 @@ async def run_pipeline(user_id: int, conversation_id: int, audio_attachment_id: 
 
         # Шаг 2: транскрибация
         tracker.update_operation(operation_id, 2, "Транскрибация", "Распознавание речи...")
-        # ElevenLabs → words/text, фолбэк Whisper
+        # STT-провайдер (CALL_STT_PROVIDER: elevenlabs|speechkit) → words/text, фолбэк Whisper
         try:
-            result = await _elevenlabs_transcribe(wav_path)
+            result = await _transcribe_primary(wav_path)
         except HTTPStatusError as e:
             if e.response is not None and e.response.status_code in (401, 403):
                 note = Message(conversation_id=display_conv_id, user_id=None, role="bot",

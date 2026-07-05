@@ -4,6 +4,7 @@
 """
 
 import asyncio
+import os
 import numpy as np
 from typing import Optional, AsyncGenerator
 
@@ -31,6 +32,18 @@ except ImportError:
     ElevenLabsApiError = None
 
 logger = setup_logger("tts")
+
+
+def _pcm16_to_float32(pcm: bytes) -> np.ndarray:
+    """LPCM signed-16-bit-LE (как отдаёт Yandex SpeechKit при format=lpcm) → float32
+    [-1..1], с нормализацией до 0.9 (как в OpenAI-пути). Пустой вход → пустой массив."""
+    if not pcm:
+        return np.zeros(0, dtype=np.float32)
+    arr = np.frombuffer(pcm, dtype=np.int16).astype(np.float32) / 32767.0
+    max_val = float(np.max(np.abs(arr))) if arr.size else 0.0
+    if max_val > 0:
+        arr = arr / max_val * 0.9
+    return arr
 
 class TTSEngine:
     """
@@ -101,9 +114,19 @@ class TTSEngine:
                         logger.error("Библиотека elevenlabs не установлена и OPENAI_API_KEY тоже отсутствует!")
                         raise
         
+        elif self.provider == "speechkit":
+            # Yandex SpeechKit TTS (РФ). Ключ — общий YANDEX_API_KEY (роль ai.speechkit-tts.user).
+            self.sk_api_key = os.getenv("YANDEX_API_KEY", "").strip()
+            self.sk_folder = os.getenv("YANDEX_FOLDER_ID", "").strip()
+            self.sk_voice = os.getenv("SPEECHKIT_TTS_VOICE", "alena").strip()
+            self.sk_role = os.getenv("SPEECHKIT_TTS_ROLE", "").strip()  # напр. neutral/good (не у всех голосов)
+            if not self.sk_api_key:
+                raise ValueError("YANDEX_API_KEY не установлен для SpeechKit TTS!")
+            logger.info(f"TTS инициализирован: Yandex SpeechKit, voice={self.sk_voice}")
+
         else:
             raise ValueError(f"Неподдерживаемый провайдер TTS: {self.provider}")
-        
+
         # Флаг для остановки воспроизведения
         self.stop_playing = False
     
@@ -179,6 +202,9 @@ class TTSEngine:
             if self.provider == "openai":
                 async for chunk in self._synthesize_openai(text):
                     yield chunk
+            elif self.provider == "speechkit":
+                async for chunk in self._synthesize_speechkit(text):
+                    yield chunk
             elif self.provider == "elevenlabs":
                 try:
                     async for chunk in self._synthesize_elevenlabs(text):
@@ -226,6 +252,45 @@ class TTSEngine:
         except Exception as e:
             logger.error(f"Ошибка при синтезе речи: {e}")
     
+    async def _synthesize_speechkit(self, text: str) -> AsyncGenerator[np.ndarray, None]:
+        """
+        Синтезирует речь через Yandex SpeechKit TTS (v1, format=lpcm 16 кГц mono).
+        LPCM конвертируется в numpy float32 без ffmpeg (тот же выходной контракт,
+        что и OpenAI/ElevenLabs: чанки float32 при SAMPLE_RATE).
+        """
+        import httpx
+
+        url = "https://tts.api.cloud.yandex.net/speech/v1/tts:synthesize"
+        headers = {"Authorization": f"Api-Key {self.sk_api_key}"}
+        data = {
+            "text": text,
+            "lang": "ru-RU",
+            "voice": self.sk_voice,
+            "format": "lpcm",
+            "sampleRateHertz": str(SAMPLE_RATE),
+        }
+        if self.sk_folder:
+            data["folderId"] = self.sk_folder
+        if self.sk_role:
+            data["emotion"] = self.sk_role
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                resp = await client.post(url, headers=headers, data=data)
+                resp.raise_for_status()
+                pcm = resp.content
+
+            audio_array = _pcm16_to_float32(pcm)
+            chunk_size = 16384
+            for i in range(0, len(audio_array), chunk_size):
+                if self.stop_playing:
+                    break
+                chunk = audio_array[i:i + chunk_size]
+                if len(chunk) > 0:
+                    yield chunk
+        except Exception as e:
+            logger.error(f"Ошибка при синтезе через SpeechKit: {e}")
+
     async def _synthesize_openai(self, text: str) -> AsyncGenerator[np.ndarray, None]:
         """
         Синтезирует речь через OpenAI TTS.

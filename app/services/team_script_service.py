@@ -8,10 +8,12 @@ from docx import Document
 from openai import OpenAI
 import os
 
+from services.ai_provider import get_llm_client, model_mini, json_mode_kwargs, extract_json
+
 logger = logging.getLogger(__name__)
 
-# Инициализация OpenAI клиента
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY", ""))
+# Инициализация OpenAI клиента (провайдер/модель — через services.ai_provider)
+client = get_llm_client()
 
 
 def extract_text_from_word(file_path: Path) -> str:
@@ -132,14 +134,14 @@ def parse_text_with_gpt(text: str) -> Dict[str, Any]:
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=model_mini(),
             messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
+            **json_mode_kwargs(),
             temperature=0.2,
             timeout=30.0
         )
-        
-        result = json.loads(response.choices[0].message.content)
+
+        result = extract_json(response.choices[0].message.content)
         
         # Валидация структуры
         if "blocks" not in result:

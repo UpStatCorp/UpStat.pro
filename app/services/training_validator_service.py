@@ -19,13 +19,15 @@ from openai import (
     RateLimitError,
 )
 
+from services.ai_provider import get_async_llm_client, model_mini, json_mode_kwargs, extract_json
+
 logger = logging.getLogger(__name__)
 
 # Ошибки, при которых имеет смысл повторить запрос (инфраструктурные)
 _TRANSIENT = (APITimeoutError, APIConnectionError, InternalServerError, RateLimitError)
 
 # Модель по умолчанию; переопределяется через OPENAI_VALIDATOR_MODEL
-_DEFAULT_MODEL = "gpt-4o-mini"
+_DEFAULT_MODEL = model_mini()
 
 # Лимит длины транскрипта (символы). gpt-4o-mini держит 128k токенов, поэтому
 # 8000 было слишком жёстко и срезало ВТОРУЮ половину диалога — а рубрика
@@ -42,7 +44,7 @@ _client: Optional[AsyncOpenAI] = None
 def _get_client() -> AsyncOpenAI:
     global _client
     if _client is None:
-        _client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        _client = get_async_llm_client()
     return _client
 
 VALIDATION_PROMPT = """Ты — валидатор тренировки по продажам. Твоя задача — проверить, правильно ли менеджер прошёл тренировку.
@@ -181,13 +183,13 @@ class TrainingValidatorService:
                 response = await client.chat.completions.create(
                     model=model,
                     messages=[{"role": "user", "content": prompt}],
-                    response_format={"type": "json_object"},
+                    **json_mode_kwargs(),
                     temperature=0.3,
                     timeout=60.0,
                 )
 
                 raw = response.choices[0].message.content
-                result = json.loads(raw)
+                result = extract_json(raw)
 
                 score = max(0, min(100, int(result.get("score", 0))))
                 result["score"] = score
