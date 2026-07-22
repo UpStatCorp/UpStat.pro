@@ -111,8 +111,12 @@ def _iter_final_chunks(payload: Dict[str, Any]):
     for item in items:
         if not isinstance(item, dict):
             continue
-        # интересуют только финальные результаты (не partial)
-        final = item.get("final") or item.get("finalRefinement", {}).get("normalizedText")
+        # интересуют только финальные результаты (не partial).
+        # ПОДТВЕРЖДЕНО НА PoC: v3 шлёт "final" и следом отдельной строкой
+        # "finalRefinement" (тот же сегмент, только normalizedText с пунктуацией) —
+        # если брать оба, слова задваиваются. Слова идентичны в обоих, поэтому
+        # берём только "final"; "finalRefinement" пропускаем как дубликат.
+        final = item.get("final")
         if isinstance(final, dict):
             yield final
         elif "alternatives" in item:
@@ -196,8 +200,10 @@ async def _wait_operation(client: httpx.AsyncClient, op_id: str) -> None:
 
 
 def _load_jsonl(text: str) -> Dict[str, Any]:
-    """getRecognition возвращает поток JSON-объектов (по одному на строку).
-    Собираем их в список для parse_recognition."""
+    """getRecognition возвращает поток JSON-объектов (по одному на строку), каждый
+    обёрнут в {"result": {...}} (ПОДТВЕРЖДЕНО НА PoC). Снимаем эту обёртку, чтобы
+    получить чанки вида {"final"/"finalRefinement"/"eouUpdate": ..., "channelTag": ...}
+    — именно этот плоский вид ожидает _words_from_v3_result()."""
     import json
 
     items: List[Any] = []
@@ -206,9 +212,10 @@ def _load_jsonl(text: str) -> Dict[str, Any]:
         if not line:
             continue
         try:
-            items.append(json.loads(line))
+            parsed = json.loads(line)
         except json.JSONDecodeError:
             continue
+        items.append(parsed.get("result", parsed) if isinstance(parsed, dict) else parsed)
     # частый случай: единый JSON целиком
     if not items:
         try:
