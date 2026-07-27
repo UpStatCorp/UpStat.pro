@@ -186,7 +186,15 @@ class SecurityHeaders:
             "Referrer-Policy": "strict-origin-when-cross-origin",
             
             # Permissions Policy
-            "Permissions-Policy": "geolocation=(), microphone=(), camera=()"
+            #
+            # ⚠️ microphone=() — это ПУСТОЙ список источников, т.е. запрет для ВСЕХ,
+            # включая сам сайт. С таким заголовком getUserMedia падал с
+            # NotAllowedError ("Permissions policy violation: microphone is not
+            # allowed in this document") независимо от того, что пользователь
+            # разрешил микрофон в браузере — ломались голосовые тренировки
+            # (voice-training.js) и WebRTC-встречи (webrtc-meeting.js, там ещё и
+            # камера). Собственному origin доступ нужен явно: (self).
+            "Permissions-Policy": "geolocation=(), microphone=(self), camera=(self)"
         }
 
 

@@ -1806,8 +1806,17 @@ class VoiceTraining {
         const existing = document.getElementById('vt-mic-error-banner');
         if (existing) existing.remove();
 
-        const isDenied = error && (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError');
+        let isDenied = error && (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError');
         const isNotFound = error && error.name === 'NotFoundError';
+
+        // Отказ на уровне документа (заголовок Permissions-Policy или iframe без
+        // allow="microphone") тоже прилетает как NotAllowedError, но пользователь
+        // починить его не может — советовать «разрешите в 🔒» бессмысленно и
+        // сбивает с толку. Различаем эти два случая явно.
+        const policyBlocked = typeof document.featurePolicy !== 'undefined'
+            && typeof document.featurePolicy.allowsFeature === 'function'
+            && !document.featurePolicy.allowsFeature('microphone');
+        if (policyBlocked) isDenied = false;
 
         const ua = navigator.userAgent;
         const isChrome = /chrome/i.test(ua) && !/edg/i.test(ua);
@@ -1815,7 +1824,11 @@ class VoiceTraining {
         const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
 
         let hint = '';
-        if (isDenied) {
+        if (policyBlocked) {
+            hint = 'Микрофон заблокирован политикой сайта (заголовок Permissions-Policy), '
+                 + 'а не настройками браузера — менять разрешения бесполезно. '
+                 + 'Сообщите администратору платформы.';
+        } else if (isDenied) {
             if (isChrome) hint = 'В Chrome: нажмите 🔒 слева в адресной строке → «Разрешения сайта» → Микрофон → Разрешить → обновите страницу.';
             else if (isFirefox) hint = 'В Firefox: нажмите 🔒 слева в адресной строке → «Разрешения» → Использовать микрофон → Разрешить.';
             else if (isSafari) hint = 'В Safari: Сафари → Настройки для этого сайта → Микрофон → Разрешить.';
@@ -1826,7 +1839,8 @@ class VoiceTraining {
             hint = 'Убедитесь, что браузер имеет доступ к микрофону, затем обновите страницу.';
         }
 
-        const title = isDenied ? 'Доступ к микрофону запрещён'
+        const title = policyBlocked ? 'Микрофон отключён политикой сайта'
+                    : isDenied ? 'Доступ к микрофону запрещён'
                     : isNotFound ? 'Микрофон не найден'
                     : 'Не удалось включить микрофон';
 
