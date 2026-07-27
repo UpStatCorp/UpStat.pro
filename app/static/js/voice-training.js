@@ -1685,7 +1685,12 @@ class VoiceTraining {
 
             const stream = await navigator.mediaDevices.getUserMedia(constraints);
             console.log('🎤 Доступ к микрофону получен');
-            
+
+            // Доступ есть — снимаем баннер отказа и разблокируем кнопку.
+            // Без этого красный баннер «Доступ к микрофону запрещён» висел
+            // на экране даже после того, как пользователь разрешил микрофон.
+            this.hideMicErrorBanner();
+
             // Сохраняем stream для последующего использования
             this.mediaStream = stream;
             
@@ -1711,6 +1716,47 @@ class VoiceTraining {
                 this.micButton.setAttribute('aria-disabled', 'true');
             }
             if (this.micStatus) this.micStatus.textContent = 'Микрофон недоступен';
+            this.watchMicPermission();
+        }
+    }
+
+    /**
+     * Следит за разрешением на микрофон через Permissions API.
+     *
+     * Chrome НЕ перезапускает getUserMedia после того, как пользователь сменил
+     * разрешение через 🔒 в адресной строке — страница обязана попросить доступ
+     * заново сама. Раньше этого не происходило: баннер «запрещён» оставался, и
+     * микрофон не включался, пока не перезагрузишь вкладку. Здесь мы ловим
+     * переход состояния в 'granted' и сразу повторяем запрос.
+     */
+    watchMicPermission() {
+        if (this._micPermissionWatched) return;
+        if (!navigator.permissions || !navigator.permissions.query) return;
+
+        navigator.permissions.query({ name: 'microphone' })
+            .then((status) => {
+                this._micPermissionWatched = true;
+                status.onchange = () => {
+                    console.log('🎤 Состояние разрешения микрофона изменилось:', status.state);
+                    if (status.state === 'granted') {
+                        this.hideMicErrorBanner();
+                        this.requestMicrophoneAccess();
+                    }
+                };
+            })
+            .catch((e) => {
+                // Permissions API с name:'microphone' поддержан не везде (напр. Safari) —
+                // там остаётся кнопка «Попробовать снова».
+                console.warn('⚠️ Permissions API для микрофона недоступен:', e);
+            });
+    }
+
+    hideMicErrorBanner() {
+        const banner = document.getElementById('vt-mic-error-banner');
+        if (banner) banner.remove();
+        if (this.micButton) {
+            this.micButton.disabled = false;
+            this.micButton.removeAttribute('aria-disabled');
         }
     }
 
@@ -1779,8 +1825,9 @@ class VoiceTraining {
             const retryBtn = document.getElementById('vt-mic-retry-btn');
             if (retryBtn) {
                 retryBtn.addEventListener('click', () => {
-                    banner.remove();
-                    if (this.micButton) { this.micButton.disabled = false; this.micButton.removeAttribute('aria-disabled'); }
+                    this.hideMicErrorBanner();
+                    // Клик — это user gesture: если разрешение в состоянии 'prompt',
+                    // Chrome покажет обычный запрос доступа, а не тихий отказ.
                     this.requestMicrophoneAccess();
                 });
             }
