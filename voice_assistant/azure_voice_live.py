@@ -319,8 +319,11 @@ class AzureVoiceLiveConnection:
         transcription_model: str = "gpt-4o-transcribe",
         transcription_language: Optional[str] = None,
         tools: Optional[list] = None,
-        voice_temperature: Optional[float] = 0.85,
-        voice_rate: Optional[str] = "1.05",
+        # Дефолты намеренно консервативные: конкретные значения приходят из
+        # config (AZURE_VOICE_LIVE_VOICE_TEMPERATURE / _RATE / _STYLE), чтобы тон
+        # подбирался переменными окружения без правок кода.
+        voice_temperature: Optional[float] = 0.3,
+        voice_rate: Optional[str] = "1.0",
         voice_style: Optional[str] = None,
     ):
         """

@@ -31,6 +31,8 @@ from .config import (
     AZURE_VOICE_LIVE_VOICE,
     AZURE_VOICE_LIVE_VOICE_FALLBACK,
     AZURE_VOICE_LIVE_VOICE_STYLE,
+    AZURE_VOICE_LIVE_VOICE_TEMPERATURE,
+    AZURE_VOICE_LIVE_VOICE_RATE,
     AZURE_VOICE_LIVE_TRANSCRIPTION_MODEL,
     AZURE_VOICE_LIVE_TRANSCRIPTION_LANGUAGE,
     get_system_prompt,
@@ -425,6 +427,8 @@ async def handle_websocket_connection(
             transcription_language=AZURE_VOICE_LIVE_TRANSCRIPTION_LANGUAGE,
             tools=session_tools,
             voice_style=AZURE_VOICE_LIVE_VOICE_STYLE,
+            voice_temperature=AZURE_VOICE_LIVE_VOICE_TEMPERATURE,
+            voice_rate=AZURE_VOICE_LIVE_VOICE_RATE,
         )
         logger.info(f"✅ Конфигурация сессии отправлена в Azure (голос: {AZURE_VOICE_LIVE_VOICE})")
         
@@ -1152,12 +1156,27 @@ async def _handle_stage_action(
             # Меняем системный промпт у Azure без переподключения.
             # Tools (complete_stage/complete_training) нужно переопределять на
             # каждом этапе, иначе Azure их теряет при session.update.
+            # С этого момента актуальные инструкции сессии — промпт нового этапа.
+            # Без обновления фолбэк переслал бы конфигурацию со стартовым промптом
+            # и откатил бы тренировку на первый этап.
+            user_session.session_instructions = next_stage.prompt + _RU_OUTPUT_RULE
+
+            # Голос и его настройки переотправляем те же, что при старте сессии:
+            # session.update заменяет конфигурацию целиком, и без явной передачи
+            # тон на втором этапе отличался бы от первого.
             await azure_connection.send_session_update(
-                instructions=next_stage.prompt,
-                voice_name=AZURE_VOICE_LIVE_VOICE,
+                instructions=user_session.session_instructions,
+                voice_name=(
+                    AZURE_VOICE_LIVE_VOICE_FALLBACK
+                    if user_session.voice_fallback_used
+                    else AZURE_VOICE_LIVE_VOICE
+                ),
                 transcription_model=AZURE_VOICE_LIVE_TRANSCRIPTION_MODEL,
                 transcription_language=AZURE_VOICE_LIVE_TRANSCRIPTION_LANGUAGE,
                 tools=build_stage_tools(),
+                voice_style=None if user_session.voice_fallback_used else AZURE_VOICE_LIVE_VOICE_STYLE,
+                voice_temperature=None if user_session.voice_fallback_used else AZURE_VOICE_LIVE_VOICE_TEMPERATURE,
+                voice_rate=AZURE_VOICE_LIVE_VOICE_RATE,
             )
             
             # Сообщаем клиенту чтобы UI обновил роль ИИ и прогресс

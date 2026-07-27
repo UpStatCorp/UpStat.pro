@@ -199,11 +199,28 @@ AZURE_VOICE_LIVE_VOICE_FALLBACK = os.getenv(
 )
 
 # Стиль речи (поле voice.style). У ru-RU MAI-голосов есть encouraging,
-# friendlycheerful, caringempathy, serious, curious и др.
+# friendlycheerful, caringempathy, serious, reflective, curious и др.
 # ВАЖНО: Azure принимает значение БЕЗ валидации и возвращает его в session.updated
 # даже для голосов без стилей — подтверждение приёма не доказывает, что стиль
 # применился. Эффект проверяется только на слух, поэтому по умолчанию пусто.
+# Если тон покажется слишком приподнятым — пробовать "serious".
 AZURE_VOICE_LIVE_VOICE_STYLE = os.getenv("AZURE_VOICE_LIVE_VOICE_STYLE", "").strip() or None
+
+# Разброс интонации HD-голоса (0.0–1.0). Ниже — ровнее и предсказуемее.
+#
+# Значение 0.85 было подобрано под английский DragonHD-голос Ava, где оно давало
+# «живость». На русском MAI-голосе тот же уровень звучит театрально — как чтение
+# сказки, а не разговор тренера. Замер на живом ресурсе (по 3 синтеза одной и той
+# же фразы): при 0.85 длительность гуляет на 13.7%, при 0.2 — на 7.2%, при 0.2
+# со стилем serious — на 5.1%. Эти качели и слышны как «эмоциональность».
+#
+# 0.3 — компромисс: речь остаётся живой, но перестаёт скакать по интонации.
+# Подбирается на слух без передеплоя: 0.2 — совсем ровно, 0.5+ — заметно живее.
+AZURE_VOICE_LIVE_VOICE_TEMPERATURE = float(os.getenv("AZURE_VOICE_LIVE_VOICE_TEMPERATURE", "0.3"))
+
+# Скорость речи (0.5–1.5). 1.05 подбиралось под Ava; для русского тренера
+# нейтральнее ровная скорость.
+AZURE_VOICE_LIVE_VOICE_RATE = os.getenv("AZURE_VOICE_LIVE_VOICE_RATE", "1.0").strip() or None
 AZURE_VOICE_LIVE_TRANSCRIPTION_MODEL = os.getenv("AZURE_VOICE_LIVE_TRANSCRIPTION_MODEL", "gpt-4o-transcribe")
 # Язык транскрипции: None для автоопределения, или конкретный язык (например "ru-RU", "en-US", "ja-JP")
 # Если не указан, Azure будет автоматически определять язык
