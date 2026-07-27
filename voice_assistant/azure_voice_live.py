@@ -322,7 +322,7 @@ class AzureVoiceLiveConnection:
         # Дефолты намеренно консервативные: конкретные значения приходят из
         # config (AZURE_VOICE_LIVE_VOICE_TEMPERATURE / _RATE / _STYLE), чтобы тон
         # подбирался переменными окружения без правок кода.
-        voice_temperature: Optional[float] = 0.3,
+        voice_temperature: Optional[float] = 0.15,
         voice_rate: Optional[str] = "1.0",
         voice_style: Optional[str] = None,
     ):
