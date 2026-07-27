@@ -1646,8 +1646,49 @@ class VoiceTraining {
         this.showNotification('error', 'Ошибка', data.message);
     }
     
+    /**
+     * Разбирает текущий аудио-граф (worklet → AudioContext → MediaStream).
+     *
+     * Без этого повторный вызов requestMicrophoneAccess() (кнопка «Попробовать снова»,
+     * событие Permissions API, реконнект) создавал ВТОРОЙ AudioContext и второй
+     * AudioWorklet поверх живого первого: каждый чанк уходил на сервер дважды,
+     * распознавание задваивалось, и микрофон вёл себя «затупленно».
+     */
+    teardownAudioGraph() {
+        if (this.audioWorkletNode) {
+            try {
+                this.audioWorkletNode.port.onmessage = null;
+                this.audioWorkletNode.disconnect();
+            } catch (_) {}
+            this.audioWorkletNode = null;
+        }
+        if (this.audioContext) {
+            try { this.audioContext.close(); } catch (_) {}
+            this.audioContext = null;
+        }
+        if (this.mediaStream) {
+            try { this.mediaStream.getTracks().forEach((t) => t.stop()); } catch (_) {}
+            this.mediaStream = null;
+        }
+        this.isRecording = false;
+        this.isListening = false;
+    }
+
     async requestMicrophoneAccess() {
+        // Повторный вход реален: кнопка «Попробовать снова», onchange разрешения
+        // и autoStartListening при реконнекте могут сработать почти одновременно.
+        if (this._micRequestInFlight) {
+            console.log('🎤 Запрос микрофона уже выполняется — повторный вызов пропущен');
+            return;
+        }
+        this._micRequestInFlight = true;
         try {
+            // Старый граф (если был) разбираем до создания нового.
+            this.teardownAudioGraph();
+            // Подписка на смену разрешения — ставится один раз, дальше работает
+            // и после отзыва доступа, и после повторной выдачи.
+            this.watchMicPermission();
+
             // Проверяем поддержку getUserMedia
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 // Fallback для старых браузеров
@@ -1716,7 +1757,8 @@ class VoiceTraining {
                 this.micButton.setAttribute('aria-disabled', 'true');
             }
             if (this.micStatus) this.micStatus.textContent = 'Микрофон недоступен';
-            this.watchMicPermission();
+        } finally {
+            this._micRequestInFlight = false;
         }
     }
 
