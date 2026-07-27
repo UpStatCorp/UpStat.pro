@@ -29,6 +29,8 @@ from .config import (
     AZURE_VOICE_LIVE_MODEL,
     AZURE_VOICE_LIVE_API_VERSION,
     AZURE_VOICE_LIVE_VOICE,
+    AZURE_VOICE_LIVE_VOICE_FALLBACK,
+    AZURE_VOICE_LIVE_VOICE_STYLE,
     AZURE_VOICE_LIVE_TRANSCRIPTION_MODEL,
     AZURE_VOICE_LIVE_TRANSCRIPTION_LANGUAGE,
     get_system_prompt,
@@ -64,6 +66,74 @@ except ImportError:
     )
 
 logger = logging.getLogger(__name__)
+
+
+# Требование к языку ответа. Дописывается к инструкциям сессии в обеих ветках
+# (одноэтапной и многоэтапной), потому что озвучивает их русский голос.
+_RU_OUTPUT_RULE = (
+    "\n\n===== ЯЗЫК ОТВЕТА =====\n"
+    "Говори ТОЛЬКО по-русски. Не используй латиницу и английские слова — "
+    "твою реплику озвучивает русский синтез речи, и латиница читается неправильно. "
+    "Названия и термины передавай по-русски: «сиэрэм» вместо CRM, «имейл» вместо email. "
+    "Если по смыслу нужно английское название продукта — произнеси его русскими буквами.\n"
+)
+
+# Сколько ждать session.updated, прежде чем всё равно начать говорить.
+# Раньше здесь стояла безусловная asyncio.sleep(0.4), подобранная на глаз.
+_SESSION_CONFIG_TIMEOUT_S = float(os.getenv("VOICE_SESSION_CONFIG_TIMEOUT", "1.5"))
+
+
+async def _await_session_configured(user_session: UserSession) -> bool:
+    """Ждёт подтверждения session.update от Azure. True — дождались.
+
+    По таймауту не падаем: лучше начать тренировку с риском, что конфигурация
+    ещё не применилась, чем оставить пользователя в тишине.
+    """
+    try:
+        await asyncio.wait_for(
+            user_session.session_configured.wait(), timeout=_SESSION_CONFIG_TIMEOUT_S
+        )
+        return True
+    except asyncio.TimeoutError:
+        logger.warning(
+            f"⚠️ session.updated не пришёл за {_SESSION_CONFIG_TIMEOUT_S}s — "
+            f"начинаем реплику без подтверждения конфигурации"
+        )
+        return False
+
+
+async def _switch_to_fallback_voice(
+    azure_connection: "AzureVoiceLiveConnection",
+    user_session: UserSession,
+) -> None:
+    """Пересылает конфигурацию сессии с запасным голосом и повторяет реплику.
+
+    Вызывается, когда основной голос не смог озвучить ответ. Запасной голос —
+    обычный neural, поэтому ни temperature, ни style ему не отправляем.
+    """
+    try:
+        await azure_connection.send_session_update(
+            instructions=user_session.session_instructions,
+            voice_name=AZURE_VOICE_LIVE_VOICE_FALLBACK,
+            transcription_model=AZURE_VOICE_LIVE_TRANSCRIPTION_MODEL,
+            transcription_language=AZURE_VOICE_LIVE_TRANSCRIPTION_LANGUAGE,
+            tools=getattr(user_session, "session_tools", None),
+            voice_temperature=None,
+            voice_style=None,
+        )
+    except Exception as e:
+        logger.error(f"❌ Не удалось переключиться на запасной голос: {e}")
+        return
+
+    # Повторяем ту же реплику — иначе пользователь просто не услышит её.
+    last_instructions = getattr(user_session, "last_response_instructions", None)
+    if last_instructions:
+        try:
+            await asyncio.sleep(0.3)  # дать session.update примениться
+            await azure_connection.send_response_create(instructions=last_instructions)
+            logger.info("🔁 Реплика повторена запасным голосом")
+        except Exception as e:
+            logger.error(f"❌ Не удалось повторить реплику запасным голосом: {e}")
 
 
 async def handle_websocket_connection(
@@ -331,8 +401,21 @@ async def handle_websocket_connection(
         # Для многоэтапных тренировок регистрируем tool-функции,
         # через которые ИИ будет сигнализировать завершение этапа/тренировки
         # (это скрытый канал — вызовы не озвучиваются голосом).
+        # Язык вывода. Голос ru-RU озвучивает латиницу скверно ("CRM" читается
+        # по-английски посреди русской фразы, англицизмы звучат чужеродно), а до
+        # перехода на русский голос это было не слышно, поэтому требования не было.
+        # Добавляем к ЛЮБОЙ ветке выше — включая многоэтапные тренировки, где
+        # session_instructions берутся из файла этапа и SYSTEM_PROMPT не участвует.
+        session_instructions = session_instructions + _RU_OUTPUT_RULE
+
         session_tools = build_stage_tools() if user_session.stages else None
-        
+
+        # Инструкции и tools кладём на сессию: они понадобятся, если Azure
+        # отклонит основной голос и конфигурацию придётся переслать с запасным
+        # (см. обработку error в receive_from_azure).
+        user_session.session_instructions = session_instructions
+        user_session.session_tools = session_tools
+
         # Отправляем конфигурацию сессии
         logger.info("Отправка конфигурации сессии в Azure...")
         await azure_connection.send_session_update(
@@ -341,8 +424,9 @@ async def handle_websocket_connection(
             transcription_model=AZURE_VOICE_LIVE_TRANSCRIPTION_MODEL,
             transcription_language=AZURE_VOICE_LIVE_TRANSCRIPTION_LANGUAGE,
             tools=session_tools,
+            voice_style=AZURE_VOICE_LIVE_VOICE_STYLE,
         )
-        logger.info("✅ Конфигурация сессии отправлена в Azure")
+        logger.info(f"✅ Конфигурация сессии отправлена в Azure (голос: {AZURE_VOICE_LIVE_VOICE})")
         
         # Отправляем подтверждение подключения
         await websocket.send_json({
@@ -365,20 +449,23 @@ async def handle_websocket_connection(
         # Поэтому в триггер кладём полный промпт сессии + задачу на текущую реплику.
         if not user_session.stages:
             try:
-                # session.update мог ещё не примениться на стороне Azure — короткая пауза,
-                # как при смене этапа ниже.
-                await asyncio.sleep(0.4)
-                await azure_connection.send_response_create(
-                    instructions=(
-                        session_instructions
-                        + "\n\n===== ЧТО СДЕЛАТЬ ПРЯМО СЕЙЧАС =====\n"
-                        "Это твоя первая реплика в сессии. Кратко поприветствуй пользователя "
-                        "на русском языке и начни тренировку строго по инструкциям выше. "
-                        "Сначала выступи как тренер-инструктор.\n"
-                        "Речь идёт ИСКЛЮЧИТЕЛЬНО о тренировке навыков продаж по инструкциям выше — "
-                        "никакой физкультуры, разминок и упражнений для тела."
-                    )
+                # Ждём подтверждения конфигурации (session.updated), а не слепую паузу:
+                # реплика, отправленная до применения session.update, генерируется по
+                # пустой конфигурации — ровно то, из-за чего появлялась «разминка».
+                await _await_session_configured(user_session)
+                kickoff_instructions = (
+                    session_instructions
+                    + "\n\n===== ЧТО СДЕЛАТЬ ПРЯМО СЕЙЧАС =====\n"
+                    "Это твоя первая реплика в сессии. Кратко поприветствуй пользователя "
+                    "на русском языке и начни тренировку строго по инструкциям выше. "
+                    "Сначала выступи как тренер-инструктор.\n"
+                    "Речь идёт ИСКЛЮЧИТЕЛЬНО о тренировке навыков продаж по инструкциям выше — "
+                    "никакой физкультуры, разминок и упражнений для тела."
                 )
+                # Запоминаем: если голос окажется «немым», сторож повторит эту же
+                # реплику запасным голосом.
+                user_session.last_response_instructions = kickoff_instructions
+                await azure_connection.send_response_create(instructions=kickoff_instructions)
                 logger.info("🎙️ Запрошен стартовый ответ ИИ (с полным промптом сессии)")
             except Exception as e:
                 logger.warning(f"⚠️ Не удалось запустить стартовую реплику ИИ: {e}")
@@ -610,7 +697,10 @@ async def receive_from_azure(
     # текущую реплику (audio.done). Возможные значения:
     #   None / "next_stage" / "complete_training"
     pending_stage_action = None
-    
+    # Счётчик аудио-чанков текущей реплики — питает сторож «немого голоса»
+    # в обработчике response.audio.done.
+    audio_deltas_in_response = 0
+
     try:
         while azure_connection.is_connected:
             try:
@@ -650,7 +740,20 @@ async def receive_from_azure(
                     await websocket.send_json({
                         "type": "session.created"
                     })
-                
+
+                elif event_type == "session.updated":
+                    # Подтверждение, что Azure ПРИНЯЛА конфигурацию сессии.
+                    # Без этого сигнала стартовая реплика уходила по таймеру и могла
+                    # сгенерироваться до применения промпта и голоса.
+                    accepted_voice = (event.get("session") or {}).get("voice") or {}
+                    logger.info(
+                        f"✅ Конфигурация сессии принята Azure "
+                        f"(голос: {accepted_voice.get('name')}, "
+                        f"style={accepted_voice.get('style')}, "
+                        f"rate={accepted_voice.get('rate')})"
+                    )
+                    user_session.session_configured.set()
+
                 elif event_type == "input_audio_buffer.speech_started":
                     logger.info("🎤 Обнаружена речь пользователя (возможное прерывание)")
                     # Проксируем событие напрямую клиенту (как в оригинале)
@@ -758,6 +861,7 @@ async def receive_from_azure(
                     
                     logger.debug(f"🔊 Получен аудио чанк от Azure (длина: {len(audio_data) if audio_data else 0})")
                     if audio_data:
+                        audio_deltas_in_response += 1
                         # Проксируем событие напрямую клиенту
                         await websocket.send_json({
                             "type": "response.audio.delta",
@@ -771,8 +875,34 @@ async def receive_from_azure(
                 elif event_type == "response.audio.done":
                     # Аудио ответа завершено - проксируем напрямую
                     response_id = event.get("response_id") or event.get("item_id") or current_response_id
-                    logger.info(f"✅ Аудио ответа завершено (response_id: {response_id})")
-                    
+                    logger.info(
+                        f"✅ Аудио ответа завершено (response_id: {response_id}, "
+                        f"чанков: {audio_deltas_in_response})"
+                    )
+
+                    # Сторож «немого голоса».
+                    #
+                    # Проверка на живом ресурсе показала: Azure валидирует имя голоса
+                    # только ПО ФОРМЕ. Несуществующая персона с правильным шаблоном
+                    # (ru-RU-НетТакого:MAI-Voice-2-Flash) принимается МОЛЧА, без error —
+                    # значит фолбэк по событию error на реальный сценарий (preview-голос
+                    # убрали из региона) не сработает. Единственный надёжный признак —
+                    # реплика сгенерирована, а аудио не пришло ни одного чанка.
+                    if (
+                        audio_deltas_in_response == 0
+                        and not user_session.voice_fallback_used
+                        and AZURE_VOICE_LIVE_VOICE_FALLBACK
+                        and user_session.session_instructions
+                    ):
+                        user_session.voice_fallback_used = True
+                        logger.error(
+                            f"🔇 Реплика без аудио: голос '{AZURE_VOICE_LIVE_VOICE}' не синтезирует. "
+                            f"Переключаюсь на запасной '{AZURE_VOICE_LIVE_VOICE_FALLBACK}' и повторяю реплику."
+                        )
+                        await _switch_to_fallback_voice(azure_connection, user_session)
+
+                    audio_deltas_in_response = 0
+
                     # Проксируем событие напрямую клиенту
                     await websocket.send_json({
                         "type": "response.audio.done",
@@ -862,7 +992,38 @@ async def receive_from_azure(
                     error_code = error.get("code", "unknown")
                     logger.error(f"❌ Ошибка от Azure: {error_code} - {error_message}")
                     logger.debug(f"Полное событие ошибки: {json.dumps(event, ensure_ascii=False)}")
-                    
+
+                    # Конфигурация сессии ещё не подтверждена → вероятнее всего Azure
+                    # отклонила именно её (недоступный/preview-голос, снятый из региона).
+                    # Раньше это давало сессию, где ИИ молча не отвечает и никто не
+                    # понимает почему. Пробуем переслать конфигурацию с запасным голосом.
+                    if (
+                        not user_session.session_configured.is_set()
+                        and not user_session.voice_fallback_used
+                        and AZURE_VOICE_LIVE_VOICE_FALLBACK
+                        and user_session.session_instructions
+                    ):
+                        user_session.voice_fallback_used = True
+                        logger.warning(
+                            f"⚠️ Конфигурация с голосом '{AZURE_VOICE_LIVE_VOICE}' отклонена "
+                            f"({error_code}: {error_message}). Повтор с запасным голосом "
+                            f"'{AZURE_VOICE_LIVE_VOICE_FALLBACK}'."
+                        )
+                        try:
+                            await azure_connection.send_session_update(
+                                instructions=user_session.session_instructions,
+                                voice_name=AZURE_VOICE_LIVE_VOICE_FALLBACK,
+                                transcription_model=AZURE_VOICE_LIVE_TRANSCRIPTION_MODEL,
+                                transcription_language=AZURE_VOICE_LIVE_TRANSCRIPTION_LANGUAGE,
+                                tools=getattr(user_session, "session_tools", None),
+                                # Запасной голос — обычный neural: ни temperature, ни style.
+                                voice_temperature=None,
+                                voice_style=None,
+                            )
+                            continue  # ошибку клиенту не показываем — она обработана
+                        except Exception as retry_error:
+                            logger.error(f"❌ Фолбэк голоса не сработал: {retry_error}")
+
                     # Не критичные ошибки не прерывают соединение
                     if error_code in ["rate_limit", "quota_exceeded"]:
                         await websocket.send_json({
@@ -1074,6 +1235,7 @@ async def _handle_stage_action(
                     + "\n\n===== ЧТО СДЕЛАТЬ ПРЯМО СЕЙЧАС =====\n"
                     + stage_task
                 )
+                user_session.last_response_instructions = trigger_instructions
                 await azure_connection.send_response_create(
                     instructions=trigger_instructions
                 )

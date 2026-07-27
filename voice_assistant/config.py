@@ -184,11 +184,35 @@ AZURE_VOICE_LIVE_API_VERSION = os.getenv("AZURE_VOICE_LIVE_API_VERSION", "2026-0
 #   ru-RU-DariyaNeural       — молодой женский, живой
 #   ru-RU-DmitryNeural       — уверенный мужской
 #   ru-RU-AlexanderNeural    — молодой мужской энергичный
-AZURE_VOICE_LIVE_VOICE = os.getenv("AZURE_VOICE_LIVE_VOICE", "en-US-Ava:DragonHDLatestNeural")
+#   Родные РУССКИЕ голоса (проверено на ресурсе swedencentral):
+#   ru-RU-Lev:MAI-Voice-2-Flash    — мужской, NeuralHD, носитель языка (ПО УМОЛЧАНИЮ)
+#   ru-RU-Masha:MAI-Voice-2-Flash  — женский, NeuralHD, носитель языка
+#   Оба в статусе Preview: SLA нет, голос может измениться или пропасть без
+#   уведомления. Поэтому есть AZURE_VOICE_LIVE_VOICE_FALLBACK — если Azure
+#   отклонит конфигурацию, сессия автоматически переедет на GA-голос
+#   (см. обработку error в websocket_handler), а не останется в тишине.
+AZURE_VOICE_LIVE_VOICE = os.getenv("AZURE_VOICE_LIVE_VOICE", "ru-RU-Lev:MAI-Voice-2-Flash")
+
+# Запасной голос. Должен быть GA — иначе фолбэк бессмысленен.
+AZURE_VOICE_LIVE_VOICE_FALLBACK = os.getenv(
+    "AZURE_VOICE_LIVE_VOICE_FALLBACK", "ru-RU-DmitryNeural"
+)
+
+# Стиль речи (поле voice.style). У ru-RU MAI-голосов есть encouraging,
+# friendlycheerful, caringempathy, serious, curious и др.
+# ВАЖНО: Azure принимает значение БЕЗ валидации и возвращает его в session.updated
+# даже для голосов без стилей — подтверждение приёма не доказывает, что стиль
+# применился. Эффект проверяется только на слух, поэтому по умолчанию пусто.
+AZURE_VOICE_LIVE_VOICE_STYLE = os.getenv("AZURE_VOICE_LIVE_VOICE_STYLE", "").strip() or None
 AZURE_VOICE_LIVE_TRANSCRIPTION_MODEL = os.getenv("AZURE_VOICE_LIVE_TRANSCRIPTION_MODEL", "gpt-4o-transcribe")
 # Язык транскрипции: None для автоопределения, или конкретный язык (например "ru-RU", "en-US", "ja-JP")
 # Если не указан, Azure будет автоматически определять язык
-AZURE_VOICE_LIVE_TRANSCRIPTION_LANGUAGE = os.getenv("AZURE_VOICE_LIVE_TRANSCRIPTION_LANGUAGE", "").strip() or None
+# Платформа моноязычная (русский), поэтому язык задаём явно: автоопределение
+# заметно хуже на коротких репликах вроде «да», «согласен», «подумаю».
+# Формат зависит от модели транскрипции: gpt-4o-transcribe ждёт ISO-639-1 ("ru"),
+# azure-speech — локаль ("ru-RU"). Значение уходит в input_audio_transcription.language
+# как есть, так что менять его надо вместе с AZURE_VOICE_LIVE_TRANSCRIPTION_MODEL.
+AZURE_VOICE_LIVE_TRANSCRIPTION_LANGUAGE = os.getenv("AZURE_VOICE_LIVE_TRANSCRIPTION_LANGUAGE", "ru").strip() or None
 
 # Использовать Azure Voice Live API вместо стандартной цепочки STT->GPT->TTS
 USE_AZURE_VOICE_LIVE = os.getenv("USE_AZURE_VOICE_LIVE", "true").lower() == "true"

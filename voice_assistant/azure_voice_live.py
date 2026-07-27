@@ -29,6 +29,53 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+# Маркеры HD-голосов. Только они принимают temperature (проверено на живом
+# ресурсе, api-version 2026-07-15): DragonHD / DragonHDOmni и семейство MAI-Voice.
+_HD_VOICE_MARKERS = ("dragonhd", "mai-voice")
+
+
+def is_hd_voice(voice_name: Optional[str]) -> bool:
+    """HD-голос ли это (принимает ли расширенные параметры вроде temperature)."""
+    name = (voice_name or "").lower()
+    return any(marker in name for marker in _HD_VOICE_MARKERS)
+
+
+def build_voice_payload(
+    voice_name: str,
+    temperature: Optional[float] = None,
+    rate: Optional[str] = None,
+    style: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Собирает объект session.voice для Voice Live.
+
+    Вынесено из send_session_update отдельной чистой функцией — так правила
+    покрываются юнит-тестом без сети (tests/test_voice_payload.py).
+
+    Правила (проверены запросами к живому ресурсу):
+      * temperature — ТОЛЬКО для HD-голосов. Для обычных neural-голосов
+        (ru-RU-DmitryNeural и т.п.) на старой preview-версии API передача этого
+        поля приводила к отклонению session.update, а значит — к сессии, где ИИ
+        молча не отвечает. На GA-версии отказа уже нет, но гейт оставлен: поле
+        для не-HD голосов всё равно не имеет смысла, а цена ошибки высокая.
+      * rate — для любых standard-голосов.
+      * style — отправляем как есть, если задан. ВНИМАНИЕ: Azure принимает любое
+        значение без валидации (ru-RU-DmitryNeural, у которого стилей нет, всё
+        равно возвращает style в session.updated), поэтому подтверждение приёма
+        НЕ доказывает, что стиль реально применился — это проверяется только на слух.
+
+    Формат намеренно оставлен расширяемым: для personal voice сюда добавится
+    ветка type="azure-personal" с полем model, без переписывания вызывающего кода.
+    """
+    payload: Dict[str, Any] = {"name": voice_name, "type": "azure-standard"}
+    if temperature is not None and is_hd_voice(voice_name):
+        payload["temperature"] = temperature
+    if rate:
+        payload["rate"] = rate
+    if style:
+        payload["style"] = style
+    return payload
+
+
 class AzureVoiceLiveConnection:
     """
     Класс для управления WebSocket соединением с Azure Voice Live API.
@@ -272,6 +319,9 @@ class AzureVoiceLiveConnection:
         transcription_model: str = "gpt-4o-transcribe",
         transcription_language: Optional[str] = None,
         tools: Optional[list] = None,
+        voice_temperature: Optional[float] = 0.85,
+        voice_rate: Optional[str] = "1.05",
+        voice_style: Optional[str] = None,
     ):
         """
         Отправляет обновление конфигурации сессии.
@@ -314,21 +364,14 @@ class AzureVoiceLiveConnection:
                 "input_audio_echo_cancellation": {
                     "type": "server_echo_cancellation"
                 },
-                "voice": {
-                    "name": voice_name,
-                    "type": "azure-standard",
-                    # Параметры temperature/rate поддерживаются ТОЛЬКО HD-голосами
-                    # (например en-US-Ava:DragonHDLatestNeural). Для обычных neural-голосов
-                    # (ru-RU-DmitryNeural, ru-RU-SvetlanaNeural и т.п.) передача этих полей
-                    # вызывает ошибку session.update → Azure отклоняет конфигурацию
-                    # → пользователь слышит только тишину в ответ на свою речь.
-                    # Поэтому добавляем параметры ТОЛЬКО для HD-голосов (содержат "DragonHD").
-                    **(
-                        {"temperature": 0.85, "rate": "1.05"}
-                        if "DragonHD" in (voice_name or "")
-                        else {}
-                    )
-                },
+                # Правила подстановки temperature/rate/style — в build_voice_payload
+                # (там же объяснение, почему temperature гейтится по типу голоса).
+                "voice": build_voice_payload(
+                    voice_name,
+                    temperature=voice_temperature,
+                    rate=voice_rate,
+                    style=voice_style,
+                ),
                 "input_audio_transcription": {
                     "enabled": True,
                     "model": transcription_model,

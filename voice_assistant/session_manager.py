@@ -94,7 +94,22 @@ class UserSession:
         self.stages = []
         self.current_stage_index = 0
         self.is_switching_stage = False
-        
+
+        # Подтверждение конфигурации сессии со стороны Azure Voice Live.
+        # session_configured выставляется по событию session.updated; до этого
+        # момента отправлять response.create бессмысленно — ИИ сгенерирует
+        # реплику по старой (пустой) конфигурации. Раньше вместо этого стояла
+        # слепая asyncio.sleep(0.4).
+        # session_instructions хранятся, чтобы повторно отправить конфигурацию
+        # с запасным голосом, если Azure отклонит основной.
+        self.session_configured = asyncio.Event()
+        self.session_instructions: Optional[str] = None
+        self.session_tools = None
+        self.voice_fallback_used = False
+        # Инструкции последней response.create — чтобы повторить реплику, если
+        # основной голос оказался «немым» (сгенерировал текст, но не аудио).
+        self.last_response_instructions: Optional[str] = None
+
         logger.info("Session created", extra={"session_id": self.session_id, "user_id": user_id})
     
     def update_activity(self):
