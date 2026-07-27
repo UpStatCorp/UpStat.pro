@@ -39,7 +39,7 @@ class AzureVoiceLiveConnection:
         endpoint: str,
         api_key: Optional[str] = None,
         token: Optional[str] = None,
-        api_version: str = "2025-05-01-preview",
+        api_version: str = "2026-07-15",
         model: str = "gpt-realtime"
     ):
         """

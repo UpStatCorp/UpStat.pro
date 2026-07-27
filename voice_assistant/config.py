@@ -152,7 +152,24 @@ HOTWORD = "привет"
 AZURE_VOICE_LIVE_ENDPOINT = os.getenv("AZURE_VOICE_LIVE_ENDPOINT", "")
 AZURE_VOICE_LIVE_API_KEY = os.getenv("AZURE_VOICE_LIVE_API_KEY", "")
 AZURE_VOICE_LIVE_MODEL = os.getenv("AZURE_VOICE_LIVE_MODEL", "gpt-4o-realtime-preview")
-AZURE_VOICE_LIVE_API_VERSION = os.getenv("AZURE_VOICE_LIVE_API_VERSION", "2025-05-01-preview")
+# Версия Voice Live API.
+#
+# Voice Live вышел из превью в ноябре 2025; актуальная GA-версия — 2026-07-15
+# (дефолт в SDK Microsoft). До этого здесь стояла 2025-05-01-preview — версия,
+# выпущенная ЕЩЁ ДО выхода API в GA. Это было незамеченным legacy, а не
+# осознанным выбором: preview не даёт SLA, срока депрекации и приоритетной
+# поддержки.
+#
+# Схема session.update в GA осталась плоской (modalities / voice / instructions /
+# input_audio_format / turn_detection / input_audio_transcription на верхнем
+# уровне), поэтому send_session_update не требует перестройки. Единственный
+# breaking change 2026-07-15 — переименование url → image_url в image content
+# part; изображения в голосовую тренировку не отправляются.
+#
+# ВНИМАНИЕ: у части параметров в GA другие дефолты (например prefix_padding_ms
+# для azure_semantic_vad: 300 → 420). Мы задаём их явно в send_session_update,
+# так что смена версии на них не влияет.
+AZURE_VOICE_LIVE_API_VERSION = os.getenv("AZURE_VOICE_LIVE_API_VERSION", "2026-07-15")
 # По умолчанию — HD голос Ava (тот, что работал изначально).
 # Он поддерживает расширенные параметры temperature/rate для живой речи
 # и умеет говорить на разных языках, включая русский (с небольшим акцентом).
