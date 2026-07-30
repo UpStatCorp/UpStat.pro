@@ -64,9 +64,21 @@ services:
       - AZURE_VOICE_LIVE_ENDPOINT=${AZURE_VOICE_LIVE_ENDPOINT}
       - AZURE_VOICE_LIVE_API_KEY=${AZURE_VOICE_LIVE_API_KEY}
       - AZURE_VOICE_LIVE_MODEL=${AZURE_VOICE_LIVE_MODEL:-gpt-4o-realtime-preview}
-      - AZURE_VOICE_LIVE_API_VERSION=${AZURE_VOICE_LIVE_API_VERSION:-2025-05-01-preview}
-      - AZURE_VOICE_LIVE_VOICE=${AZURE_VOICE_LIVE_VOICE:-en-US-Ava:DragonHDLatestNeural}
+      # Voice Live GA-версия (API вышел из превью в ноябре 2025).
+      - AZURE_VOICE_LIVE_API_VERSION=${AZURE_VOICE_LIVE_API_VERSION:-2026-07-15}
+      # Голос тренера. Дефолты здесь ДОЛЖНЫ совпадать с voice_assistant/config.py:
+      # значение из compose всегда перекрывает дефолт в коде, поэтому устаревшее
+      # значение тут молча отменяет правку в конфиге.
+      - AZURE_VOICE_LIVE_VOICE=${AZURE_VOICE_LIVE_VOICE:-ru-RU-Lev:MAI-Voice-2-Flash}
+      # Запасной GA-голос: на него сессия переключается сама, если основной
+      # (preview) не синтезирует. Без проброса переменной фолбэк не настраивается.
+      - AZURE_VOICE_LIVE_VOICE_FALLBACK=${AZURE_VOICE_LIVE_VOICE_FALLBACK:-ru-RU-DmitryNeural}
+      # Тон речи — подбирается без пересборки образа.
+      - AZURE_VOICE_LIVE_VOICE_TEMPERATURE=${AZURE_VOICE_LIVE_VOICE_TEMPERATURE:-0.15}
+      - AZURE_VOICE_LIVE_VOICE_RATE=${AZURE_VOICE_LIVE_VOICE_RATE:-1.0}
+      - AZURE_VOICE_LIVE_VOICE_STYLE=${AZURE_VOICE_LIVE_VOICE_STYLE:-}
       - AZURE_VOICE_LIVE_TRANSCRIPTION_MODEL=${AZURE_VOICE_LIVE_TRANSCRIPTION_MODEL:-gpt-4o-transcribe}
+      - AZURE_VOICE_LIVE_TRANSCRIPTION_LANGUAGE=${AZURE_VOICE_LIVE_TRANSCRIPTION_LANGUAGE:-ru}
       - USE_AZURE_VOICE_LIVE=${USE_AZURE_VOICE_LIVE:-true}
       # ElevenLabs (опционально)
       - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
