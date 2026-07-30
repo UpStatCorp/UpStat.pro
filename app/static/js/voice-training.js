@@ -58,7 +58,11 @@ class VoiceTraining {
         
         // Таймер
         this.timerInterval = null;
-        
+
+        // Голос тренера ('male' | 'female'). Начальное значение — сохранённый
+        // выбор пользователя; сервер подтвердит фактический в событии connected.
+        this.trainerVoice = this.getSavedVoiceChoice() || 'male';
+
         // Инициализация
         this.init();
     }
@@ -603,7 +607,26 @@ class VoiceTraining {
                         console.warn('⚠️ connected: db_session_id не пришёл, sessionId остаётся:', this.sessionId);
                     }
                     this.showNotification('success', 'Подключено', data.message || 'Сессия создана');
+                    // Сервер сообщает, каким голосом сессия говорит сейчас.
+                    // Если у пользователя сохранён другой выбор — просим переключить.
+                    this.trainerVoice = data.voice || this.trainerVoice || 'male';
+                    {
+                        const saved = this.getSavedVoiceChoice();
+                        if (saved && saved !== this.trainerVoice) this.applyVoiceChoice(saved);
+                    }
                     this.autoStartListening();
+                    break;
+
+                case 'voice_changed':
+                    this.trainerVoice = data.voice;
+                    console.log('🗣️ Голос переключён на:', data.voice, data.voice_name);
+                    this.showNotification(
+                        'success',
+                        'Голос изменён',
+                        data.voice === 'female'
+                            ? 'Тренер будет говорить женским голосом со следующей реплики.'
+                            : 'Тренер будет говорить мужским голосом со следующей реплики.'
+                    );
                     break;
                     
                 case 'session.created':
@@ -2790,6 +2813,9 @@ class VoiceTraining {
     
     openSettings() {
         if (this.settingsModal) {
+            // Показываем реально активный голос, а не значение по умолчанию из вёрстки.
+            const select = document.getElementById('trainer-voice');
+            if (select && this.trainerVoice) select.value = this.trainerVoice;
             this.settingsModal.style.display = 'flex';
         }
     }
@@ -2803,20 +2829,52 @@ class VoiceTraining {
     saveSettings() {
         // Сохранение настроек
         console.log('💾 Сохранение настроек...');
-        
+
         const audioVolume = document.getElementById('audio-volume')?.value || 80;
         const trainingDifficulty = document.getElementById('training-difficulty')?.value || 'medium';
         const feedbackLevel = document.getElementById('feedback-level')?.value || 'normal';
-        
+        const trainerVoice = document.getElementById('trainer-voice')?.value || this.trainerVoice;
+
         // Сохраняем в localStorage
         localStorage.setItem('voiceTrainingSettings', JSON.stringify({
             audioVolume,
             trainingDifficulty,
-            feedbackLevel
+            feedbackLevel,
+            trainerVoice
         }));
-        
+
+        this.applyVoiceChoice(trainerVoice);
+
         this.showNotification('success', 'Сохранено', 'Настройки успешно применены');
         this.closeSettings();
+    }
+
+    /**
+     * Просит сервер переключить голос тренера.
+     *
+     * На сервер уходит только ключ ('male'/'female'), имя голоса Azure выбирается
+     * там по белому списку — принимать имя голоса с клиента нельзя.
+     */
+    applyVoiceChoice(voiceKey) {
+        if (!voiceKey || voiceKey === this.trainerVoice) return;
+        this.trainerVoice = voiceKey;
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            // Не беда: выбор лежит в localStorage и уедет при следующем connected.
+            console.log('🗣️ Голос сохранён, применится при подключении:', voiceKey);
+            return;
+        }
+        this.ws.send(JSON.stringify({ type: 'set_voice', voice: voiceKey, event_id: '' }));
+        console.log('🗣️ Запрошена смена голоса:', voiceKey);
+    }
+
+    /** Сохранённый выбор голоса (или null, если пользователь ещё не выбирал). */
+    getSavedVoiceChoice() {
+        try {
+            const raw = localStorage.getItem('voiceTrainingSettings');
+            return raw ? (JSON.parse(raw).trainerVoice || null) : null;
+        } catch (_) {
+            return null;
+        }
     }
     
     exportTranscript() {

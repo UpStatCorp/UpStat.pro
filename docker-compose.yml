@@ -69,7 +69,10 @@ services:
       # Голос тренера. Дефолты здесь ДОЛЖНЫ совпадать с voice_assistant/config.py:
       # значение из compose всегда перекрывает дефолт в коде, поэтому устаревшее
       # значение тут молча отменяет правку в конфиге.
-      - AZURE_VOICE_LIVE_VOICE=${AZURE_VOICE_LIVE_VOICE:-ru-RU-Lev:MAI-Voice-2-Flash}
+      - AZURE_VOICE_LIVE_VOICE=${AZURE_VOICE_LIVE_VOICE:-ru-RU-DmitryNeural}
+      # Голоса переключателя «мужской/женский» в настройках тренировки.
+      - AZURE_VOICE_LIVE_VOICE_MALE=${AZURE_VOICE_LIVE_VOICE_MALE:-ru-RU-DmitryNeural}
+      - AZURE_VOICE_LIVE_VOICE_FEMALE=${AZURE_VOICE_LIVE_VOICE_FEMALE:-ru-RU-SvetlanaNeural}
       # Запасной GA-голос: на него сессия переключается сама, если основной
       # (preview) не синтезирует. Без проброса переменной фолбэк не настраивается.
       - AZURE_VOICE_LIVE_VOICE_FALLBACK=${AZURE_VOICE_LIVE_VOICE_FALLBACK:-ru-RU-DmitryNeural}

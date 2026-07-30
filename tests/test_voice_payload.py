@@ -55,6 +55,47 @@ def test_style_passed_through_when_set():
     assert payload["style"] == "encouraging"
 
 
+class TestVoiceChoiceWhitelist:
+    """Выбор голоса пользователем идёт по ключу, а не по имени голоса.
+
+    Это граница доверия: если бы сервер принимал имя голоса с фронта, клиент мог
+    бы подставить произвольный — включая платный custom voice, который
+    тарифицируется отдельно.
+    """
+
+    def test_known_keys_resolve(self):
+        from voice_assistant.config import resolve_voice_choice
+
+        assert resolve_voice_choice("male")[0] == "ru-RU-DmitryNeural"
+        assert resolve_voice_choice("female")[0] == "ru-RU-SvetlanaNeural"
+
+    def test_keys_are_case_and_space_tolerant(self):
+        from voice_assistant.config import resolve_voice_choice
+
+        assert resolve_voice_choice(" FEMALE ")[1] == "female"
+
+    @pytest.mark.parametrize(
+        "hostile",
+        [
+            "en-US-CustomExpensiveNeural",   # попытка подставить имя голоса напрямую
+            "ru-RU-DmitryNeural",            # даже валидное имя не является ключом
+            "",
+            None,
+            "../../etc/passwd",
+        ],
+    )
+    def test_anything_but_a_known_key_is_rejected(self, hostile):
+        from voice_assistant.config import resolve_voice_choice
+
+        assert resolve_voice_choice(hostile) == (None, None)
+
+    def test_voice_key_for_reverse_lookup(self):
+        from voice_assistant.config import voice_key_for
+
+        assert voice_key_for("ru-RU-SvetlanaNeural") == "female"
+        assert voice_key_for("en-US-Ava:DragonHDLatestNeural") is None
+
+
 def test_empty_optionals_are_omitted():
     """Пустые значения не должны превращаться в null-поля в session.update."""
     payload = build_voice_payload(MAI_RU, temperature=None, rate="", style="")

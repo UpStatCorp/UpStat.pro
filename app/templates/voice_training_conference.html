@@ -442,6 +442,20 @@
     </div>
     <div class="modal-body">
       <div class="settings-section">
+        <h4>Голос тренера</h4>
+        <div class="setting-item">
+          <label for="trainer-voice">Голос:</label>
+          <select id="trainer-voice" class="setting-select">
+            <option value="male">Мужской — Дмитрий</option>
+            <option value="female">Женский — Светлана</option>
+          </select>
+        </div>
+        <p class="setting-hint" style="margin:6px 0 0;font-size:12px;color:#64748b;line-height:1.5">
+          Можно менять прямо во время тренировки — новый голос зазвучит со следующей реплики.
+        </p>
+      </div>
+
+      <div class="settings-section">
         <h4>Аудио</h4>
         <div class="setting-item">
           <label for="audio-input">Микрофон:</label>
@@ -549,7 +563,7 @@
 <!-- Подключение скриптов -->
 <!-- ?v= обязателен: без него браузеры кешируют voice-training.js навсегда и
      продолжают крутить старый код после деплоя. Бампить при каждом изменении JS. -->
-<script src="/static/js/voice-training.js?v=5"></script>
+<script src="/static/js/voice-training.js?v=6"></script>
 
 <script>
 // Инициализация при загрузке страницы

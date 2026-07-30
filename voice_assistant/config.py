@@ -191,7 +191,41 @@ AZURE_VOICE_LIVE_API_VERSION = os.getenv("AZURE_VOICE_LIVE_API_VERSION", "2026-0
 #   уведомления. Поэтому есть AZURE_VOICE_LIVE_VOICE_FALLBACK — если Azure
 #   отклонит конфигурацию, сессия автоматически переедет на GA-голос
 #   (см. обработку error в websocket_handler), а не останется в тишине.
-AZURE_VOICE_LIVE_VOICE = os.getenv("AZURE_VOICE_LIVE_VOICE", "ru-RU-Lev:MAI-Voice-2-Flash")
+AZURE_VOICE_LIVE_VOICE = os.getenv("AZURE_VOICE_LIVE_VOICE", "ru-RU-DmitryNeural")
+
+# Голоса, между которыми пользователь переключается прямо в тренировке.
+# Оба GA-статуса: переключатель не должен зависеть от preview-голосов, которые
+# могут пропасть из региона без уведомления.
+AZURE_VOICE_LIVE_VOICE_MALE = os.getenv("AZURE_VOICE_LIVE_VOICE_MALE", "ru-RU-DmitryNeural")
+AZURE_VOICE_LIVE_VOICE_FEMALE = os.getenv("AZURE_VOICE_LIVE_VOICE_FEMALE", "ru-RU-SvetlanaNeural")
+
+
+def voice_choices() -> dict:
+    """Белый список голосов для выбора пользователем: ключ → имя голоса Azure.
+
+    ВАЖНО: клиент присылает только ключ ("male"/"female"), а не имя голоса.
+    Имя, пришедшее с фронта, нельзя передавать в session.update напрямую —
+    это позволило бы подставить произвольный (в том числе платный custom) голос.
+    """
+    return {
+        "male": AZURE_VOICE_LIVE_VOICE_MALE,
+        "female": AZURE_VOICE_LIVE_VOICE_FEMALE,
+    }
+
+
+def resolve_voice_choice(choice: str):
+    """Ключ выбора → (имя голоса, ключ) либо (None, None), если ключ неизвестен."""
+    key = (choice or "").strip().lower()
+    name = voice_choices().get(key)
+    return (name, key) if name else (None, None)
+
+
+def voice_key_for(voice_name: str):
+    """Обратное сопоставление: имя голоса → ключ выбора (для начального состояния UI)."""
+    for key, name in voice_choices().items():
+        if name == voice_name:
+            return key
+    return None
 
 # Запасной голос. Должен быть GA — иначе фолбэк бессмысленен.
 AZURE_VOICE_LIVE_VOICE_FALLBACK = os.getenv(

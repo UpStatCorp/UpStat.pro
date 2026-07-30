@@ -106,6 +106,11 @@ class UserSession:
         self.session_instructions: Optional[str] = None
         self.session_tools = None
         self.voice_fallback_used = False
+        # Голос, выбранный пользователем в настройках тренировки. None — пока не
+        # выбирал, используется значение из конфига. Хранится на сессии, потому
+        # что session.update заменяет конфигурацию целиком: при смене этапа голос
+        # нужно переотправлять, иначе выбор пользователя молча откатится.
+        self.selected_voice: Optional[str] = None
         # Инструкции последней response.create — чтобы повторить реплику, если
         # основной голос оказался «немым» (сгенерировал текст, но не аудио).
         self.last_response_instructions: Optional[str] = None

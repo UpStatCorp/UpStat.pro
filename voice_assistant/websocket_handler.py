@@ -33,6 +33,9 @@ from .config import (
     AZURE_VOICE_LIVE_VOICE_STYLE,
     AZURE_VOICE_LIVE_VOICE_TEMPERATURE,
     AZURE_VOICE_LIVE_VOICE_RATE,
+    resolve_voice_choice,
+    voice_key_for,
+    voice_choices,
     AZURE_VOICE_LIVE_TRANSCRIPTION_MODEL,
     AZURE_VOICE_LIVE_TRANSCRIPTION_LANGUAGE,
     get_system_prompt,
@@ -117,6 +120,80 @@ async def _await_session_configured(user_session: UserSession) -> bool:
             f"начинаем реплику без подтверждения конфигурации"
         )
         return False
+
+
+def _current_voice(user_session: UserSession) -> str:
+    """Голос, которым сессия должна говорить прямо сейчас.
+
+    Приоритет: аварийный фолбэк → выбор пользователя → значение из конфига.
+    Нужен потому, что session.update заменяет конфигурацию целиком: при каждой
+    переотправке (смена этапа, фолбэк) голос надо подставлять заново.
+    """
+    if user_session.voice_fallback_used:
+        return AZURE_VOICE_LIVE_VOICE_FALLBACK
+    return user_session.selected_voice or AZURE_VOICE_LIVE_VOICE
+
+
+async def _apply_voice_choice(
+    azure_connection: "AzureVoiceLiveConnection",
+    websocket: WebSocket,
+    user_session: UserSession,
+    choice: str,
+) -> None:
+    """Переключает голос по запросу пользователя (сообщение set_voice).
+
+    Клиент присылает только ключ ("male"/"female"); имя голоса берётся из белого
+    списка на сервере. Принимать имя голоса с фронта нельзя — им можно было бы
+    подставить произвольный, в том числе платный custom-голос.
+    """
+    voice_name, key = resolve_voice_choice(choice)
+    if not voice_name:
+        logger.warning(f"⚠️ Неизвестный вариант голоса от клиента: {choice!r}")
+        await websocket.send_json({
+            "type": "error",
+            "message": "Неизвестный вариант голоса.",
+        })
+        return
+
+    if user_session.selected_voice == voice_name and not user_session.voice_fallback_used:
+        return  # уже выбран — молча игнорируем повтор
+
+    user_session.selected_voice = voice_name
+    # Пользователь выбрал голос сам — снимаем пометку аварийного отката, чтобы
+    # сторож «немого голоса» мог сработать заново уже для нового голоса.
+    user_session.voice_fallback_used = False
+
+    if not user_session.session_instructions:
+        # Конфигурация сессии ещё не отправлялась: выбор применится при её сборке.
+        return
+
+    try:
+        await azure_connection.send_session_update(
+            instructions=user_session.session_instructions,
+            voice_name=voice_name,
+            transcription_model=AZURE_VOICE_LIVE_TRANSCRIPTION_MODEL,
+            transcription_language=AZURE_VOICE_LIVE_TRANSCRIPTION_LANGUAGE,
+            tools=getattr(user_session, "session_tools", None),
+            voice_style=AZURE_VOICE_LIVE_VOICE_STYLE,
+            voice_temperature=AZURE_VOICE_LIVE_VOICE_TEMPERATURE,
+            voice_rate=AZURE_VOICE_LIVE_VOICE_RATE,
+        )
+    except Exception as e:
+        logger.error(f"❌ Не удалось сменить голос на {voice_name}: {e}")
+        await websocket.send_json({
+            "type": "error",
+            "message": "Не удалось сменить голос. Попробуйте ещё раз.",
+        })
+        return
+
+    logger.info(f"🗣️ Голос переключён пользователем: {key} ({voice_name})")
+    # Новый голос применится к СЛЕДУЮЩЕЙ реплике — текущая уже синтезируется
+    # старым, прерывать её на полуслове хуже, чем дать договорить.
+    await websocket.send_json({
+        "type": "voice_changed",
+        "voice": key,
+        "voice_name": voice_name,
+    })
 
 
 async def _switch_to_fallback_voice(
@@ -435,9 +512,10 @@ async def handle_websocket_connection(
 
         # Отправляем конфигурацию сессии
         logger.info("Отправка конфигурации сессии в Azure...")
+        initial_voice = _current_voice(user_session)
         await azure_connection.send_session_update(
             instructions=session_instructions,
-            voice_name=AZURE_VOICE_LIVE_VOICE,
+            voice_name=initial_voice,
             transcription_model=AZURE_VOICE_LIVE_TRANSCRIPTION_MODEL,
             transcription_language=AZURE_VOICE_LIVE_TRANSCRIPTION_LANGUAGE,
             tools=session_tools,
@@ -445,14 +523,18 @@ async def handle_websocket_connection(
             voice_temperature=AZURE_VOICE_LIVE_VOICE_TEMPERATURE,
             voice_rate=AZURE_VOICE_LIVE_VOICE_RATE,
         )
-        logger.info(f"✅ Конфигурация сессии отправлена в Azure (голос: {AZURE_VOICE_LIVE_VOICE})")
+        logger.info(f"✅ Конфигурация сессии отправлена в Azure (голос: {initial_voice})")
         
         # Отправляем подтверждение подключения
         await websocket.send_json({
             "type": "connected",
             "session_id": user_session.session_id,
             "db_session_id": user_session.db_session_id,
-            "message": "✅ Подключение установлено"
+            "message": "✅ Подключение установлено",
+            # Начальное состояние переключателя голоса, чтобы UI показал
+            # реально активный голос, а не догадывался.
+            "voice": voice_key_for(initial_voice),
+            "voice_options": voice_choices(),
         })
         logger.info("✅ Подтверждение подключения отправлено клиенту")
 
@@ -526,7 +608,15 @@ async def handle_websocket_connection(
 
                 msg_type = data.get("type")
 
-                if msg_type == "input_audio_buffer.append":
+                if msg_type == "set_voice":
+                    # Переключение голоса тренера из настроек. Работает и до
+                    # начала разговора, и посреди тренировки — новый голос
+                    # применяется со следующей реплики ИИ.
+                    await _apply_voice_choice(
+                        azure_connection, websocket, user_session, data.get("voice")
+                    )
+
+                elif msg_type == "input_audio_buffer.append":
                     # Получили аудио чанк в формате input_audio_buffer.append (как в оригинале)
                     audio_base64 = data.get("audio", "")
                     if audio_base64:
@@ -1181,11 +1271,7 @@ async def _handle_stage_action(
             # тон на втором этапе отличался бы от первого.
             await azure_connection.send_session_update(
                 instructions=user_session.session_instructions,
-                voice_name=(
-                    AZURE_VOICE_LIVE_VOICE_FALLBACK
-                    if user_session.voice_fallback_used
-                    else AZURE_VOICE_LIVE_VOICE
-                ),
+                voice_name=_current_voice(user_session),
                 transcription_model=AZURE_VOICE_LIVE_TRANSCRIPTION_MODEL,
                 transcription_language=AZURE_VOICE_LIVE_TRANSCRIPTION_LANGUAGE,
                 tools=build_stage_tools(),
