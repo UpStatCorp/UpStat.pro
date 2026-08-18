@@ -157,6 +157,8 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - ./ssl:/etc/nginx/ssl:ro
+      # webroot для ACME http-01 — сюда certbot кладёт токен при продлении
+      - ./certbot-webroot:/var/www/certbot:ro
     depends_on:
       backend:
         condition: service_healthy
