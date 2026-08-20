@@ -137,8 +137,20 @@ async def run_pipeline_job(ctx, kind: str, user_id: int, conversation_id: int, r
 
 # ── Настройки воркера ─────────────────────────────────────
 
+async def _startup(ctx):
+    """
+    Та же проверка схемы, что и у веба. Без неё получалась дыра: веб падал
+    на рассинхроне, а воркеры продолжали писать в несогласованную базу —
+    create_all вызывался только в create_app(), воркер не проверял ничего.
+    """
+    from db_guard import assert_schema_current
+
+    assert_schema_current()
+
+
 class WorkerSettings:
     functions = [analyze_recording_job, run_pipeline_job]
+    on_startup = _startup
     redis_settings = RedisSettings.from_dsn(REDIS_URL)
     # Глобальный потолок одновременных анализов на процесс воркера.
     # Итоговый потолок системы = WORKER_REPLICAS × max_jobs.
