@@ -164,20 +164,55 @@ def render(verify_only: bool = False) -> str:
             )
         )
 
-        if not verify_only:
-            chunks.append(_add_table(ctx, CreateTableOp.from_table(t)))
-            for ix in sorted(kept_indexes, key=lambda i: i.name or ""):
-                chunks.append(_add_index(ctx, CreateIndexOp.from_index(ix)))
+        chunks.append(_add_table(ctx, CreateTableOp.from_table(t)))
+        for ix in sorted(kept_indexes, key=lambda i: i.name or ""):
+            chunks.append(_add_index(ctx, CreateIndexOp.from_index(ix)))
 
     print("\n".join(report), file=sys.stderr)
     print(f"Итого колонок в baseline: {total_cols}", file=sys.stderr)
     print(f"Таблиц: {len(BASELINE_TABLES)}", file=sys.stderr)
-    if verify_only:
-        return ""
     return "\n".join("    " + line for chunk in chunks for line in chunk.splitlines())
 
 
+BASELINE_FILE = _ROOT / "alembic" / "versions" / "001_initial.py"
+
+
+def verify(body: str) -> int:
+    """
+    Сверяет сгенерированное тело с тем, что лежит в 001_initial.py.
+
+    Нужно как CI-проверка: baseline создаётся из app/models.py, и если модели
+    поменяли, а baseline не перегенерировали, состав колонок разъедется молча.
+    Пустой autogenerate это поймает не всегда — исключённая колонка может
+    добавляться более поздней миграцией, и итоговая схема сойдётся, а baseline
+    при этом будет описывать не то состояние.
+    """
+    committed = BASELINE_FILE.read_text(encoding="utf-8")
+    _, _, tail = committed.partition("def upgrade():\n")
+    current, _, _ = tail.partition("\n\ndef downgrade():")
+
+    if current.strip() == body.strip():
+        print("\nbaseline в 001_initial.py совпадает с моделями", file=sys.stderr)
+        return 0
+
+    import difflib
+
+    print("\nBASELINE РАЗОШЁЛСЯ С МОДЕЛЯМИ.", file=sys.stderr)
+    print("Перегенерируйте: python tools/gen_baseline.py\n", file=sys.stderr)
+    diff = difflib.unified_diff(
+        current.strip().splitlines(),
+        body.strip().splitlines(),
+        fromfile="alembic/versions/001_initial.py",
+        tofile="tools/gen_baseline.py (ожидается)",
+        lineterm="",
+    )
+    print("\n".join(diff), file=sys.stderr)
+    return 1
+
+
 if __name__ == "__main__":
-    body = render(verify_only="--verify" in sys.argv)
+    body = render()
+    if "--verify" in sys.argv:
+        sys.exit(verify(body))
     if body:
         print(body)
