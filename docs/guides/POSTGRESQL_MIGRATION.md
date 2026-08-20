@@ -53,11 +53,16 @@ docker-compose logs -f postgres
 ### Шаг 4: Создайте таблицы в PostgreSQL
 
 ```bash
-# Создайте все таблицы в PostgreSQL
-docker-compose run --rm backend python -c "from app.main import create_app; from database import Base, engine; app = create_app(); Base.metadata.create_all(bind=engine)"
+# Схему создают ТОЛЬКО миграции
+docker compose run --rm backend alembic upgrade head
 ```
 
-Вы должны увидеть сообщения о создании таблиц.
+Вы должны увидеть строки `Running upgrade ... -> ...` по одной на ревизию,
+начиная с `-> 001`.
+
+> `Base.metadata.create_all` для этого больше не используется: он создавал
+> только отсутствующие таблицы, никогда не добавлял колонки в существующие
+> и маскировал расхождения схемы. Подробности — [../ITOG_ALEMBIC.md](../ITOG_ALEMBIC.md).
 
 ### Шаг 5: Мигрируйте данные (если есть данные в SQLite)
 
@@ -170,9 +175,16 @@ docker-compose up -d postgres
 
 ### Проблема: Таблицы не создаются
 
+Приложение схему не создаёт — при неготовой базе оно падает на старте
+с сообщением `Схема БД не инициализирована: таблицы alembic_version нет`.
+
 ```bash
-# Попробуйте создать таблицы вручную
-docker-compose exec backend python -c "from app.main import create_app; from database import Base, engine; app = create_app(); Base.metadata.create_all(bind=engine)"
+# Применить миграции (ровно один раз, до старта воркеров)
+docker compose run --rm backend alembic upgrade head
+
+# Проверить, что версия доехала до head
+docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+    -c "SELECT version_num FROM alembic_version;"
 ```
 
 ## 📝 Дополнительные настройки

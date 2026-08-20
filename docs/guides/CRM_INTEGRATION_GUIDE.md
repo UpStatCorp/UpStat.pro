@@ -101,12 +101,12 @@ Bitrix24 поддерживает **два способа подключения
 
 3. **Применение миграций базы данных:**
    ```bash
-   # SQLite (для разработки)
-   python -c "from app.database import engine; from app.models import Base; Base.metadata.create_all(bind=engine)"
-   
-   # Или через Alembic
    alembic upgrade head
    ```
+
+   > Схему создают ТОЛЬКО миграции. `Base.metadata.create_all` убран из
+   > `create_app()`, и приложение падает на старте, если миграции
+   > не накачены. SQLite не поддерживается (`app/database.py:9-10`).
 
 ### 2. Подключение CRM в интерфейсе
 

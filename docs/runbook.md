@@ -143,19 +143,38 @@ docker compose restart nginx
 
 # ⑥ Проверить
 curl -sf http://localhost/health
-docker compose logs backend --tail=50 | grep -i alembic   # должно быть ПУСТО
+
+# Схема принята: строка db_guard с текущей ревизией
+docker compose logs backend --tail=300 | grep db_guard
+
+# Проблем нет: ни одной строки уровня WARNING/ERROR про alembic
+docker compose logs backend --tail=300 | grep -i alembic | grep -vi '"INFO"'
 ```
+
+> Несколько INFO-строк `alembic.runtime.migration` («Context impl PostgresqlImpl»,
+> «Will assume transactional DDL») на старте — **норма**: их печатает сама
+> проверка схемы. Значимы только WARNING и ERROR.
+>
+> Сообщение `db_guard: Схема БД актуальна` в JSON-логах пишется с
+> \u-экранированием кириллицы, поэтому ищите по `db_guard`, а не по тексту.
+>
+> Воркер ту же проверку выполняет молча: `app/worker.py` не вызывает
+> `setup_logging()`, поэтому его INFO не печатается. Признак успеха там —
+> отсутствие рестартов (`docker inspect fastapi-worker-1 --format
+> '{{.RestartCount}}'` = 0): при несоответствии схемы `on_startup` бросает
+> исключение и воркер падает.
 
 > **Правило:** `alembic upgrade head` выполняется ровно один раз, до старта воркеров.
 > Никогда не запускать одновременно с несколькими воркерами — DDL-гонка.
 
 **Что означают сообщения на старте:**
 
-| Сообщение | Причина | Что делать |
-|---|---|---|
-| ничего про alembic | схема актуальна | норма |
-| `Схема БД не инициализирована: таблицы alembic_version нет` | миграции не накатывались вообще | `alembic upgrade head` |
-| `Схема БД не соответствует коду: в базе ['021'], ожидается ['023']` | забыли миграции перед деплоем | `alembic upgrade head`, затем пункты ④–⑤ |
+| Сообщение | Уровень | Причина | Что делать |
+|---|---|---|---|
+| `db_guard: Схема БД актуальна`, `revision: ["023"]` | INFO | схема принята | норма |
+| `alembic.runtime.migration: Context impl / transactional DDL` | INFO | побочный вывод самой проверки | норма, игнорировать |
+| `Схема БД не инициализирована: таблицы alembic_version нет` | RuntimeError, старт прерван | миграции не накатывались вообще | `alembic upgrade head` |
+| `Схема БД не соответствует коду: в базе ['021'], ожидается ['023']` | RuntimeError, старт прерван | забыли миграции перед деплоем | `alembic upgrade head`, затем пункты ④–⑤ |
 
 Раньше на **здоровой** базе в логи каждого из 4 воркеров писалось
 `Alembic version mismatch current=021 expected=018` — ожидаемая версия была
