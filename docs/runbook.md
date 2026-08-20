@@ -107,28 +107,62 @@ curl -sf http://localhost/health
 
 ### 2.2 Деплой с миграциями
 
+> **ВАЖНО, изменилось.** Приложение больше **не создаёт схему само.**
+> `Base.metadata.create_all` убран из `create_app()`; схему создают только
+> миграции. Проверка версии стала фатальной: если `alembic upgrade head`
+> не выполнен, backend **и воркеры падают на старте** с явным сообщением,
+> а не пишут warning и продолжают.
+>
+> Отсюда жёсткий порядок: **миграции → пересоздание backend → рестарт nginx.**
+> Если пересоздать backend до миграций, четыре uvicorn-воркера уйдут
+> в краш-луп (`restart: unless-stopped`), а nginx с закэшированным IP
+> апстрима отдаст **502 на весь сайт** — см. раздел 6 про кэш апстрима.
+
 Если релиз содержит новые Alembic-миграции:
 
 ```bash
 git pull origin main
-docker compose build backend
 
-# ① Остановить backend (входящие WS-сессии завершатся)
-docker compose stop backend
+# ① Собрать образ, НО НЕ запускать его
+docker compose build backend worker
 
-# ② Применить миграции
+# ② Миграции ПЕРВЫМИ — старый backend в это время продолжает работать,
+#    простоя нет. Если миграции упадут, откатывать нечего.
 docker compose run --rm backend alembic upgrade head
 
-# ③ Запустить новый backend
-docker compose up -d --no-deps backend
+# ③ Убедиться, что версия доехала до head, ДО перезапуска приложения
+docker compose exec -T postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+    -c "SELECT version_num FROM alembic_version;"
 
-# ④ Проверить
+# ④ Пересоздать backend и воркеры
+docker compose up -d --force-recreate backend worker
+
+# ⑤ ОБЯЗАТЕЛЬНО: рестарт nginx — иначе закэшированный IP апстрима
+#    даёт 502 на весь сайт
+docker compose restart nginx
+
+# ⑥ Проверить
 curl -sf http://localhost/health
-docker compose logs backend --tail=50
+docker compose logs backend --tail=50 | grep -i alembic   # должно быть ПУСТО
 ```
 
 > **Правило:** `alembic upgrade head` выполняется ровно один раз, до старта воркеров.
 > Никогда не запускать одновременно с несколькими воркерами — DDL-гонка.
+
+**Что означают сообщения на старте:**
+
+| Сообщение | Причина | Что делать |
+|---|---|---|
+| ничего про alembic | схема актуальна | норма |
+| `Схема БД не инициализирована: таблицы alembic_version нет` | миграции не накатывались вообще | `alembic upgrade head` |
+| `Схема БД не соответствует коду: в базе ['021'], ожидается ['023']` | забыли миграции перед деплоем | `alembic upgrade head`, затем пункты ④–⑤ |
+
+Раньше на **здоровой** базе в логи каждого из 4 воркеров писалось
+`Alembic version mismatch current=021 expected=018` — ожидаемая версия была
+захардкожена константой. Теперь head берётся из `ScriptDirectory`, поэтому
+любое сообщение про alembic на старте означает настоящую проблему.
+
+> **Откат релиза** — см. раздел 4.
 
 ### 2.3 Проверка после деплоя
 
@@ -184,39 +218,108 @@ docker compose run --rm backend alembic revision -m "create_index_y"
 ```
 
 > **Соглашение:** файлы миграций именуются `NNN_краткое_описание.py`.
-> Каждая операция обёрнута в `_table_exists()` / `_column_exists()` для идемпотентности.
+
+### 3.6 Идемпотентность: как писать новые миграции
+
+Проект Postgres-only (`app/database.py:9-10` явно запрещает sqlite), поэтому
+для идемпотентности используется **нативный синтаксис**, а не Python-guard'ы:
+
+```python
+op.execute("CREATE INDEX IF NOT EXISTS ix_foo ON foo (bar)")
+op.execute("ALTER TABLE foo ADD COLUMN IF NOT EXISTS bar INTEGER")
+op.execute("ALTER TABLE foo DROP COLUMN IF EXISTS bar")
+```
+
+Для `SET NOT NULL` guard не нужен вовсе: на уже `NOT NULL` колонке PostgreSQL
+выполняет это как no-op, без ошибки и без сканирования таблицы.
+
+**Идемпотентность пишется только там, где расхождение реально существует**,
+а не «на всякий случай»: каждый такой guard навсегда остаётся в истории
+мёртвым кодом. Ревизии 022 и 023 — исключение с известной причиной, она
+описана в их докстрингах.
+
+> **Если пишете Python-guard — НЕ вкладывайте проверку индекса внутрь проверки
+> колонки.** Ровно эта вложенность в миграции 018 (строки 79-83, 86-90) стоила
+> проду двух индексов: колонка уже существовала, внешнее условие было ложным,
+> и создание индекса пропускалось вместе с ней, а ревизия штамповалась как
+> применённая.
+
+### 3.7 Baseline 001 генерируется, а не пишется руками
+
+`alembic/versions/001_initial.py` создаётся скриптом `tools/gen_baseline.py`
+из `app/models.py` по правилу:
+
+    baseline = app/models.py МИНУС всё, что добавляют миграции 002-021
+    * колонка исключается, если её добавляет любая миграция;
+    * индекс исключается, если хотя бы одна его колонка исключена.
+
+Править файл руками нельзя — перегенерируйте:
+
+```bash
+python tools/gen_baseline.py > /tmp/body.py   # тело upgrade()
+python tools/gen_baseline.py --verify         # сверка с закоммиченным (в CI)
+```
+
+### 3.8 Проверка миграций перед мержем
+
+```bash
+DATABASE_URL=postgresql://user:pass@host:5432/ПУСТАЯ_БАЗА \
+    bash tools/verify_migrations.sh
+```
+
+Проверяет: чистая база → `upgrade head` → `autogenerate` пуст → `downgrade base`
+→ `upgrade head`. То же самое гоняет CI-джоб `migrations` на каждом PR.
 
 ---
 
 ## 4. Откат релиза
 
-### 4.1 Быстрый откат образа (без изменений схемы)
+### 4.1 Быстрый откат образа (без изменений схемы) — предпочтительный путь
 
 ```bash
 # Найти предыдущий образ
 docker images | grep upstat
 
 # Откатить backend на предыдущий тег
-docker compose stop backend
+docker compose stop backend worker
 docker tag upstat-backend:previous upstat-backend:latest
-docker compose up -d --no-deps backend
+docker compose up -d --no-deps backend worker
+
+# ОБЯЗАТЕЛЬНО после пересоздания контейнеров
+docker compose restart nginx
 ```
+
+**Схему при этом откатывать не нужно.** Старый код совместим с новой схемой:
+проверено на копии прод-базы — код с `create_all` и захардкоженной версией
+`"018"` стартует на схеме 023, `/health` отвечает 200, `create_all` схему
+не меняет (все таблицы на месте), в логи пишется безобидный
+`Alembic version mismatch current=023 expected=018`.
 
 ### 4.2 Откат с миграцией вниз
 
+Нужен редко — только если новая ревизия действительно ломает старый код.
+
 ```bash
-# 1. Остановить backend
-docker compose stop backend
+# 1. Остановить backend и воркеры
+docker compose stop backend worker
 
 # 2. Откатить схему на нужную ревизию
-docker compose run --rm backend alembic downgrade 017
+docker compose run --rm backend alembic downgrade 022
 
 # 3. Переключить код на предыдущий тег и запустить
-docker compose up -d --no-deps backend
+docker compose up -d --no-deps backend worker
+docker compose restart nginx
 ```
 
 > ⚠️ Деструктивные downgrade (DROP TABLE, DROP COLUMN) необратимы.
 > Если миграция удаляет данные — сделайте бэкап перед откатом.
+
+**Границы отката для текущей истории:**
+
+| Команда | Что делает | Безопасно? |
+|---|---|---|
+| `downgrade 022` | вернёт `users.google_*` и `batch_id varchar(100)` | да, данных не теряет |
+| `downgrade 021` | дропнет `win_probability_scores`, `checklist_item_definitions`, `checklist_item_scores` | **НЕТ — уничтожит живые данные** (на момент написания 1083 строки) |
 
 ---
 

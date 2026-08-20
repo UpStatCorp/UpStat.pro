@@ -47,7 +47,17 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection,
+            target_metadata=target_metadata,
+            # Задано явно, а не оставлено на дефолт версии: критерий приёмки
+            # (пустой autogenerate) зависит от этих флагов, и обновление
+            # alembic не должно менять его молча. compare_type в 1.12.1
+            # уже True по умолчанию — фиксируем.
+            compare_type=True,
+            # server_default НЕ сравниваем: в моделях значения по умолчанию
+            # питоновские (default=), в миграциях — серверные
+            # (server_default=). Сравнение дало бы вечный ложный дифф.
+            compare_server_default=False,
         )
         with context.begin_transaction():
             context.run_migrations()

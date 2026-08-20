@@ -79,3 +79,52 @@ jobs:
 
       - name: Run unit tests
         run: pytest tests/ -v --tb=short -p no:warnings
+
+  migrations:
+    name: Migrations — clean DB + empty autogenerate
+    runs-on: ubuntu-latest
+    # Существующий job `test` гоняется на DATABASE_URL=sqlite, хотя
+    # app/database.py:9-10 sqlite явно запрещает — то есть ни один тест
+    # не импортирует database.py, и проверить миграции там нечем.
+    # Здесь нужен настоящий PostgreSQL.
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci_migrations
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://ci:ci@localhost:5432/ci_migrations
+      SECRET_KEY: "ci-secret-key-for-migrations-at-least-32-chars"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Критерий приёмки: чистая база -> upgrade head -> autogenerate пуст,
+      # плюс обратимость downgrade base -> upgrade head.
+      - name: Verify migrations
+        run: bash tools/verify_migrations.sh
+
+      # Baseline 001 генерируется из app/models.py. Если модели изменили,
+      # а baseline не перегенерировали, состав колонок разъедется — ловим здесь.
+      - name: Baseline generator is in sync with models
+        run: |
+          python tools/gen_baseline.py --verify

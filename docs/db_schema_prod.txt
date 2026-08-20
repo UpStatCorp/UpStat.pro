@@ -1,0 +1,553 @@
+================================================================================
+ФАКТИЧЕСКАЯ СХЕМА ПРОД-БАЗЫ UpStat.pro
+================================================================================
+Источник      : сервер upstat (78.40.109.8), контейнер fastapi-postgres-1
+База          : saas, схема public, пользователь saas_user
+Снято         : 2026-08-20 16:19 UTC
+Запрос        : SELECT table_name, column_name, data_type, is_nullable,
+                       column_default
+                  FROM information_schema.columns
+                 WHERE table_schema='public'
+                 ORDER BY table_name, ordinal_position;
+alembic_version: 021
+Таблиц        : 46 (45 из app/models.py + alembic_version)
+Колонок       : 528
+
+Файл снят только для чтения. Никаких изменений в базу не вносилось.
+Дамп на сервере: /home/ubuntu/fastapi/backup_2026-08-20.dump (807 851 байт, -Fc)
+================================================================================
+
+         table_name          |        column_name        |          data_type          | is_nullable |                     column_default                      
+-----------------------------+---------------------------+-----------------------------+-------------+---------------------------------------------------------
+ action_patterns             | id                        | integer                     | NO          | nextval('action_patterns_id_seq'::regclass)
+ action_patterns             | team_id                   | integer                     | NO          | 
+ action_patterns             | stage                     | character varying           | NO          | 
+ action_patterns             | pattern_text              | character varying           | NO          | 
+ action_patterns             | outcome                   | character varying           | NO          | 
+ action_patterns             | occurrence_count          | integer                     | NO          | 
+ action_patterns             | total_calls               | integer                     | NO          | 
+ action_patterns             | percentage                | double precision            | NO          | 
+ action_patterns             | status                    | character varying           | NO          | 
+ action_patterns             | reported_at               | timestamp without time zone | YES         | 
+ action_patterns             | created_at                | timestamp without time zone | NO          | 
+ action_patterns             | updated_at                | timestamp without time zone | NO          | 
+ alembic_version             | version_num               | character varying           | NO          | 
+ analysis_training_plans     | id                        | integer                     | NO          | nextval('analysis_training_plans_id_seq'::regclass)
+ analysis_training_plans     | user_id                   | integer                     | NO          | 
+ analysis_training_plans     | report_message_id         | integer                     | NO          | 
+ analysis_training_plans     | title                     | character varying           | NO          | 
+ analysis_training_plans     | recommendations_json      | text                        | NO          | 
+ analysis_training_plans     | total_trainings           | integer                     | NO          | 
+ analysis_training_plans     | completed_trainings       | integer                     | NO          | 
+ analysis_training_plans     | status                    | character varying           | NO          | 
+ analysis_training_plans     | created_at                | timestamp without time zone | NO          | 
+ analysis_training_plans     | plan_source               | character varying           | YES         | 'analysis'::character varying
+ analytics_messages          | id                        | integer                     | NO          | nextval('analytics_messages_id_seq'::regclass)
+ analytics_messages          | user_id                   | integer                     | NO          | 
+ analytics_messages          | role                      | character varying           | NO          | 
+ analytics_messages          | text                      | text                        | NO          | 
+ analytics_messages          | created_at                | timestamp without time zone | NO          | now()
+ attachments                 | id                        | integer                     | NO          | nextval('attachments_id_seq'::regclass)
+ attachments                 | message_id                | integer                     | NO          | 
+ attachments                 | file_name                 | character varying           | NO          | 
+ attachments                 | mime_type                 | character varying           | NO          | 
+ attachments                 | size_bytes                | integer                     | NO          | 
+ attachments                 | storage_key               | character varying           | NO          | 
+ attachments                 | created_at                | timestamp without time zone | NO          | 
+ checklist_item_definitions  | id                        | integer                     | NO          | nextval('checklist_item_definitions_id_seq'::regclass)
+ checklist_item_definitions  | checklist_id              | character varying           | NO          | 
+ checklist_item_definitions  | checklist_title           | character varying           | NO          | 
+ checklist_item_definitions  | block_title               | character varying           | NO          | 
+ checklist_item_definitions  | block_order               | integer                     | NO          | 
+ checklist_item_definitions  | item_order                | integer                     | NO          | 
+ checklist_item_definitions  | item_text                 | text                        | NO          | 
+ checklist_item_definitions  | item_code                 | character varying           | NO          | 
+ checklist_item_definitions  | weight                    | double precision            | NO          | 
+ checklist_item_definitions  | is_active                 | boolean                     | NO          | true
+ checklist_item_definitions  | created_at                | timestamp without time zone | NO          | now()
+ checklist_item_scores       | id                        | integer                     | NO          | nextval('checklist_item_scores_id_seq'::regclass)
+ checklist_item_scores       | conversation_id           | integer                     | NO          | 
+ checklist_item_scores       | item_id                   | integer                     | NO          | 
+ checklist_item_scores       | passed                    | boolean                     | NO          | 
+ checklist_item_scores       | confidence                | double precision            | NO          | 
+ checklist_item_scores       | ai_comment                | text                        | YES         | 
+ checklist_item_scores       | created_at                | timestamp without time zone | NO          | now()
+ conversations               | id                        | integer                     | NO          | nextval('conversations_id_seq'::regclass)
+ conversations               | user_id                   | integer                     | NO          | 
+ conversations               | title                     | character varying           | NO          | 
+ conversations               | created_at                | timestamp without time zone | NO          | 
+ crm_activities              | id                        | integer                     | NO          | nextval('crm_activities_id_seq'::regclass)
+ crm_activities              | integration_id            | integer                     | NO          | 
+ crm_activities              | bitrix_id                 | integer                     | NO          | 
+ crm_activities              | type_id                   | integer                     | YES         | 
+ crm_activities              | type_name                 | character varying           | YES         | 
+ crm_activities              | subject                   | character varying           | YES         | 
+ crm_activities              | description               | text                        | YES         | 
+ crm_activities              | owner_type_id             | integer                     | YES         | 
+ crm_activities              | owner_id                  | integer                     | YES         | 
+ crm_activities              | responsible_id            | integer                     | YES         | 
+ crm_activities              | responsible_name          | character varying           | YES         | 
+ crm_activities              | direction                 | integer                     | YES         | 
+ crm_activities              | completed                 | boolean                     | NO          | 
+ crm_activities              | start_time                | timestamp without time zone | YES         | 
+ crm_activities              | end_time                  | timestamp without time zone | YES         | 
+ crm_activities              | duration_seconds          | integer                     | YES         | 
+ crm_activities              | created_at                | timestamp without time zone | YES         | 
+ crm_activities              | crm_metadata_json         | text                        | YES         | 
+ crm_activities              | synced_at                 | timestamp without time zone | NO          | 
+ crm_companies               | id                        | integer                     | NO          | nextval('crm_companies_id_seq'::regclass)
+ crm_companies               | integration_id            | integer                     | NO          | 
+ crm_companies               | bitrix_id                 | integer                     | NO          | 
+ crm_companies               | title                     | character varying           | YES         | 
+ crm_companies               | industry                  | character varying           | YES         | 
+ crm_companies               | phone                     | character varying           | YES         | 
+ crm_companies               | email                     | character varying           | YES         | 
+ crm_companies               | web                       | character varying           | YES         | 
+ crm_companies               | revenue                   | double precision            | YES         | 
+ crm_companies               | currency_id               | character varying           | YES         | 
+ crm_companies               | assigned_by_id            | integer                     | YES         | 
+ crm_companies               | assigned_by_name          | character varying           | YES         | 
+ crm_companies               | created_at                | timestamp without time zone | YES         | 
+ crm_companies               | updated_at                | timestamp without time zone | YES         | 
+ crm_companies               | crm_metadata_json         | text                        | YES         | 
+ crm_companies               | synced_at                 | timestamp without time zone | NO          | 
+ crm_contacts                | id                        | integer                     | NO          | nextval('crm_contacts_id_seq'::regclass)
+ crm_contacts                | integration_id            | integer                     | NO          | 
+ crm_contacts                | bitrix_id                 | integer                     | NO          | 
+ crm_contacts                | name                      | character varying           | YES         | 
+ crm_contacts                | last_name                 | character varying           | YES         | 
+ crm_contacts                | second_name               | character varying           | YES         | 
+ crm_contacts                | full_name                 | character varying           | YES         | 
+ crm_contacts                | post                      | character varying           | YES         | 
+ crm_contacts                | phone                     | character varying           | YES         | 
+ crm_contacts                | email                     | character varying           | YES         | 
+ crm_contacts                | company_id                | integer                     | YES         | 
+ crm_contacts                | assigned_by_id            | integer                     | YES         | 
+ crm_contacts                | assigned_by_name          | character varying           | YES         | 
+ crm_contacts                | created_at                | timestamp without time zone | YES         | 
+ crm_contacts                | updated_at                | timestamp without time zone | YES         | 
+ crm_contacts                | crm_metadata_json         | text                        | YES         | 
+ crm_contacts                | synced_at                 | timestamp without time zone | NO          | 
+ crm_deal_products           | id                        | integer                     | NO          | nextval('crm_deal_products_id_seq'::regclass)
+ crm_deal_products           | deal_id                   | integer                     | NO          | 
+ crm_deal_products           | product_id                | integer                     | YES         | 
+ crm_deal_products           | product_name              | character varying           | YES         | 
+ crm_deal_products           | quantity                  | double precision            | YES         | 
+ crm_deal_products           | price                     | double precision            | YES         | 
+ crm_deal_products           | discount_sum              | double precision            | YES         | 
+ crm_deal_products           | tax_rate                  | double precision            | YES         | 
+ crm_deal_products           | sum_total                 | double precision            | YES         | 
+ crm_deals                   | id                        | integer                     | NO          | nextval('crm_deals_id_seq'::regclass)
+ crm_deals                   | integration_id            | integer                     | NO          | 
+ crm_deals                   | bitrix_id                 | integer                     | NO          | 
+ crm_deals                   | title                     | character varying           | YES         | 
+ crm_deals                   | stage_id                  | character varying           | YES         | 
+ crm_deals                   | stage_name                | character varying           | YES         | 
+ crm_deals                   | category_id               | integer                     | YES         | 
+ crm_deals                   | category_name             | character varying           | YES         | 
+ crm_deals                   | opportunity               | double precision            | YES         | 
+ crm_deals                   | currency_id               | character varying           | YES         | 
+ crm_deals                   | closed                    | boolean                     | NO          | 
+ crm_deals                   | is_won                    | boolean                     | YES         | 
+ crm_deals                   | probability               | integer                     | YES         | 
+ crm_deals                   | source_id                 | character varying           | YES         | 
+ crm_deals                   | source_name               | character varying           | YES         | 
+ crm_deals                   | assigned_by_id            | integer                     | YES         | 
+ crm_deals                   | assigned_by_name          | character varying           | YES         | 
+ crm_deals                   | contact_id                | integer                     | YES         | 
+ crm_deals                   | company_id                | integer                     | YES         | 
+ crm_deals                   | close_date                | timestamp without time zone | YES         | 
+ crm_deals                   | created_at                | timestamp without time zone | YES         | 
+ crm_deals                   | updated_at                | timestamp without time zone | YES         | 
+ crm_deals                   | loss_reason               | character varying           | YES         | 
+ crm_deals                   | comments                  | text                        | YES         | 
+ crm_deals                   | crm_metadata_json         | text                        | YES         | 
+ crm_deals                   | synced_at                 | timestamp without time zone | NO          | 
+ crm_integrations            | id                        | integer                     | NO          | nextval('crm_integrations_id_seq'::regclass)
+ crm_integrations            | user_id                   | integer                     | NO          | 
+ crm_integrations            | crm_type                  | character varying           | NO          | 
+ crm_integrations            | crm_name                  | character varying           | NO          | 
+ crm_integrations            | is_active                 | boolean                     | NO          | 
+ crm_integrations            | access_token              | text                        | YES         | 
+ crm_integrations            | refresh_token             | text                        | YES         | 
+ crm_integrations            | token_expires_at          | timestamp without time zone | YES         | 
+ crm_integrations            | crm_domain                | character varying           | YES         | 
+ crm_integrations            | client_id                 | character varying           | YES         | 
+ crm_integrations            | client_secret             | text                        | YES         | 
+ crm_integrations            | webhook_url               | character varying           | YES         | 
+ crm_integrations            | last_sync_at              | timestamp without time zone | YES         | 
+ crm_integrations            | recordings_count          | integer                     | NO          | 
+ crm_integrations            | analyzed_count            | integer                     | NO          | 
+ crm_integrations            | created_at                | timestamp without time zone | NO          | 
+ crm_integrations            | updated_at                | timestamp without time zone | YES         | 
+ crm_integrations            | webhook_secret            | character varying           | YES         | 
+ crm_integrations            | initial_sync_completed    | boolean                     | NO          | false
+ crm_integrations            | sync_cursor_json          | text                        | YES         | 
+ crm_leads                   | id                        | integer                     | NO          | nextval('crm_leads_id_seq'::regclass)
+ crm_leads                   | integration_id            | integer                     | NO          | 
+ crm_leads                   | bitrix_id                 | integer                     | NO          | 
+ crm_leads                   | title                     | character varying           | YES         | 
+ crm_leads                   | status_id                 | character varying           | YES         | 
+ crm_leads                   | status_name               | character varying           | YES         | 
+ crm_leads                   | source_id                 | character varying           | YES         | 
+ crm_leads                   | source_name               | character varying           | YES         | 
+ crm_leads                   | opportunity               | double precision            | YES         | 
+ crm_leads                   | currency_id               | character varying           | YES         | 
+ crm_leads                   | assigned_by_id            | integer                     | YES         | 
+ crm_leads                   | assigned_by_name          | character varying           | YES         | 
+ crm_leads                   | converted                 | boolean                     | NO          | 
+ crm_leads                   | converted_deal_id         | integer                     | YES         | 
+ crm_leads                   | converted_contact_id      | integer                     | YES         | 
+ crm_leads                   | converted_company_id      | integer                     | YES         | 
+ crm_leads                   | name                      | character varying           | YES         | 
+ crm_leads                   | phone                     | character varying           | YES         | 
+ crm_leads                   | email                     | character varying           | YES         | 
+ crm_leads                   | created_at                | timestamp without time zone | YES         | 
+ crm_leads                   | updated_at                | timestamp without time zone | YES         | 
+ crm_leads                   | crm_metadata_json         | text                        | YES         | 
+ crm_leads                   | synced_at                 | timestamp without time zone | NO          | 
+ crm_manager_mappings        | id                        | integer                     | NO          | nextval('crm_manager_mappings_id_seq'::regclass)
+ crm_manager_mappings        | integration_id            | integer                     | NO          | 
+ crm_manager_mappings        | crm_manager_name          | character varying           | NO          | 
+ crm_manager_mappings        | crm_manager_id            | character varying           | YES         | 
+ crm_manager_mappings        | user_id                   | integer                     | YES         | 
+ crm_manager_mappings        | created_at                | timestamp without time zone | NO          | now()
+ crm_recordings              | id                        | integer                     | NO          | nextval('crm_recordings_id_seq'::regclass)
+ crm_recordings              | integration_id            | integer                     | NO          | 
+ crm_recordings              | user_id                   | integer                     | NO          | 
+ crm_recordings              | crm_record_id             | character varying           | NO          | 
+ crm_recordings              | crm_call_id               | character varying           | YES         | 
+ crm_recordings              | call_date                 | timestamp without time zone | NO          | 
+ crm_recordings              | duration_seconds          | integer                     | NO          | 
+ crm_recordings              | direction                 | character varying           | NO          | 
+ crm_recordings              | manager_name              | character varying           | YES         | 
+ crm_recordings              | manager_phone             | character varying           | YES         | 
+ crm_recordings              | client_name               | character varying           | YES         | 
+ crm_recordings              | client_phone              | character varying           | YES         | 
+ crm_recordings              | client_company            | character varying           | YES         | 
+ crm_recordings              | recording_url             | text                        | YES         | 
+ crm_recordings              | local_file_path           | character varying           | YES         | 
+ crm_recordings              | file_size_bytes           | integer                     | YES         | 
+ crm_recordings              | sync_status               | character varying           | NO          | 
+ crm_recordings              | error_message             | text                        | YES         | 
+ crm_recordings              | conversation_id           | integer                     | YES         | 
+ crm_recordings              | crm_metadata_json         | text                        | YES         | 
+ crm_recordings              | created_at                | timestamp without time zone | NO          | 
+ crm_recordings              | downloaded_at             | timestamp without time zone | YES         | 
+ crm_recordings              | analyzed_at               | timestamp without time zone | YES         | 
+ crm_recordings              | record_type               | character varying           | NO          | 'call'::character varying
+ crm_recordings              | chat_text                 | text                        | YES         | 
+ crm_recordings              | training_plan_id          | integer                     | YES         | 
+ crm_recordings              | analysis_score            | integer                     | YES         | 
+ crm_recordings              | batch_id                  | character varying           | YES         | 
+ crm_recordings              | deal_id                   | integer                     | YES         | 
+ crm_recordings              | lead_id                   | integer                     | YES         | 
+ crm_recordings              | contact_crm_id            | integer                     | YES         | 
+ custom_meeting_transcripts  | id                        | integer                     | NO          | nextval('custom_meeting_transcripts_id_seq'::regclass)
+ custom_meeting_transcripts  | meeting_id                | integer                     | NO          | 
+ custom_meeting_transcripts  | content                   | text                        | NO          | 
+ custom_meeting_transcripts  | summary                   | text                        | YES         | 
+ custom_meeting_transcripts  | created_at                | timestamp without time zone | NO          | 
+ custom_meetings             | id                        | integer                     | NO          | nextval('custom_meetings_id_seq'::regclass)
+ custom_meetings             | meeting_id                | character varying           | NO          | 
+ custom_meetings             | topic                     | character varying           | NO          | 
+ custom_meetings             | creator_id                | integer                     | NO          | 
+ custom_meetings             | status                    | character varying           | NO          | 
+ custom_meetings             | max_participants          | integer                     | NO          | 
+ custom_meetings             | duration_minutes          | integer                     | NO          | 
+ custom_meetings             | password                  | character varying           | YES         | 
+ custom_meetings             | ai_agent_enabled          | boolean                     | NO          | 
+ custom_meetings             | created_at                | timestamp without time zone | NO          | 
+ custom_meetings             | started_at                | timestamp without time zone | YES         | 
+ custom_meetings             | ended_at                  | timestamp without time zone | YES         | 
+ manager_actions             | id                        | integer                     | NO          | nextval('manager_actions_id_seq'::regclass)
+ manager_actions             | team_id                   | integer                     | YES         | 
+ manager_actions             | user_id                   | integer                     | NO          | 
+ manager_actions             | conversation_id           | integer                     | NO          | 
+ manager_actions             | stage                     | character varying           | NO          | 
+ manager_actions             | action_text               | character varying           | NO          | 
+ manager_actions             | action_type               | character varying           | NO          | 
+ manager_actions             | outcome                   | character varying           | NO          | 
+ manager_actions             | client_reaction           | character varying           | YES         | 
+ manager_actions             | confidence                | double precision            | NO          | 
+ manager_actions             | created_at                | timestamp without time zone | NO          | 
+ meeting_participants        | id                        | integer                     | NO          | nextval('meeting_participants_id_seq'::regclass)
+ meeting_participants        | meeting_id                | integer                     | NO          | 
+ meeting_participants        | user_id                   | integer                     | NO          | 
+ meeting_participants        | joined_at                 | timestamp without time zone | NO          | 
+ meeting_participants        | left_at                   | timestamp without time zone | YES         | 
+ meeting_participants        | role                      | character varying           | NO          | 
+ meeting_transcripts         | id                        | integer                     | NO          | nextval('meeting_transcripts_id_seq'::regclass)
+ meeting_transcripts         | meeting_id                | integer                     | NO          | 
+ meeting_transcripts         | full_transcript           | text                        | NO          | 
+ meeting_transcripts         | summary                   | text                        | NO          | 
+ meeting_transcripts         | participants_count        | integer                     | NO          | 
+ meeting_transcripts         | duration_seconds          | integer                     | NO          | 
+ meeting_transcripts         | created_at                | timestamp without time zone | NO          | 
+ messages                    | id                        | integer                     | NO          | nextval('messages_id_seq'::regclass)
+ messages                    | conversation_id           | integer                     | NO          | 
+ messages                    | user_id                   | integer                     | YES         | 
+ messages                    | role                      | character varying           | NO          | 
+ messages                    | text                      | text                        | NO          | 
+ messages                    | created_at                | timestamp without time zone | NO          | 
+ notifications               | id                        | integer                     | NO          | nextval('notifications_id_seq'::regclass)
+ notifications               | user_id                   | integer                     | NO          | 
+ notifications               | type                      | character varying           | NO          | 
+ notifications               | title                     | character varying           | NO          | 
+ notifications               | message                   | text                        | NO          | 
+ notifications               | icon                      | character varying           | NO          | 
+ notifications               | link                      | character varying           | YES         | 
+ notifications               | link_text                 | character varying           | YES         | 
+ notifications               | is_read                   | boolean                     | NO          | 
+ notifications               | created_at                | timestamp without time zone | NO          | 
+ notifications               | read_at                   | timestamp without time zone | YES         | 
+ notifications               | metadata_json             | text                        | YES         | 
+ organizations               | id                        | integer                     | NO          | nextval('organizations_id_seq'::regclass)
+ organizations               | name                      | character varying           | NO          | 
+ organizations               | sku                       | character varying           | NO          | 
+ organizations               | market                    | character varying           | YES         | 
+ organizations               | data_residency            | character varying           | YES         | 
+ organizations               | capabilities_override     | text                        | YES         | 
+ organizations               | assigned_by               | integer                     | YES         | 
+ organizations               | assigned_at               | timestamp without time zone | YES         | 
+ organizations               | created_at                | timestamp without time zone | NO          | 
+ parameter_definitions       | id                        | integer                     | NO          | nextval('parameter_definitions_id_seq'::regclass)
+ parameter_definitions       | code                      | character varying           | NO          | 
+ parameter_definitions       | title                     | character varying           | NO          | 
+ parameter_definitions       | description               | text                        | YES         | 
+ parameter_definitions       | value_type                | character varying           | NO          | 
+ parameter_definitions       | category                  | character varying           | NO          | 
+ parameter_definitions       | unit                      | character varying           | YES         | 
+ parameter_definitions       | is_active                 | boolean                     | NO          | true
+ parameter_definitions       | created_at                | timestamp without time zone | NO          | now()
+ parameter_values            | id                        | integer                     | NO          | nextval('parameter_values_id_seq'::regclass)
+ parameter_values            | conversation_id           | integer                     | NO          | 
+ parameter_values            | parameter_id              | integer                     | NO          | 
+ parameter_values            | value_number              | double precision            | YES         | 
+ parameter_values            | value_text                | text                        | YES         | 
+ parameter_values            | value_bool                | boolean                     | YES         | 
+ parameter_values            | confidence                | integer                     | NO          | 
+ parameter_values            | created_at                | timestamp without time zone | NO          | now()
+ passport_snapshots          | id                        | integer                     | NO          | nextval('passport_snapshots_id_seq'::regclass)
+ passport_snapshots          | passport_id               | integer                     | NO          | 
+ passport_snapshots          | user_id                   | integer                     | NO          | 
+ passport_snapshots          | conversation_id           | integer                     | NO          | 
+ passport_snapshots          | score_contact             | double precision            | NO          | 
+ passport_snapshots          | score_needs               | double precision            | NO          | 
+ passport_snapshots          | score_presentation        | double precision            | NO          | 
+ passport_snapshots          | score_objections          | double precision            | NO          | 
+ passport_snapshots          | score_closing             | double precision            | NO          | 
+ passport_snapshots          | overall_score             | double precision            | NO          | 
+ passport_snapshots          | training_id_before        | integer                     | YES         | 
+ passport_snapshots          | training_stage            | character varying           | YES         | 
+ passport_snapshots          | training_applied          | character varying           | YES         | 
+ passport_snapshots          | training_delta            | double precision            | YES         | 
+ passport_snapshots          | gpt_comment               | text                        | YES         | 
+ passport_snapshots          | created_at                | timestamp without time zone | NO          | 
+ password_reset_tokens       | id                        | integer                     | NO          | nextval('password_reset_tokens_id_seq'::regclass)
+ password_reset_tokens       | user_id                   | integer                     | NO          | 
+ password_reset_tokens       | token                     | character varying           | NO          | 
+ password_reset_tokens       | expires_at                | timestamp without time zone | NO          | 
+ password_reset_tokens       | used                      | boolean                     | NO          | 
+ password_reset_tokens       | created_at                | timestamp without time zone | YES         | 
+ password_reset_tokens       | used_at                   | timestamp without time zone | YES         | 
+ prompts                     | id                        | integer                     | NO          | nextval('prompts_id_seq'::regclass)
+ prompts                     | name                      | character varying           | NO          | 
+ prompts                     | title                     | character varying           | NO          | 
+ prompts                     | description               | text                        | YES         | 
+ prompts                     | content                   | text                        | NO          | 
+ prompts                     | version                   | integer                     | NO          | 
+ prompts                     | is_active                 | boolean                     | NO          | 
+ prompts                     | created_by                | integer                     | NO          | 
+ prompts                     | created_at                | timestamp without time zone | NO          | 
+ prompts                     | updated_at                | timestamp without time zone | YES         | 
+ research_logs               | id                        | integer                     | NO          | nextval('research_logs_id_seq'::regclass)
+ research_logs               | conversation_id           | integer                     | NO          | 
+ research_logs               | user_id                   | integer                     | NO          | 
+ research_logs               | file_path                 | character varying           | NO          | 
+ research_logs               | file_name                 | character varying           | NO          | 
+ research_logs               | file_size_bytes           | integer                     | NO          | 
+ research_logs               | models_used               | text                        | YES         | 
+ research_logs               | total_input_tokens        | integer                     | NO          | 
+ research_logs               | total_output_tokens       | integer                     | NO          | 
+ research_logs               | stages_count              | integer                     | NO          | 
+ research_logs               | status                    | character varying           | NO          | 
+ research_logs               | error_message             | text                        | YES         | 
+ research_logs               | created_at                | timestamp without time zone | NO          | now()
+ research_logs               | completed_at              | timestamp without time zone | YES         | 
+ seller_passports            | id                        | integer                     | NO          | nextval('seller_passports_id_seq'::regclass)
+ seller_passports            | user_id                   | integer                     | NO          | 
+ seller_passports            | score_contact             | double precision            | NO          | 
+ seller_passports            | score_needs               | double precision            | NO          | 
+ seller_passports            | score_presentation        | double precision            | NO          | 
+ seller_passports            | score_objections          | double precision            | NO          | 
+ seller_passports            | score_closing             | double precision            | NO          | 
+ seller_passports            | overall_score             | double precision            | NO          | 
+ seller_passports            | total_calls_analyzed      | integer                     | NO          | 
+ seller_passports            | total_trainings_completed | integer                     | NO          | 
+ seller_passports            | first_call_at             | timestamp without time zone | YES         | 
+ seller_passports            | last_updated_at           | timestamp without time zone | NO          | 
+ seller_passports            | created_at                | timestamp without time zone | NO          | 
+ seller_passports            | current_streak            | integer                     | NO          | 0
+ seller_passports            | best_streak               | integer                     | NO          | 0
+ seller_passports            | last_trained_date         | date                        | YES         | 
+ team_invitations            | id                        | integer                     | NO          | nextval('team_invitations_id_seq'::regclass)
+ team_invitations            | team_id                   | integer                     | NO          | 
+ team_invitations            | invited_email             | character varying           | NO          | 
+ team_invitations            | token                     | character varying           | NO          | 
+ team_invitations            | status                    | character varying           | NO          | 
+ team_invitations            | invited_by_user_id        | integer                     | NO          | 
+ team_invitations            | accepted_user_id          | integer                     | YES         | 
+ team_invitations            | expires_at                | timestamp without time zone | NO          | 
+ team_invitations            | created_at                | timestamp without time zone | NO          | 
+ team_invitations            | accepted_at               | timestamp without time zone | YES         | 
+ team_members                | id                        | integer                     | NO          | nextval('team_members_id_seq'::regclass)
+ team_members                | team_id                   | integer                     | NO          | 
+ team_members                | user_id                   | integer                     | NO          | 
+ team_members                | role_in_team              | character varying           | NO          | 
+ team_members                | joined_at                 | timestamp without time zone | NO          | 
+ team_scripts                | id                        | integer                     | NO          | nextval('team_scripts_id_seq'::regclass)
+ team_scripts                | team_id                   | integer                     | NO          | 
+ team_scripts                | title                     | character varying           | NO          | 
+ team_scripts                | description               | text                        | YES         | 
+ team_scripts                | script_json               | text                        | NO          | 
+ team_scripts                | original_text             | text                        | YES         | 
+ team_scripts                | uploaded_by_user_id       | integer                     | NO          | 
+ team_scripts                | created_at                | timestamp without time zone | NO          | 
+ team_scripts                | updated_at                | timestamp without time zone | NO          | 
+ teams                       | id                        | integer                     | NO          | nextval('teams_id_seq'::regclass)
+ teams                       | name                      | character varying           | NO          | 
+ teams                       | manager_id                | integer                     | NO          | 
+ teams                       | created_at                | timestamp without time zone | NO          | 
+ teams                       | organization_id           | integer                     | YES         | 
+ training_conversion_metrics | id                        | integer                     | NO          | nextval('training_conversion_metrics_id_seq'::regclass)
+ training_conversion_metrics | user_id                   | integer                     | NO          | 
+ training_conversion_metrics | team_id                   | integer                     | YES         | 
+ training_conversion_metrics | metric_date               | timestamp without time zone | NO          | 
+ training_conversion_metrics | period_type               | character varying           | NO          | 
+ training_conversion_metrics | conversion_rates_json     | text                        | NO          | 
+ training_conversion_metrics | total_plans               | integer                     | NO          | 
+ training_conversion_metrics | active_plans              | integer                     | NO          | 
+ training_conversion_metrics | completed_plans           | integer                     | NO          | 
+ training_conversion_metrics | total_trainings           | integer                     | NO          | 
+ training_conversion_metrics | completed_trainings       | integer                     | NO          | 
+ training_conversion_metrics | avg_score                 | double precision            | YES         | 
+ training_conversion_metrics | created_at                | timestamp without time zone | NO          | 
+ training_errors_corrections | id                        | integer                     | NO          | nextval('training_errors_corrections_id_seq'::regclass)
+ training_errors_corrections | user_id                   | integer                     | NO          | 
+ training_errors_corrections | team_id                   | integer                     | YES         | 
+ training_errors_corrections | conversation_id           | integer                     | NO          | 
+ training_errors_corrections | message_id                | integer                     | NO          | 
+ training_errors_corrections | error_type                | character varying           | NO          | 
+ training_errors_corrections | error_description         | text                        | NO          | 
+ training_errors_corrections | error_severity            | character varying           | NO          | 
+ training_errors_corrections | correction_text           | text                        | NO          | 
+ training_errors_corrections | correction_applied        | boolean                     | NO          | 
+ training_errors_corrections | correction_applied_at     | timestamp without time zone | YES         | 
+ training_errors_corrections | training_plan_id          | integer                     | YES         | 
+ training_errors_corrections | training_id               | integer                     | YES         | 
+ training_errors_corrections | detected_at               | timestamp without time zone | NO          | 
+ training_errors_corrections | created_at                | timestamp without time zone | NO          | 
+ training_program_days       | id                        | integer                     | NO          | nextval('training_program_days_id_seq'::regclass)
+ training_program_days       | program_id                | integer                     | NO          | 
+ training_program_days       | day_index                 | integer                     | NO          | 
+ training_program_days       | stage_key                 | character varying           | YES         | 
+ training_program_days       | training_id               | integer                     | YES         | 
+ training_programs           | id                        | integer                     | NO          | nextval('training_programs_id_seq'::regclass)
+ training_programs           | team_id                   | integer                     | NO          | 
+ training_programs           | created_by                | integer                     | NO          | 
+ training_programs           | name                      | character varying           | NO          | 
+ training_programs           | start_date                | timestamp without time zone | NO          | 
+ training_programs           | cycle_days                | integer                     | NO          | 
+ training_programs           | is_active                 | boolean                     | NO          | 
+ training_programs           | created_at                | timestamp without time zone | NO          | 
+ training_sessions           | id                        | integer                     | NO          | nextval('training_sessions_id_seq'::regclass)
+ training_sessions           | training_id               | integer                     | NO          | 
+ training_sessions           | user_id                   | integer                     | NO          | 
+ training_sessions           | started_at                | timestamp without time zone | NO          | 
+ training_sessions           | completed_at              | timestamp without time zone | YES         | 
+ training_sessions           | duration_seconds          | integer                     | YES         | 
+ training_sessions           | transcript                | text                        | YES         | 
+ training_sessions           | score                     | integer                     | YES         | 
+ training_sessions           | feedback                  | text                        | YES         | 
+ training_sessions           | checklist_results_json    | text                        | YES         | 
+ training_sessions           | user_responses_count      | integer                     | NO          | 
+ training_sessions           | ai_questions_count        | integer                     | NO          | 
+ training_sessions           | session_type              | character varying           | NO          | 
+ training_sessions           | websocket_session_id      | character varying           | YES         | 
+ training_sessions           | conversation_history_json | text                        | YES         | 
+ training_sessions           | status                    | character varying           | NO          | 
+ trainings                   | id                        | integer                     | NO          | nextval('trainings_id_seq'::regclass)
+ trainings                   | plan_id                   | integer                     | NO          | 
+ trainings                   | order                     | integer                     | NO          | 
+ trainings                   | title                     | character varying           | NO          | 
+ trainings                   | description               | text                        | NO          | 
+ trainings                   | recommendation            | text                        | NO          | 
+ trainings                   | scenario_type             | character varying           | NO          | 
+ trainings                   | checklist_json            | text                        | YES         | 
+ trainings                   | status                    | character varying           | NO          | 
+ trainings                   | attempts                  | integer                     | NO          | 
+ trainings                   | best_score                | integer                     | YES         | 
+ trainings                   | last_attempt_at           | timestamp without time zone | YES         | 
+ trainings                   | completed_at              | timestamp without time zone | YES         | 
+ trainings                   | created_at                | timestamp without time zone | NO          | 
+ trainings                   | stage                     | character varying           | YES         | 
+ users                       | id                        | integer                     | NO          | nextval('users_id_seq'::regclass)
+ users                       | email                     | character varying           | NO          | 
+ users                       | password_hash             | character varying           | YES         | 
+ users                       | name                      | character varying           | NO          | 
+ users                       | phone                     | character varying           | YES         | 
+ users                       | avatar                    | character varying           | YES         | 
+ users                       | role                      | character varying           | NO          | 
+ users                       | google_id                 | character varying           | YES         | 
+ users                       | is_oauth_user             | boolean                     | NO          | 
+ users                       | created_at                | timestamp without time zone | NO          | 
+ users                       | updated_at                | character varying           | YES         | 
+ users                       | last_login_at             | timestamp without time zone | YES         | 
+ users                       | is_premium                | boolean                     | NO          | false
+ users                       | free_analyses_limit       | integer                     | NO          | 5
+ users                       | analyses_used             | integer                     | NO          | 0
+ users                       | premium_granted_by        | integer                     | YES         | 
+ users                       | premium_granted_at        | timestamp without time zone | YES         | 
+ users                       | google_access_token       | text                        | YES         | 
+ users                       | google_refresh_token      | text                        | YES         | 
+ users                       | google_token_expires_at   | timestamp without time zone | YES         | 
+ users                       | is_google_user            | boolean                     | YES         | false
+ users                       | organization_id           | integer                     | YES         | 
+ users                       | product_mode              | character varying           | YES         | 
+ voice_training_messages     | id                        | integer                     | NO          | nextval('voice_training_messages_id_seq'::regclass)
+ voice_training_messages     | session_id                | integer                     | NO          | 
+ voice_training_messages     | role                      | character varying           | NO          | 
+ voice_training_messages     | text                      | text                        | NO          | 
+ voice_training_messages     | audio_path                | character varying           | YES         | 
+ voice_training_messages     | timestamp                 | timestamp without time zone | NO          | 
+ voice_training_messages     | duration_seconds          | integer                     | YES         | 
+ win_probability_scores      | id                        | integer                     | NO          | nextval('win_probability_scores_id_seq'::regclass)
+ win_probability_scores      | conversation_id           | integer                     | NO          | 
+ win_probability_scores      | crm_recording_id          | integer                     | YES         | 
+ win_probability_scores      | deal_id                   | integer                     | YES         | 
+ win_probability_scores      | lead_id                   | integer                     | YES         | 
+ win_probability_scores      | deal_status               | character varying           | YES         | 
+ win_probability_scores      | total_items               | integer                     | NO          | 
+ win_probability_scores      | passed_items              | integer                     | NO          | 
+ win_probability_scores      | failed_items              | integer                     | NO          | 
+ win_probability_scores      | weighted_score            | double precision            | NO          | 
+ win_probability_scores      | win_probability           | double precision            | NO          | 
+ win_probability_scores      | max_probability           | double precision            | NO          | 
+ win_probability_scores      | score_breakdown_json      | text                        | YES         | 
+ win_probability_scores      | ai_summary                | text                        | YES         | 
+ win_probability_scores      | created_at                | timestamp without time zone | NO          | now()
+ zoom_meetings               | id                        | integer                     | NO          | nextval('zoom_meetings_id_seq'::regclass)
+ zoom_meetings               | user_id                   | integer                     | NO          | 
+ zoom_meetings               | meeting_id                | character varying           | NO          | 
+ zoom_meetings               | topic                     | character varying           | NO          | 
+ zoom_meetings               | start_time                | timestamp without time zone | NO          | 
+ zoom_meetings               | duration_minutes          | integer                     | NO          | 
+ zoom_meetings               | status                    | character varying           | NO          | 
+ zoom_meetings               | join_url                  | character varying           | NO          | 
+ zoom_meetings               | password                  | character varying           | YES         | 
+ zoom_meetings               | ai_agent_enabled          | boolean                     | NO          | 
+ zoom_meetings               | agent_active              | boolean                     | NO          | 
+ zoom_meetings               | created_at                | timestamp without time zone | NO          | 
+(530 rows)
+

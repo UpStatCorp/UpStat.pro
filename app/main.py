@@ -17,7 +17,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.requests import Request
 import logging
 
-from database import Base, engine, SessionLocal
+from database import engine, SessionLocal
 from routers import auth, chat, chat_trener, dashboard, public, settings, zoom_meetings, webrtc_meetings, admin, admin_prompts, admin_research, tts_proxy, training_plans, crm_integration, teams, team_analytics, sales, analytics, owner_dashboard
 from routers import training_catalog, training_program, train_report
 
@@ -48,29 +48,6 @@ class BrandMiddleware(BaseHTTPMiddleware):
         request.state.brand = brand
         response = await call_next(request)
         return response
-
-
-def _check_alembic_head(log: logging.Logger) -> None:
-    """
-    Warn if Alembic migrations haven't been applied.
-    Does not block startup — lets create_all handle the base schema.
-    """
-    try:
-        from sqlalchemy import text as _text
-        with engine.connect() as _conn:
-            result = _conn.execute(_text("SELECT version_num FROM alembic_version LIMIT 1"))
-            row = result.fetchone()
-            if row is None:
-                log.warning("alembic_version table is empty — run 'alembic upgrade head' before starting workers")
-            else:
-                ver = row[0]
-                if ver != "018":
-                    log.warning(
-                        "Alembic version mismatch",
-                        extra={"current": ver, "expected": "018"},
-                    )
-    except Exception as exc:
-        log.warning("Could not check Alembic version", extra={"error": str(exc)})
 
 
 async def _session_cleanup_loop():
@@ -127,11 +104,15 @@ def create_app() -> FastAPI:
             f"SECRET_KEY слишком короткий ({len(secret_key)} байт). Минимум — 32 символа."
         )
 
-    # Проверяем, что alembic upgrade head был выполнен.
-    # Base.metadata.create_all — страховка только для таблиц из исходной схемы
-    # (migration 001 empty). Новые таблицы/колонки добавляются через Alembic.
-    _check_alembic_head(logger)
-    Base.metadata.create_all(bind=engine)
+    # Схема БД создаётся ТОЛЬКО миграциями. Base.metadata.create_all убран:
+    # он чинил лишь отсутствующие таблицы (колонки в существующих не добавлял),
+    # а расхождения при этом маскировал — создавал таблицу, после чего guard
+    # в миграции пропускал её и штамповал ревизию как применённую.
+    # Несоответствие схемы — фатально: `alembic upgrade head` обязан быть
+    # выполнен ДО старта. См. docs/runbook.md, раздел «Порядок деплоя».
+    from db_guard import assert_schema_current
+
+    assert_schema_current(engine)
 
     # Синхронизируем справочник пунктов чеклистов для Win Probability
     try:

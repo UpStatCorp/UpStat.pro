@@ -1,6 +1,15 @@
 # Overrides для локальной разработки.
 # Использование: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 #
+# ВНИМАНИЕ: перед ПЕРВЫМ запуском на чистой базе обязательно применить миграции:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml \
+#       run --rm backend alembic upgrade head
+#
+# Приложение больше не создаёт схему само — Base.metadata.create_all убран
+# из create_app(), и старт на неготовой базе падает с явным сообщением.
+# Раньше схема «подтягивалась» на первом запуске, теперь нет.
+#
 # Отличия от прод-compose:
 #   - bind-mounts кода (hot-reload без rebuild)
 #   - pgAdmin для удобной работы с БД
