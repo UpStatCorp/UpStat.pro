@@ -385,6 +385,22 @@ def upgrade():
     op.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_users_google_id ON users (google_id)")
     op.execute("CREATE INDEX IF NOT EXISTS ix_voice_training_messages_id ON voice_training_messages (id)")
 
+    # ── 3b. Расхождения, видимые ТОЛЬКО со стороны прода ───────────────
+    # Всё выше выведено из диффа на ЧИСТОЙ базе. Эти четыре операции туда
+    # не попадают: на чистой базе они уже выполнены более ранними
+    # миграциями (008 создаёт batch_id varchar(20) и его индекс, 018 —
+    # индексы на organization_id), а на проде их нет — там DDL этих
+    # миграций не отработал, потому что колонки уже существовали от
+    # create_all и guard'ы пропустили блоки целиком (в 018 создание
+    # индекса вложено внутрь guard'а колонки, строки 79-83 и 86-90).
+    op.execute("CREATE INDEX IF NOT EXISTS ix_users_organization_id ON users (organization_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_teams_organization_id ON teams (organization_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS ix_crm_recordings_batch_id ON crm_recordings (batch_id)")
+    # batch_id: на проде varchar(100) вместо varchar(20) из 008 и моделей.
+    # Данных 0 строк из 650 — фича батчей не использовалась ни разу,
+    # сужение типа безопасно. На чистой базе тип уже varchar(20), no-op.
+    op.execute("ALTER TABLE crm_recordings ALTER COLUMN batch_id TYPE VARCHAR(20)")
+
     # ── 4. Констрейнты ─────────────────────────────────────────────────
     op.execute("ALTER TABLE seller_passports DROP CONSTRAINT IF EXISTS seller_passports_user_id_key")
     op.execute("ALTER TABLE team_invitations DROP CONSTRAINT IF EXISTS uq_team_invitations_token")
@@ -498,6 +514,14 @@ def downgrade():
 
     # batch_id обратно в varchar(100)
     op.execute("ALTER TABLE crm_recordings ALTER COLUMN batch_id TYPE VARCHAR(100)")
+
+    # Индексы из п.3b (ix_users_organization_id, ix_teams_organization_id,
+    # ix_crm_recordings_batch_id) НЕ снимаются намеренно. На чистой базе их
+    # создали 008 и 018, то есть после 022 они уже существовали, и снятие
+    # сломало бы инверс: downgrade 018 дропает ix_teams_organization_id
+    # безусловно. На проде их после 022 не было, поэтому там они переживут
+    # откат лишними — но они совпадают с моделями и безвредны, а откат
+    # прода ниже 022 запрещён (см. докстринг 022).
 
     # Колонки, добавленные в п.5
     op.execute("ALTER TABLE voice_training_messages DROP COLUMN IF EXISTS duration_seconds")
