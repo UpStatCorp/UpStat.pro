@@ -348,6 +348,9 @@
         <a href="/admin/analytics" class="{% if request.url.path.startswith('/admin/analytics') %}active{% endif %}" aria-label="Аналитика">
           {{ icons.icon('analytics', size=18) }} Аналитика
         </a>
+        <a href="/admin/trainings" class="{% if request.url.path.startswith('/admin/trainings') %}active{% endif %}" aria-label="Голосовые тренировки">
+          {{ icons.icon('mic', size=18) }} Тренировки
+        </a>
         <a href="/admin/prompts" class="{% if request.url.path.startswith('/admin/prompts') %}active{% endif %}" aria-label="Управление промптами">
           {{ icons.icon('code', size=18) }} Промпты
         </a>

@@ -1,0 +1,97 @@
+{% extends "admin/_layout_admin.html" %}
+{% import "partials/icons.html" as icons %}
+
+{% block title %}Тренировки — Админ-панель — UpStat{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 20px;">
+    <h1 style="font-size: 22px; font-weight: 700; color: var(--text); margin: 0 0 4px 0; display: flex; align-items: center; gap: 8px;">
+        <span style="color: var(--admin-primary); display: inline-flex;">{{ icons.icon('mic', size=20) }}</span>
+        Голосовые тренировки
+    </h1>
+    <p style="color: var(--muted); margin: 0; font-size: 13px;">
+        Запуск тренировки напрямую, без загрузки звонка и анализа. Выберите этап продаж — сессия начнётся сразу.
+    </p>
+</div>
+
+<div class="admin-table-container" style="margin-bottom:20px;">
+    <div class="admin-table-header">
+        <h3 class="admin-table-title" style="display:flex; align-items:center; gap:8px;">
+            <span style="color: var(--admin-info); display:inline-flex;">{{ icons.icon('book', size=18) }}</span>
+            Этапы продаж
+        </h3>
+    </div>
+
+    <table class="admin-table">
+        <colgroup>
+            <col style="width: 34%;">
+            <col style="width: 40%;">
+            <col style="width: 12%;">
+            <col style="width: 14%;">
+        </colgroup>
+        <thead>
+            <tr>
+                <th>Этап</th>
+                <th>Что тренируется</th>
+                <th>Этапов</th>
+                <th style="text-align:right;">Запуск</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for stage in stages %}
+            <tr>
+                <td>
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="font-size:20px; line-height:1;">{{ stage.icon }}</span>
+                        <div>
+                            <div style="font-weight:600; color:var(--text);">{{ stage.label }}</div>
+                            <div style="font-size:12px; color:var(--muted); font-family:ui-monospace,monospace;">{{ stage.key }}</div>
+                        </div>
+                    </div>
+                </td>
+                <td style="font-size:13px; color:var(--muted);">{{ stage.description }}</td>
+                <td>
+                    {% if stage.available %}
+                    <span style="font-weight:600;">{{ stage.stage_count }}</span>
+                    {% if stage.part_count > 1 %}
+                    <div style="font-size:12px; color:var(--muted);">{{ stage.part_count }} части подряд</div>
+                    {% endif %}
+                    {% else %}
+                    <span style="color:var(--muted);">—</span>
+                    {% endif %}
+                </td>
+                <td style="text-align:right;">
+                    {% if stage.available %}
+                    <form method="post" action="/admin/trainings/start" style="margin:0;">
+                        <input type="hidden" name="stage_key" value="{{ stage.key }}">
+                        <button type="submit" class="btn btn-primary">
+                            {{ icons.icon('mic', size=15) }} Начать
+                        </button>
+                    </form>
+                    {% else %}
+                    <span style="font-size:12px; color:var(--muted);">Промпты не найдены</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<div class="admin-card">
+    <div class="admin-card-header">
+        <div class="admin-card-title">Как это работает</div>
+        <div class="admin-card-icon" style="background: var(--accent); color: var(--primary);">
+            {{ icons.icon('info') }}
+        </div>
+    </div>
+    <p style="margin:8px 0 0; font-size:13px; color:var(--muted); line-height:1.6;">
+        Тренировка создаётся на служебном звонке-заглушке: анализ и GPT-разбор не запускаются,
+        поэтому запуск бесплатный и мгновенный. Промпты берутся из
+        <code style="font-family:ui-monospace,monospace;">app/static/docs/trainings/&lt;этап&gt;/</code> —
+        правки в файлах видны при следующем запуске, пересборка не нужна.
+        Такие запуски помечаются как <code style="font-family:ui-monospace,monospace;">plan_source=admin</code>
+        и не попадают в отчёты по программе команды.
+    </p>
+</div>
+{% endblock %}

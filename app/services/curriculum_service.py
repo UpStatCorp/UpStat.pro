@@ -45,7 +45,10 @@ STAGES: list[dict] = [
     {
         "key": "objections",
         "label": "Работа с возражениями",
-        "description": "Обработка возражений клиента — цена, конкуренты, сроки.",
+        "description": (
+            "Техника подтверждения: сначала на бытовом примере, затем на реальном "
+            "товаре студента, затем на его собственной несовершённой покупке."
+        ),
         "icon": "💡",
         "levels": 1,
     },
@@ -72,6 +75,36 @@ def get_catalog() -> list[dict]:
                 available_levels.append(lvl)
         catalog.append({**stage, "available_levels": available_levels})
     return catalog
+
+
+def get_stage_overview() -> list[dict]:
+    """
+    Каталог этапов с РЕАЛЬНЫМ числом этапов, посчитанным по файлам промптов.
+
+    Поле STAGES["levels"] проставлено руками и устаревает при каждой правке
+    каталога промптов, поэтому для показа пользователю количество берётся
+    из load_stages — она же разворачивает составные тренировки
+    («Работа с возражениями» = 12 этапов из трёх частей).
+    """
+    try:
+        from services.training_stages_service import load_stages, get_sequence
+    except ImportError:
+        from app.services.training_stages_service import load_stages, get_sequence
+
+    overview = []
+    for stage in STAGES:
+        try:
+            stages = load_stages(stage["key"])
+        except Exception:
+            stages = []
+        parts = get_sequence(stage["key"])
+        overview.append({
+            **stage,
+            "stage_count": len(stages),
+            "part_count": len(parts),
+            "available": bool(stages),
+        })
+    return overview
 
 
 def create_from_catalog(
