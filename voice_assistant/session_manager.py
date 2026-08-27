@@ -95,6 +95,24 @@ class UserSession:
         self.current_stage_index = 0
         self.is_switching_stage = False
 
+        # training_stage_name: имя тренировки из Training.stage ("closing",
+        #   "real_objections", ...). Нужно, чтобы знать схему подготовительных
+        #   данных этой тренировки.
+        # training_context: данные, собранные ИИ в первом этапе (товар/услуга,
+        #   список возражений, факты о пользователе и т.д.). Снимаются через
+        #   tool save_training_context и подставляются в начало промпта
+        #   этапов 2-4 — иначе ИИ придумывает товар заново.
+        #   Ключ — slug блока промптов (составная тренировка «Работа с
+        #   возражениями» состоит из трёх блоков, и у каждого свои данные:
+        #   свой товар, свои возражения). Пустой словарь — контекст не собран,
+        #   этапы восстанавливают его вопросом.
+        self.training_stage_name: Optional[str] = None
+        self.training_context: Dict[str, dict] = {}
+        # call_id уже обработанных tool-вызовов: Azure отдаёт один и тот же
+        # вызов дважды — в response.function_call_arguments.done и внутри
+        # response.output_item.done. Второй раз отвечать на него нельзя.
+        self.handled_tool_calls: set = set()
+
         # Подтверждение конфигурации сессии со стороны Azure Voice Live.
         # session_configured выставляется по событию session.updated; до этого
         # момента отправлять response.create бессмысленно — ИИ сгенерирует

@@ -438,6 +438,37 @@ class AzureVoiceLiveConnection:
         logger.info(f"📌 Отправляю system item в conversation history ({len(text)} chars)")
         await self.send(message)
     
+    async def send_function_call_output(self, call_id: str, output: str = "{\"ok\": true}"):
+        """
+        Отдаёт Azure результат вызова tool-функции.
+
+        Без этого модель считает вызов незавершённым и может повторить его.
+        Намеренно НЕ дёргаем response.create: ответ на save_training_context
+        не должен порождать отдельную реплику посреди этапа.
+
+        Args:
+            call_id: идентификатор вызова из события function_call
+            output: результат в виде строки (обычно короткий JSON)
+        """
+        if not self.is_connected or not self.ws:
+            logger.warning("⚠️ Попытка отправить function_call_output при разорванном соединении")
+            return
+        if not call_id:
+            logger.warning("⚠️ function_call_output без call_id — пропускаю")
+            return
+
+        message = {
+            "type": "conversation.item.create",
+            "event_id": "",
+            "item": {
+                "type": "function_call_output",
+                "call_id": call_id,
+                "output": output,
+            },
+        }
+        logger.info(f"↩️ Отправляю результат tool-вызова (call_id={call_id})")
+        await self.send(message)
+
     async def send_response_create(self, instructions: Optional[str] = None):
         """
         Просит Azure сгенерировать новый ответ ИИ прямо сейчас,

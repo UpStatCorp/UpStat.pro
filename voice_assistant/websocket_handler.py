@@ -54,8 +54,11 @@ try:
         has_stage_complete,
         has_training_complete,
         build_stage_tools,
+        normalize_training_context,
+        render_context_block,
         TOOL_COMPLETE_STAGE,
         TOOL_COMPLETE_TRAINING,
+        TOOL_SAVE_CONTEXT,
         TrainingStage,
     )
 except ImportError:
@@ -65,8 +68,11 @@ except ImportError:
         has_stage_complete,
         has_training_complete,
         build_stage_tools,
+        normalize_training_context,
+        render_context_block,
         TOOL_COMPLETE_STAGE,
         TOOL_COMPLETE_TRAINING,
+        TOOL_SAVE_CONTEXT,
         TrainingStage,
     )
 
@@ -471,6 +477,9 @@ async def handle_websocket_connection(
         if stages:
             user_session.stages = stages
             user_session.current_stage_index = 0
+            # Имя тренировки нужно и дальше: по нему определяется схема
+            # подготовительных данных для save_training_context.
+            user_session.training_stage_name = training_info["stage"]
             session_instructions = stages[0].prompt
             logger.info(
                 f"🎯 Многоэтапная тренировка '{training_info['stage']}': "
@@ -502,7 +511,13 @@ async def handle_websocket_connection(
         # session_instructions берутся из файла этапа и SYSTEM_PROMPT не участвует.
         session_instructions = session_instructions + _RU_OUTPUT_RULE
 
-        session_tools = build_stage_tools() if user_session.stages else None
+        # Tools собираем под блок ТЕКУЩЕГО этапа: у составной тренировки
+        # («Работа с возражениями» = objections + real_objections +
+        # sale_objections) в каждом блоке свой набор подготовительных данных.
+        session_tools = (
+            build_stage_tools(user_session.stages[0].source_slug)
+            if user_session.stages else None
+        )
 
         # Инструкции и tools кладём на сессию: они понадобятся, если Azure
         # отклонит основной голос и конфигурацию придётся переслать с запасным
@@ -548,28 +563,43 @@ async def handle_websocket_connection(
         # понимала «тренировку» буквально (звала на разминку и наклоны головы), после
         # чего фитнес-персона закреплялась в истории диалога на всю сессию.
         # Поэтому в триггер кладём полный промпт сессии + задачу на текущую реплику.
-        if not user_session.stages:
-            try:
-                # Ждём подтверждения конфигурации (session.updated), а не слепую паузу:
-                # реплика, отправленная до применения session.update, генерируется по
-                # пустой конфигурации — ровно то, из-за чего появлялась «разминка».
-                await _await_session_configured(user_session)
-                kickoff_instructions = (
-                    session_instructions
-                    + "\n\n===== ЧТО СДЕЛАТЬ ПРЯМО СЕЙЧАС =====\n"
+        # Многоэтапные тренировки раньше сюда не попадали: ИИ молчал до первой
+        # реплики пользователя, и тот сидел перед тишиной, не понимая, началось
+        # ли что-нибудь. Теперь стартуют обе ветки, а первую реплику этапа 1
+        # задаёт его шаблон — то же, что и при переходах между этапами.
+        try:
+            # Ждём подтверждения конфигурации (session.updated), а не слепую паузу:
+            # реплика, отправленная до применения session.update, генерируется по
+            # пустой конфигурации — ровно то, из-за чего появлялась «разминка».
+            await _await_session_configured(user_session)
+            if user_session.stages and user_session.stages[0].first_line_template:
+                kickoff_task = (
+                    "Это твоя ПЕРВАЯ реплика в сессии. Сначала поздоровайся одной короткой "
+                    "фразой, затем сделай ровно то, что описано ниже.\n\n"
+                    + user_session.stages[0].first_line_template
+                    + "\n\nПОСЛЕ этой реплики ЖДИ ответа пользователя. "
+                    "Не продолжай говорить и не повторяй вступление."
+                )
+            else:
+                kickoff_task = (
                     "Это твоя первая реплика в сессии. Кратко поприветствуй пользователя "
                     "на русском языке и начни тренировку строго по инструкциям выше. "
                     "Сначала выступи как тренер-инструктор.\n"
                     "Речь идёт ИСКЛЮЧИТЕЛЬНО о тренировке навыков продаж по инструкциям выше — "
                     "никакой физкультуры, разминок и упражнений для тела."
                 )
-                # Запоминаем: если голос окажется «немым», сторож повторит эту же
-                # реплику запасным голосом.
-                user_session.last_response_instructions = kickoff_instructions
-                await azure_connection.send_response_create(instructions=kickoff_instructions)
-                logger.info("🎙️ Запрошен стартовый ответ ИИ (с полным промптом сессии)")
-            except Exception as e:
-                logger.warning(f"⚠️ Не удалось запустить стартовую реплику ИИ: {e}")
+            kickoff_instructions = (
+                session_instructions
+                + "\n\n===== ЧТО СДЕЛАТЬ ПРЯМО СЕЙЧАС =====\n"
+                + kickoff_task
+            )
+            # Запоминаем: если голос окажется «немым», сторож повторит эту же
+            # реплику запасным голосом.
+            user_session.last_response_instructions = kickoff_instructions
+            await azure_connection.send_response_create(instructions=kickoff_instructions)
+            logger.info("🎙️ Запрошен стартовый ответ ИИ (с полным промптом сессии)")
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось запустить стартовую реплику ИИ: {e}")
         
         # Если тренировка многоэтапная — сразу сообщаем клиенту
         # стартовый этап и роль ИИ, чтобы UI отрисовал бейдж/прогресс.
@@ -1047,11 +1077,19 @@ async def receive_from_azure(
                         f"🔧 ИИ вызвал функцию: {fn_name} "
                         f"(call_id={call_id})"
                     )
-                    if user_session.stages and fn_name in (TOOL_COMPLETE_STAGE, TOOL_COMPLETE_TRAINING):
-                        if fn_name == TOOL_COMPLETE_TRAINING:
-                            pending_stage_action = "complete_training"
-                        else:
-                            pending_stage_action = "next_stage"
+                    if user_session.stages and fn_name == TOOL_SAVE_CONTEXT:
+                        # Контекст сохраняем СРАЗУ, не откладывая до конца аудио:
+                        # ИИ может вызвать save_training_context и complete_stage
+                        # в одном ответе, и к моменту переключения этапа данные
+                        # должны уже лежать на сессии.
+                        await _handle_save_context(
+                            call_id=call_id,
+                            arguments_raw=event.get("arguments"),
+                            user_session=user_session,
+                            azure_connection=azure_connection,
+                        )
+                    elif user_session.stages and fn_name in (TOOL_COMPLETE_STAGE, TOOL_COMPLETE_TRAINING):
+                        pending_stage_action = _resolve_stage_action(fn_name, user_session)
                         logger.info(
                             f"➡️ Запомнено действие '{pending_stage_action}' — "
                             f"выполним после того как ИИ доиграет аудио"
@@ -1070,11 +1108,15 @@ async def receive_from_azure(
                         logger.info(
                             f"🔧 ИИ вызвал функцию (через output_item.done): {fn_name}"
                         )
-                        if user_session.stages and fn_name in (TOOL_COMPLETE_STAGE, TOOL_COMPLETE_TRAINING):
-                            if fn_name == TOOL_COMPLETE_TRAINING:
-                                pending_stage_action = "complete_training"
-                            else:
-                                pending_stage_action = "next_stage"
+                        if user_session.stages and fn_name == TOOL_SAVE_CONTEXT:
+                            await _handle_save_context(
+                                call_id=item.get("call_id") or item.get("id"),
+                                arguments_raw=item.get("arguments"),
+                                user_session=user_session,
+                                azure_connection=azure_connection,
+                            )
+                        elif user_session.stages and fn_name in (TOOL_COMPLETE_STAGE, TOOL_COMPLETE_TRAINING):
+                            pending_stage_action = _resolve_stage_action(fn_name, user_session)
                             logger.info(
                                 f"➡️ Запомнено действие '{pending_stage_action}' — "
                                 f"выполним после того как ИИ доиграет аудио"
@@ -1197,6 +1239,88 @@ async def _drain_saves(user_session: UserSession):
         await asyncio.gather(*pending, return_exceptions=True)
 
 
+def _resolve_stage_action(fn_name: str, user_session: UserSession) -> str:
+    """
+    Переводит вызов complete_stage/complete_training в действие перехода.
+
+    В составной тренировке («Работа с возражениями» = три блока по 4 этапа)
+    в конце 4-го этапа каждого блока лежит промпт, написанный как финал
+    отдельной тренировки, и ИИ регулярно вызывает там complete_training.
+    Промптом это подавляется не всегда, поэтому решает сервер: пока впереди
+    есть этапы — это переход к следующему, а не конец тренировки.
+    """
+    if fn_name != TOOL_COMPLETE_TRAINING:
+        return "next_stage"
+
+    is_last_stage = user_session.current_stage_index >= len(user_session.stages) - 1
+    if is_last_stage:
+        return "complete_training"
+
+    logger.warning(
+        f"⚠️ complete_training вызван на этапе "
+        f"{user_session.current_stage_index + 1} из {len(user_session.stages)} — "
+        f"трактуем как переход к следующему этапу"
+    )
+    return "next_stage"
+
+
+async def _handle_save_context(call_id, arguments_raw, user_session, azure_connection):
+    """
+    Обрабатывает вызов save_training_context: снимает подготовительные данные,
+    собранные ИИ в первом этапе, и кладёт их на сессию.
+
+    Дальше они подставляются в начало промпта этапов 2-4 (см. _handle_stage_action),
+    чтобы тренировка шла на том же товаре и тех же формулировках, а не на
+    придуманных заново.
+    """
+    # Один и тот же вызов приходит и как function_call_arguments.done,
+    # и внутри output_item.done — обрабатываем только первый.
+    if call_id:
+        if call_id in user_session.handled_tool_calls:
+            return
+        user_session.handled_tool_calls.add(call_id)
+
+    try:
+        parsed = json.loads(arguments_raw) if isinstance(arguments_raw, str) else (arguments_raw or {})
+    except (json.JSONDecodeError, TypeError) as e:
+        logger.warning(f"⚠️ save_training_context: не удалось разобрать аргументы: {e}")
+        parsed = {}
+
+    # Схема данных — у блока, в котором ИИ сейчас находится, а не у тренировки
+    # целиком: в «Работе с возражениями» три блока с разными наборами полей.
+    try:
+        current_stage = user_session.stages[user_session.current_stage_index]
+        slug = current_stage.source_slug or user_session.training_stage_name
+    except (IndexError, AttributeError):
+        slug = user_session.training_stage_name
+
+    context = normalize_training_context(slug, parsed)
+    if context:
+        user_session.training_context[slug] = context
+        logger.info(
+            f"💾 Сохранён контекст блока '{slug}': "
+            + ", ".join(
+                f"{k}={len(v)} шт." if isinstance(v, list) else f"{k}={str(v)[:60]!r}"
+                for k, v in context.items() if k != "training_slug"
+            )
+        )
+    else:
+        # Не перезаписываем уже сохранённый контекст мусорным повторным вызовом.
+        logger.warning(
+            f"⚠️ save_training_context: данные не прошли проверку "
+            f"(блок '{slug}') — контекст не обновлён"
+        )
+
+    # Отвечаем Azure на вызов, иначе модель считает его незавершённым и повторяет.
+    try:
+        await azure_connection.send_function_call_output(
+            call_id,
+            json.dumps({"saved": bool(context)}),
+        )
+    except Exception as e:
+        logger.warning(f"⚠️ Не удалось подтвердить save_training_context: {e}")
+
+
 async def _handle_stage_action(
     action: str,
     user_session: UserSession,
@@ -1264,7 +1388,24 @@ async def _handle_stage_action(
             # С этого момента актуальные инструкции сессии — промпт нового этапа.
             # Без обновления фолбэк переслал бы конфигурацию со стартовым промптом
             # и откатил бы тренировку на первый этап.
-            user_session.session_instructions = next_stage.prompt + _RU_OUTPUT_RULE
+            # Подготовительные данные из первого этапа (товар/услуга, список
+            # возражений, факты о пользователе) подставляем В НАЧАЛО промпта
+            # этапа. Без этого ИИ придумывает товар и возражения заново, и
+            # этапы 2-4 идут не по тому, что студент реально продаёт.
+            # Если контекст не собран — блок пустой, и этап отработает по своей
+            # ветке «восстанови контекст вопросом».
+            context_block = render_context_block(
+                next_stage.source_slug,
+                user_session.training_context.get(next_stage.source_slug),
+            )
+            if context_block:
+                logger.info(
+                    f"🧩 Этап #{next_stage.number}: подставлен контекст тренировки "
+                    f"({len(context_block)} символов)"
+                )
+            stage_prompt = context_block + next_stage.prompt
+
+            user_session.session_instructions = stage_prompt + _RU_OUTPUT_RULE
 
             # Голос и его настройки переотправляем те же, что при старте сессии:
             # session.update заменяет конфигурацию целиком, и без явной передачи
@@ -1274,7 +1415,7 @@ async def _handle_stage_action(
                 voice_name=_current_voice(user_session),
                 transcription_model=AZURE_VOICE_LIVE_TRANSCRIPTION_MODEL,
                 transcription_language=AZURE_VOICE_LIVE_TRANSCRIPTION_LANGUAGE,
-                tools=build_stage_tools(),
+                tools=build_stage_tools(next_stage.source_slug),
                 voice_style=None if user_session.voice_fallback_used else AZURE_VOICE_LIVE_VOICE_STYLE,
                 voice_temperature=None if user_session.voice_fallback_used else AZURE_VOICE_LIVE_VOICE_TEMPERATURE,
                 voice_rate=AZURE_VOICE_LIVE_VOICE_RATE,
@@ -1350,8 +1491,12 @@ async def _handle_stage_action(
                         "В ОДНОЙ реплике: короткая связка-переход + тренировочное действие. "
                         "Не повторяй что уже говорил. Соблюдай роль — см. system item выше."
                     )
+                # ⚠️ Здесь обязателен stage_prompt (с блоком контекста), а не
+                # next_stage.prompt: response.instructions ПОЛНОСТЬЮ заменяет
+                # инструкции сессии для этого ответа, и с «голым» промптом
+                # первая реплика этапа сгенерировалась бы без контекста.
                 trigger_instructions = (
-                    next_stage.prompt
+                    stage_prompt
                     + "\n\n===== ЧТО СДЕЛАТЬ ПРЯМО СЕЙЧАС =====\n"
                     + stage_task
                 )
