@@ -144,8 +144,12 @@ async def _startup(ctx):
     create_all вызывался только в create_app(), воркер не проверял ничего.
     """
     from db_guard import assert_schema_current
+    from services.crm_service import assert_encryption_key_valid
 
     assert_schema_current()
+    # Воркер расшифровывает те же токены, что и веб (анализ CRM-записей),
+    # поэтому проверяет ключ тем же способом.
+    assert_encryption_key_valid()
 
 
 class WorkerSettings:

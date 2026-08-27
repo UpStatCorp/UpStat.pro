@@ -114,6 +114,14 @@ def create_app() -> FastAPI:
 
     assert_schema_current(engine)
 
+    # Ключ шифрования CRM-токенов: проверяем пробным шифрованием-расшифровкой
+    # ЗДЕСЬ, а не при первом обращении к CRM. Раньше отсутствующий ключ молча
+    # подменялся сгенерированным, а невалидный обнаруживался только у
+    # случайного пользователя в середине дня и в виде 500.
+    from services.crm_service import assert_encryption_key_valid
+
+    assert_encryption_key_valid()
+
     # Синхронизируем справочник пунктов чеклистов для Win Probability
     try:
         from services.checklist_registry_service import sync_checklist_definitions

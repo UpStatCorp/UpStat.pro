@@ -50,7 +50,12 @@ services:
       - PER_USER_CONCURRENCY=${PER_USER_CONCURRENCY:-2}
       - CHECKLIST_CONCURRENCY=${CHECKLIST_CONCURRENCY:-4}
       - SECRET_KEY=${SECRET_KEY}
-      - CRM_ENCRYPTION_KEY=${CRM_ENCRYPTION_KEY}
+      # Обязательна: без неё compose откажется стартовать, а не поднимет
+      # контейнер с пустым значением. Раньше пустая строка означала, что
+      # приложение сгенерирует ключ само и запишет его в слой образа —
+      # при следующем пересоздании контейнера токены CRM становились
+      # нерасшифровываемыми.
+      - CRM_ENCRYPTION_KEY=${CRM_ENCRYPTION_KEY:?CRM_ENCRYPTION_KEY is required}
       # SMTP
       - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
       - SMTP_PORT=${SMTP_PORT:-587}

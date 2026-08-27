@@ -20,12 +20,17 @@ from models import (
 )
 from services.crm_service import (
     CRMServiceFactory, AmoCRMService, Bitrix24Service, Bitrix24WebhookService,
-    full_crm_sync, sync_crm_deals, sync_crm_leads,
+    CRMCredentialsError, full_crm_sync, sync_crm_deals, sync_crm_leads,
 )
 from services.pipeline import run_pipeline, run_pipeline_from_raw_text
 from services.queue import use_queue, enqueue_analyze_recording, enqueue_batch
 from services.notification_service import NotificationService, NotificationType
 from services.training_plan_service import TrainingPlanService
+
+
+class _UnsupportedCRM(Exception):
+    """Внутренний сигнал: тип CRM не поддерживается. Наружу не выходит."""
+
 
 logger = logging.getLogger(__name__)
 
@@ -112,7 +117,14 @@ async def connect_crm(crm_type: str, request: Request, db: Session = Depends(get
         db.commit()
 
         state = f"{integration.id}:{uuid.uuid4().hex}"
-        service = AmoCRMService(integration)
+        # Конструктор расшифровывает сохранённые токены. Если они шифрованы
+        # прежним ключом, InvalidToken раньше улетал в FastAPI и пользователь
+        # видел пустой 500 без указания, что делать.
+        try:
+            service = AmoCRMService(integration)
+        except CRMCredentialsError as exc:
+            logger.error(f"CRM credentials undecryptable (amocrm, integration={integration.id}): {exc}")
+            raise HTTPException(409, "Учётные данные интеграции не удалось прочитать — интеграция требует переподключения. Отключите её и подключите заново.")
         oauth_url = service.get_oauth_url(client_id=AMOCRM_CLIENT_ID, redirect_uri=AMOCRM_REDIRECT_URI, state=state)
         return JSONResponse({"oauth_url": oauth_url})
 
@@ -149,7 +161,11 @@ async def connect_crm(crm_type: str, request: Request, db: Session = Depends(get
         db.commit()
 
         state = f"{integration.id}:{uuid.uuid4().hex}"
-        service = Bitrix24Service(integration)
+        try:
+            service = Bitrix24Service(integration)
+        except CRMCredentialsError as exc:
+            logger.error(f"CRM credentials undecryptable (bitrix24, integration={integration.id}): {exc}")
+            raise HTTPException(409, "Учётные данные интеграции не удалось прочитать — интеграция требует переподключения. Отключите её и подключите заново.")
         oauth_url = service.get_oauth_url(client_id=BITRIX24_CLIENT_ID, redirect_uri=BITRIX24_REDIRECT_URI, state=state)
         return JSONResponse({"oauth_url": oauth_url})
 
@@ -247,14 +263,28 @@ async def oauth_callback(
     if not integration:
         raise HTTPException(404, "Интеграция не найдена")
 
-    if integration.crm_type == "amocrm":
-        service = AmoCRMService(integration)
-        client_id, client_secret, redirect_uri = AMOCRM_CLIENT_ID, AMOCRM_CLIENT_SECRET, AMOCRM_REDIRECT_URI
-    elif integration.crm_type == "bitrix24":
-        service = Bitrix24Service(integration)
-        client_id, client_secret, redirect_uri = BITRIX24_CLIENT_ID, BITRIX24_CLIENT_SECRET, BITRIX24_REDIRECT_URI
-    else:
-        return HTMLResponse(f'<html><body><h2>Ошибка</h2><p>Неподдерживаемый тип CRM</p><a href="/crm">Назад</a></body></html>')
+    # Построение сервиса вынесено в try отдельно от обмена кода на токены ниже:
+    # там свой except, но он начинается ПОСЛЕ этих строк, поэтому
+    # CRMCredentialsError отсюда уходил в 500 мимо всякой обработки.
+    try:
+        if integration.crm_type == "amocrm":
+            service = AmoCRMService(integration)
+            client_id, client_secret, redirect_uri = AMOCRM_CLIENT_ID, AMOCRM_CLIENT_SECRET, AMOCRM_REDIRECT_URI
+        elif integration.crm_type == "bitrix24":
+            service = Bitrix24Service(integration)
+            client_id, client_secret, redirect_uri = BITRIX24_CLIENT_ID, BITRIX24_CLIENT_SECRET, BITRIX24_REDIRECT_URI
+        else:
+            raise _UnsupportedCRM
+    except CRMCredentialsError as exc:
+        logger.error(f"CRM credentials undecryptable (integration={integration.id}): {exc}")
+        return HTMLResponse(
+            '<html><body><h2>Интеграция требует переподключения</h2>'
+            '<p>Учётные данные не удалось прочитать. Отключите интеграцию '
+            'и подключите заново.</p><a href="/crm">Назад</a></body></html>',
+            status_code=409,
+        )
+    except _UnsupportedCRM:
+        return HTMLResponse('<html><body><h2>Ошибка</h2><p>Неподдерживаемый тип CRM</p><a href="/crm">Назад</a></body></html>')
 
     try:
         token_data = await service.exchange_code_for_tokens(

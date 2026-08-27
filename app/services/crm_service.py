@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from urllib.parse import urlencode, urlparse, parse_qs
 from sqlalchemy.orm import Session
-from cryptography.fernet import Fernet
+from cryptography.fernet import Fernet, InvalidToken
 
 from models import (
     CRMIntegration, CRMRecording, User,
@@ -18,34 +18,79 @@ from database import SessionLocal
 
 logger = logging.getLogger(__name__)
 
-def _get_persistent_encryption_key() -> str:
-    """Return encryption key from env, or generate once and persist to file."""
-    env_key = os.getenv("CRM_ENCRYPTION_KEY")
-    if env_key:
-        return env_key
+class CRMCredentialsError(RuntimeError):
+    """
+    Учётные данные интеграции не расшифровываются текущим CRM_ENCRYPTION_KEY.
 
-    key_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".crm_encryption_key")
-    key_file = os.path.normpath(key_file)
-
-    if os.path.exists(key_file):
-        with open(key_file, "r") as f:
-            stored = f.read().strip()
-        if stored:
-            logger.warning("CRM_ENCRYPTION_KEY not set — using key from %s. Set the env var in production.", key_file)
-            return stored
-
-    new_key = Fernet.generate_key().decode()
-    try:
-        with open(key_file, "w") as f:
-            f.write(new_key)
-        logger.warning("CRM_ENCRYPTION_KEY not set — generated and saved to %s. Set the env var in production.", key_file)
-    except OSError as exc:
-        logger.error("Failed to persist encryption key to %s: %s", key_file, exc)
-    return new_key
+    Возникает, если ключ сменили после того, как токены были сохранены, либо
+    если запись в БД повреждена. От «CRM недоступна» отличается тем, что
+    повтором запроса не лечится — интеграцию нужно переподключить.
+    """
 
 
-ENCRYPTION_KEY = _get_persistent_encryption_key()
-cipher_suite = Fernet(ENCRYPTION_KEY.encode())
+def _get_encryption_key() -> str:
+    """
+    Ключ шифрования CRM-токенов. ТОЛЬКО из окружения, без фолбэков.
+
+    Раньше при отсутствии переменной ключ генерировался и писался в
+    app/.crm_encryption_key. Файл лежал в перезаписываемом слое образа,
+    а не в volume, поэтому любое пересоздание контейнера уничтожало его —
+    и токены всех интеграций превращались в нерасшифровываемый мусор.
+    Молчаливый фолбэк здесь хуже отказа: он ломает данные не в момент
+    ошибки конфигурации, а при следующем деплое.
+    """
+    key = os.getenv("CRM_ENCRYPTION_KEY", "").strip()
+    if not key:
+        raise RuntimeError(
+            "CRM_ENCRYPTION_KEY не задан. Без него CRM-токены не расшифровать. "
+            "Сгенерировать ключ (ТОЛЬКО для чистой установки — на базе с уже "
+            "подключёнными интеграциями новый ключ сделает их токены "
+            "нечитаемыми): python -c \"from cryptography.fernet import Fernet; "
+            "print(Fernet.generate_key().decode())\""
+        )
+    return key
+
+
+_cipher: Optional[Fernet] = None
+
+
+def _get_cipher() -> Fernet:
+    """
+    Fernet поверх ключа из окружения, ленивая инициализация.
+
+    Ключ НЕ читается на импорте модуля. Раньше `ENCRYPTION_KEY = ...` на
+    уровне модуля означало, что простой `import crm_service` мог создать
+    файл на диске, а значение фиксировалось на всю жизнь процесса ещё до
+    того, как приложение успевало проверить свою конфигурацию.
+    """
+    global _cipher
+    if _cipher is None:
+        try:
+            _cipher = Fernet(_get_encryption_key().encode())
+        except (ValueError, TypeError) as exc:
+            raise RuntimeError(
+                "CRM_ENCRYPTION_KEY невалиден: ожидаются 32 байта в url-safe "
+                f"base64 (44 символа), как выдаёт Fernet.generate_key(). {exc}"
+            ) from exc
+    return _cipher
+
+
+def assert_encryption_key_valid() -> None:
+    """
+    Проверка ключа на старте: пробное шифрование-расшифровка.
+
+    Без неё кривой или отсутствующий ключ выявлялся только при первом
+    обращении к CRM — то есть у случайного пользователя в середине дня
+    и в виде 500. Вызывается из create_app() и WorkerSettings.on_startup.
+    """
+    probe = b"crm-encryption-key-selftest"
+    cipher = _get_cipher()
+    if cipher.decrypt(cipher.encrypt(probe)) != probe:
+        raise RuntimeError(
+            "CRM_ENCRYPTION_KEY не проходит самопроверку: расшифровка "
+            "тестового значения вернула не то, что было зашифровано."
+        )
+    logger.info("CRM_ENCRYPTION_KEY валиден")
 
 
 class CRMService:
@@ -58,11 +103,26 @@ class CRMService:
     
     def _encrypt_token(self, token: str) -> str:
         """Шифрует токен для безопасного хранения"""
-        return cipher_suite.encrypt(token.encode()).decode()
+        return _get_cipher().encrypt(token.encode()).decode()
     
     def _decrypt_token(self, encrypted_token: str) -> str:
-        """Расшифровывает токен"""
-        return cipher_suite.decrypt(encrypted_token.encode()).decode()
+        """
+        Расшифровывает токен.
+
+        InvalidToken превращается в доменную ошибку: раньше он летел из
+        конструктора CRMService прямо в FastAPI и пользователь видел пустой
+        500 без указания, что делать.
+        """
+        try:
+            return _get_cipher().decrypt(encrypted_token.encode()).decode()
+        except InvalidToken as exc:
+            raise CRMCredentialsError(
+                f"Учётные данные интеграции id="
+                f"{getattr(self.integration, 'id', '?')} "
+                f"({getattr(self.integration, 'crm_type', '?')}) не "
+                "расшифровываются текущим CRM_ENCRYPTION_KEY — вероятно, ключ "
+                "сменили после их сохранения. Интеграцию нужно переподключить."
+            ) from exc
     
     def save_tokens(self, db: Session, access_token: str, refresh_token: Optional[str] = None, expires_in: Optional[int] = None):
         """Сохраняет токены в БД"""
@@ -580,10 +640,10 @@ class Bitrix24WebhookService(CRMService):
             return self.access_token
         at = getattr(self.integration, 'access_token', None)
         if at:
-            try:
-                return self._decrypt_token(at)
-            except Exception:
-                pass
+            # Без try/except: пустой токен уходил в запрос к CRM и отказ
+            # авторизации выглядел как проблема на стороне CRM, а не как
+            # нерасшифрованные учётные данные.
+            return self._decrypt_token(at)
         return ""
 
     MIN_CALL_DURATION = 35
