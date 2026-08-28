@@ -534,6 +534,10 @@ class VoiceTraining {
             failed:       { bg: '#ef4444', text: 'Соединение потеряно' },
         };
         const cfg = map[state] || map.idle;
+        // Состояние наружу: на мобильных индикатор прячется, пока связь в
+        // порядке, — там он перекрывал заголовок, а полезен только когда
+        // что-то пошло не так (см. voice-training.css, мобильные исправления).
+        el.dataset.state = state;
         el.style.background = cfg.bg;
         el.style.color = 'white';
         el.innerHTML = `<span style="width:8px;height:8px;border-radius:50%;background:white;opacity:.85;${state==='connected'?'box-shadow:0 0 0 4px rgba(255,255,255,.25);':''}"></span>${cfg.text}`;

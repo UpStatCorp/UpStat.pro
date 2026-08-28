@@ -4,6 +4,42 @@
 {% block title %}Тренировки — Админ-панель — UpStat{% endblock %}
 
 {% block content %}
+<style>
+  /* Глобальный .admin-table — table-layout:fixed + nowrap + overflow:hidden.
+     На узком экране это режет и название этапа, и кнопку. Поэтому на мобильных
+     таблица разбирается в карточки: строка = карточка, кнопка на всю ширину. */
+  .trainings-table td .stage-cell{display:flex; align-items:center; gap:10px;}
+  .trainings-table td{white-space:normal;}
+  .trainings-desc{font-size:13px; color:var(--muted); line-height:1.45;}
+  .trainings-count{font-weight:600;}
+  .trainings-count small{display:block; font-size:12px; color:var(--muted); font-weight:400;}
+  /* «этапов» словом нужно только в карточном виде: в таблице есть заголовок колонки */
+  .only-mobile{display:none;}
+
+  @media (max-width:720px){
+    .trainings-table, .trainings-table tbody, .trainings-table tr, .trainings-table td{
+      display:block; width:100%;
+    }
+    .trainings-table thead{display:none;}
+    .trainings-table colgroup{display:none;}
+    .trainings-table tr{
+      padding:14px 16px;
+      border-bottom:1px solid var(--border);
+    }
+    .trainings-table tr:last-child{border-bottom:none;}
+    .trainings-table td{
+      padding:0;
+      border-bottom:none;
+      overflow:visible;
+    }
+    .trainings-table td + td{margin-top:8px;}
+    .trainings-table td:last-child{margin-top:12px; text-align:left;}
+    .trainings-table .btn{width:100%; justify-content:center;}
+    .trainings-count{font-size:13px; color:var(--muted); font-weight:500;}
+    .trainings-count small{display:inline; font-size:13px;}
+    .only-mobile{display:inline;}
+  }
+</style>
 <div style="margin-bottom: 20px;">
     <h1 style="font-size: 22px; font-weight: 700; color: var(--text); margin: 0 0 4px 0; display: flex; align-items: center; gap: 8px;">
         <span style="color: var(--admin-primary); display: inline-flex;">{{ icons.icon('mic', size=20) }}</span>
@@ -22,7 +58,7 @@
         </h3>
     </div>
 
-    <table class="admin-table">
+    <table class="admin-table trainings-table">
         <colgroup>
             <col style="width: 34%;">
             <col style="width: 40%;">
@@ -41,7 +77,7 @@
             {% for stage in stages %}
             <tr>
                 <td>
-                    <div style="display:flex; align-items:center; gap:10px;">
+                    <div class="stage-cell">
                         <span style="font-size:20px; line-height:1;">{{ stage.icon }}</span>
                         <div>
                             <div style="font-weight:600; color:var(--text);">{{ stage.label }}</div>
@@ -49,12 +85,12 @@
                         </div>
                     </div>
                 </td>
-                <td style="font-size:13px; color:var(--muted);">{{ stage.description }}</td>
-                <td>
+                <td class="trainings-desc">{{ stage.description }}</td>
+                <td class="trainings-count">
                     {% if stage.available %}
-                    <span style="font-weight:600;">{{ stage.stage_count }}</span>
+                    {{ stage.stage_count }}<span class="only-mobile"> {{ stage.stage_count_word }}</span>
                     {% if stage.part_count > 1 %}
-                    <div style="font-size:12px; color:var(--muted);">{{ stage.part_count }} части подряд</div>
+                    <small>{{ stage.part_count }} части подряд</small>
                     {% endif %}
                     {% else %}
                     <span style="color:var(--muted);">—</span>

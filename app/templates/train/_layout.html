@@ -185,7 +185,15 @@
       }
       .sidebar.active{transform:translateX(0);}
       .content{padding:16px;}
-      .topbar{padding:12px 16px;}
+      .topbar{padding:12px 16px;gap:8px;}
+      /* Заголовок и правый блок (на странице тренировки там статус соединения)
+         делили строку без ограничений: длинный статус наезжал на «UpStat Train».
+         Теперь заголовок сжимается с многоточием, статус сохраняет размер. */
+      .topbar-left{min-width:0;flex:1 1 auto;}
+      .topbar-right{flex:0 0 auto;}
+      .topbar .page-title{
+        min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+      }
     }
 
     {% block styles %}{% endblock %}

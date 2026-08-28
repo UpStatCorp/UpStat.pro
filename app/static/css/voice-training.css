@@ -4787,3 +4787,141 @@ body.dark .welcome-modal-footer::before,
     background: transparent;
 }
 
+
+/* ============================================================================
+   МОБИЛЬНЫЕ ИСПРАВЛЕНИЯ — идут последними, поэтому перекрывают ранние слои
+   ============================================================================
+   В файле накопилось несколько поколений мобильных правил, и на телефоне они
+   конфликтовали: боковая колонка резервировала треть экрана независимо от
+   содержимого, а лента сообщений получала тёмный фон из недоделанной «тёмной»
+   мобильной темы и висела чёрным прямоугольником посреди светлого интерфейса.
+   Здесь эти конкретные конфликты снимаются; остальная мобильная вёрстка,
+   включая bottom sheet участников, работает как раньше.                     */
+
+@media (max-width: 768px) {
+  /* Колонка с названием и бейджем этапа — по содержимому.
+     Раньше max-height: 34vh держал ~290px даже под 144px контента: между
+     шапкой и чатом зияла пустая полоса, а длинный текст роли ИИ обрезался. */
+  .training-side-column {
+    max-height: none;
+    height: auto;
+    overflow: visible;
+    flex-shrink: 0;
+  }
+
+  /* Экран телефона не резиновый: шапка, бейдж этапа, шапка чата и панель
+     управления вместе съедали почти всю высоту, и на ленту сообщений
+     оставалось 98px — переписка была фактически не видна. Поэтому на мобильных
+     страница прокручивается целиком, а не пытается уместиться в один экран:
+     верхние карточки уезжают вверх, лента получает нормальную высоту,
+     а кнопка микрофона закреплена снизу и всегда под рукой. */
+  body {
+    overflow: auto !important;
+  }
+  .voice-training-container {
+    height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+  .training-main {
+    min-height: 0;
+    overflow: visible;
+  }
+  .chat-messages {
+    min-height: 46vh;
+  }
+  .training-controls {
+    position: sticky;
+    bottom: 0;
+    z-index: 60;
+  }
+
+  /* Лента сообщений — светлая, как весь остальной интерфейс. */
+  .chat-messages {
+    background: var(--vt-surface, #ffffff);
+  }
+
+  /* Шапка чата: заголовок и статус подключения не должны срезаться по краям —
+     на узком экране они переносятся, а не выезжают за контейнер. */
+  .chat-header {
+    flex-wrap: wrap;
+    gap: 8px 10px;
+  }
+  .chat-header h3 {
+    flex: 1 1 auto;
+    min-width: 0;
+    flex-wrap: wrap;
+  }
+  .chat-title-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .chat-connection-text {
+    font-size: 12px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .chat-header-sep {
+    display: none;
+  }
+  /* Кнопки экспорта и очистки — фиксированной ширины у правого края.
+     Раньше h3 имел flex-basis:100% и выдавливал их за пределы шапки. */
+  .chat-actions {
+    flex: 0 0 auto;
+    margin-left: auto;
+  }
+
+  /* На телефоне слово «Чат с ИИ-тренером» не несёт информации — и так видно,
+     что это чат. Убираем его, и статус с кнопками встают в одну строку:
+     шапка вместо трёх строк занимает одну, а высвободившееся место
+     достаётся ленте сообщений. */
+  @media (max-width: 520px) {
+    .chat-title-text {
+      display: none;
+    }
+    .chat-header {
+      padding-top: 10px;
+      padding-bottom: 10px;
+    }
+  }
+
+  /* Шапка чата прозрачная, а лента под ней прокручивается: на мобильных
+     сквозь неё просвечивал текст сообщений. Даём непрозрачный фон. */
+  .chat-header {
+    background: var(--vt-surface, #ffffff);
+  }
+
+  /* Индикатор соединения — position:fixed из JS, top/right 14px, z-index 9999:
+     на телефоне он ложился прямо на заголовок «UpStat Train». Убираем его
+     из-под шапки вниз, а пока связь в порядке — не показываем вовсе:
+     зелёная плашка «Соединение» на маленьком экране только отнимает место. */
+  #vt-conn-indicator {
+    top: auto !important;
+    bottom: calc(96px + env(safe-area-inset-bottom, 0px)) !important;
+    right: 10px !important;
+    font-size: 11px !important;
+    padding: 6px 10px !important;
+  }
+  #vt-conn-indicator[data-state="connected"] {
+    display: none !important;
+  }
+
+  /* Бейдж этапа — ключевая подсказка «где я и кого играю», её нельзя резать. */
+  .stage-badge {
+    margin-top: 12px;
+    padding: 10px 12px;
+  }
+  .stage-badge-row {
+    gap: 8px;
+  }
+  .stage-badge-description {
+    white-space: normal;
+    overflow: visible;
+    display: block;
+  }
+}

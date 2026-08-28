@@ -91,6 +91,17 @@ def get_stage_overview() -> list[dict]:
     except ImportError:
         from app.services.training_stages_service import load_stages, get_sequence
 
+    def plural(n: int) -> str:
+        """«1 этап» / «4 этапа» / «12 этапов» — иначе в карточке «4 этапов»."""
+        if 11 <= n % 100 <= 14:
+            return "этапов"
+        last = n % 10
+        if last == 1:
+            return "этап"
+        if 2 <= last <= 4:
+            return "этапа"
+        return "этапов"
+
     overview = []
     for stage in STAGES:
         try:
@@ -101,6 +112,7 @@ def get_stage_overview() -> list[dict]:
         overview.append({
             **stage,
             "stage_count": len(stages),
+            "stage_count_word": plural(len(stages)),
             "part_count": len(parts),
             "available": bool(stages),
         })
