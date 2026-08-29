@@ -151,3 +151,57 @@ async def test_works_without_progress_callback():
     service = _CountingService({"leads": [_note(1, 900)], "contacts": []})
     result = await service.get_recordings(db=None, initial_sync_completed=True)
     assert len(result) == 1
+
+
+# ── Пустой ответ amoCRM (204 No Content) ─────────────────────────────────
+#
+# На проде повторная синхронизация падала целиком с
+# JSONDecodeError: Expecting value. amoCRM отвечает 204 с пустым телом,
+# когда под фильтр ничего не попало, а response.json() парсил пустую строку.
+# Первую выборку это не задевало (за три года данные есть всегда), любую
+# последующую — обрывало.
+
+class _Response:
+    def __init__(self, status_code, content=b"", payload=None):
+        self.status_code = status_code
+        self.content = content
+        self._payload = payload
+
+    def json(self):
+        if self._payload is None:
+            raise ValueError("Expecting value: line 1 column 1 (char 0)")
+        return self._payload
+
+
+def test_empty_204_is_treated_as_no_data():
+    assert AmoCRMService._parse_response(_Response(204)) is None
+
+
+def test_empty_body_with_200_is_also_no_data():
+    """Пустое тело при 200 встречается у того же API — ведём себя так же."""
+    assert AmoCRMService._parse_response(_Response(200, content=b"")) is None
+
+
+def test_normal_response_is_parsed():
+    payload = {"_embedded": {"notes": [{"id": 1}]}}
+    response = _Response(200, content=b'{"_embedded": {}}', payload=payload)
+    assert AmoCRMService._parse_response(response) == payload
+
+
+@pytest.mark.asyncio
+async def test_incremental_fetch_survives_empty_page():
+    """
+    Сквозная проверка: страница без данных завершает выборку, а не роняет
+    синхронизацию. Это ровно тот сценарий повторного запуска, что упал.
+    """
+    class _EmptyAfterFirst(_CountingService):
+        async def _make_api_request(self, endpoint, method="GET", **kwargs):
+            self.calls.append(endpoint)
+            if endpoint == "/users":
+                return {"_embedded": {"users": [{"id": 555, "name": "Пётр"}]}}
+            return None      # как вернёт _parse_response на 204
+
+    service = _EmptyAfterFirst({"leads": [], "contacts": []})
+    result = await service.get_recordings(db=None, initial_sync_completed=True)
+
+    assert result == []

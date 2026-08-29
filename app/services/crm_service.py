@@ -285,6 +285,25 @@ class AmoCRMService(CRMService):
             logger.error(f"Failed to refresh token for AmoCRM: {e}")
             return False
     
+    @staticmethod
+    def _parse_response(response: "httpx.Response") -> Optional[Dict[str, Any]]:
+        """
+        Разобрать ответ amoCRM. Пустое тело — это «ничего не нашлось».
+
+        amoCRM отвечает 204 No Content с пустым телом, когда под фильтр не
+        попало ни одной сущности, и на страницу за последней. Прежде такой
+        ответ уходил в ``response.json()`` и падал с
+        ``JSONDecodeError: Expecting value``, роняя всю синхронизацию.
+
+        Первая выборка это не задевало — за три года данные есть всегда, —
+        зато любая последующая шла по узкому окну, получала пустой ответ и
+        обрывалась целиком. Вызывающий код уже трактует None как конец
+        выборки, отдельной обработки не требуется.
+        """
+        if response.status_code == 204 or not response.content:
+            return None
+        return response.json()
+
     async def _make_api_request(self, endpoint: str, method: str = "GET", **kwargs) -> Optional[Dict[str, Any]]:
         """Выполнить запрос к API с автообновлением токена"""
         if not self.access_token or not self.base_url:
@@ -305,7 +324,7 @@ class AmoCRMService(CRMService):
             try:
                 response = await client.request(method, url, headers=headers, **kwargs)
                 response.raise_for_status()
-                return response.json()
+                return self._parse_response(response)
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 401:
                     # Токен истек, пробуем обновить
@@ -315,7 +334,7 @@ class AmoCRMService(CRMService):
                             headers["Authorization"] = f"Bearer {self.access_token}"
                             response = await client.request(method, url, headers=headers, **kwargs)
                             response.raise_for_status()
-                            return response.json()
+                            return self._parse_response(response)
                 logger.error(f"API request failed: {e}")
                 return None
     

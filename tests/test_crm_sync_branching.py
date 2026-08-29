@@ -130,6 +130,9 @@ class _CapturingClient:
         _CapturingClient.seen.append(url)
 
         class _R:
+            status_code = 200
+            content = b"{}"
+
             def raise_for_status(self_inner):
                 return None
 
