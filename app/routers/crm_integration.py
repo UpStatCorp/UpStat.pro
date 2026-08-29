@@ -28,6 +28,7 @@ from services.crm_service import (
 from services.pipeline import run_pipeline, run_pipeline_from_raw_text
 from services.queue import use_queue, enqueue_analyze_recording, enqueue_batch
 from services.notification_service import NotificationService, NotificationType
+from services.sync_status import get_sync_status_store
 from services.training_plan_service import TrainingPlanService
 
 
@@ -421,7 +422,10 @@ async def oauth_callback(
 
 # ── Синхронизация ──────────────────────────────────────
 
-_sync_status: dict = {}
+# Статус синхронизации живёт в Redis, а не в памяти процесса: при
+# WEB_CONCURRENCY=4 запуск и опрос статуса попадают в разные воркеры.
+# Подробности и история — services/sync_status.py.
+_sync_status = get_sync_status_store()
 
 @router.post("/crm/sync/{integration_id}")
 async def sync_recordings(integration_id: int, background_tasks: BackgroundTasks, request: Request, db: Session = Depends(get_db)):
@@ -433,13 +437,23 @@ async def sync_recordings(integration_id: int, background_tasks: BackgroundTasks
         logger.warning(f"[Sync] Integration {integration_id} not found or inactive")
         raise HTTPException(404, "Интеграция не найдена или не активна")
     logger.info(f"[Sync] Starting sync for integration {integration_id} ({integration.crm_type})")
-    _sync_status[integration_id] = {
+    # Блокировка до постановки задачи: на живой проверке пользователь нажал
+    # «синхронизировать» второй раз, пока шёл первый прогон, и они пошли
+    # параллельно — вдвое больше запросов к CRM при том же результате.
+    if not _sync_status.acquire(integration_id):
+        logger.info(f"[Sync] Integration {integration_id} is already syncing, ignoring")
+        return JSONResponse(
+            {"status": "already_running",
+             "message": "Синхронизация уже идёт, дождитесь завершения."},
+            status_code=409,
+        )
+    _sync_status.set(integration_id, {
         "phase": "starting", "stage": "recordings", "stage_step": 1, "stage_total": 1,
         "stage_label": "Записи звонков",
-        "found": 0, "saved": 0, "done": False, "error": None,
+        "found": 0, "saved": 0, "pages": 0, "done": False, "error": None,
         "crm_type": integration.crm_type, "entity_results": {},
-    }
-    background_tasks.add_task(sync_crm_recordings_task, integration_id)
+    })
+    background_tasks.add_task(sync_crm_recordings_task, integration_id, True)
     return JSONResponse({"status": "started"})
 
 
@@ -450,11 +464,11 @@ async def sync_status(integration_id: int, request: Request, db: Session = Depen
     integration = db.query(CRMIntegration).filter(CRMIntegration.id == integration_id, CRMIntegration.user_id == user.id).first()
     if not integration:
         raise HTTPException(404)
-    status = _sync_status.get(integration_id, {
+    status = _sync_status.get(integration_id) or {
         "phase": "idle", "done": True, "stage": None,
         "stage_step": 0, "stage_total": 0, "stage_label": "",
         "crm_type": integration.crm_type, "entity_results": {},
-    })
+    }
     db.refresh(integration)
     return JSONResponse({
         **status,
@@ -464,30 +478,51 @@ async def sync_status(integration_id: int, request: Request, db: Session = Depen
     })
 
 
-async def sync_crm_recordings_task(integration_id: int):
-    """Фоновая задача синхронизации записей"""
+async def sync_crm_recordings_task(integration_id: int, owns_lock: bool = False):
+    """
+    Фоновая задача синхронизации записей.
+
+    ``owns_lock`` — задача обязана снять блокировку интеграции по завершении.
+    Ставится тем, кто её взял: при запуске только записей — эндпоинтом
+    ``/crm/sync``, при полной синхронизации — ``_run_full_sync``, который
+    вызывает эту задачу как первый этап и снимает блокировку сам, в конце.
+    """
     logger.info(f"[Sync] Background task started for integration {integration_id}")
-    status = _sync_status.setdefault(integration_id, {})
-    status.update(phase="fetching", found=0, saved=0, done=False, error=None)
+    _sync_status.update(integration_id, phase="fetching", found=0, saved=0,
+                        pages=0, done=False, error=None)
     db = SessionLocal()
     try:
         integration = db.query(CRMIntegration).filter(CRMIntegration.id == integration_id).first()
         if not integration:
-            status.update(phase="error", error="Интеграция не найдена", done=True)
+            _sync_status.update(integration_id, phase="error",
+                                error="Интеграция не найдена", done=True)
             logger.warning(f"[Sync] Integration {integration_id} not found in DB")
             return
         logger.info(f"[Sync] Creating service for {integration.crm_type}, domain={integration.crm_domain}")
         service = CRMServiceFactory.create(integration, db)
-        status["phase"] = "fetching"
         is_initial = not integration.initial_sync_completed
         logger.info(f"[Sync] Calling get_recordings (initial={is_initial})...")
+
+        def _on_progress(pages: int, collected: int) -> None:
+            """
+            Прогресс по ходу выборки.
+
+            Записи сохраняются одной пачкой в самом конце, поэтому до этого
+            момента в БД пусто и показать пользователю нечего: он пять минут
+            смотрел на неподвижное окно. Счётчик страниц и собранных записей
+            стоит дёшево и не трогает логику сохранения.
+            """
+            _sync_status.update(integration_id, phase="fetching",
+                                pages=pages, found=collected)
+
         recordings_data = await service.get_recordings(
             db,
             initial_sync_completed=integration.initial_sync_completed,
             last_sync_at=integration.last_sync_at,
+            on_progress=_on_progress,
         )
         logger.info(f"[Sync] get_recordings returned {len(recordings_data)} items")
-        status.update(phase="saving", found=len(recordings_data))
+        _sync_status.update(integration_id, phase="saving", found=len(recordings_data))
 
         manager_map = {}
         for m in db.query(CRMManagerMapping).filter(
@@ -536,7 +571,6 @@ async def sync_crm_recordings_task(integration_id: int):
                 )
                 db.add(recording)
                 new_count += 1
-            status["saved"] = new_count
 
         integration.last_sync_at = datetime.utcnow()
         integration.recordings_count = db.query(CRMRecording).filter(CRMRecording.integration_id == integration.id).count()
@@ -544,7 +578,7 @@ async def sync_crm_recordings_task(integration_id: int):
             integration.initial_sync_completed = True
             logger.info(f"[Sync] Initial sync completed for integration {integration_id}")
         db.commit()
-        status.update(phase="done", saved=new_count, done=True)
+        _sync_status.update(integration_id, phase="done", saved=new_count, done=True)
         logger.info(f"[Sync] Integration {integration_id}: {new_count} new, {updated_count} updated")
 
         if new_count > 0 or updated_count > 0:
@@ -567,9 +601,13 @@ async def sync_crm_recordings_task(integration_id: int):
                 logger.warning(f"Could not send notification: {ne}")
     except Exception as e:
         logger.error(f"Sync error for integration {integration_id}: {e}", exc_info=True)
-        status.update(phase="error", error=str(e)[:200], done=True)
+        _sync_status.update(integration_id, phase="error", error=str(e)[:200], done=True)
     finally:
         db.close()
+        # Блокировку снимает тот, кто её взял. При полной синхронизации
+        # эта задача — лишь первый этап, и снимать рано: дальше идут сущности.
+        if owns_lock:
+            _sync_status.release(integration_id)
 
 
 # ── Синхронизация чатов ─────────────────────────────────
@@ -1000,7 +1038,14 @@ async def sync_all_crm_data(integration_id: int, request: Request, background_ta
     integration = db.query(CRMIntegration).filter(CRMIntegration.id == integration_id, CRMIntegration.user_id == user.id).first()
     if not integration:
         raise HTTPException(404, "Интеграция не найдена")
-    _sync_status[integration_id] = {
+    if not _sync_status.acquire(integration_id):
+        logger.info(f"[CRM] Integration {integration_id} is already syncing, ignoring")
+        return JSONResponse(
+            {"status": "already_running",
+             "message": "Синхронизация уже идёт, дождитесь завершения."},
+            status_code=409,
+        )
+    _sync_status.set(integration_id, {
         "phase": "starting",
         "stage": None,
         "stage_step": 0,
@@ -1008,27 +1053,30 @@ async def sync_all_crm_data(integration_id: int, request: Request, background_ta
         "stage_label": "",
         "found": 0,
         "saved": 0,
+        "pages": 0,
         "done": False,
         "error": None,
         "crm_type": integration.crm_type,
         "entity_results": {},
-    }
+    })
     background_tasks.add_task(_run_full_sync, integration_id)
     return JSONResponse({"status": "started", "message": "Полная синхронизация запущена"})
 
 
 async def _run_full_sync(integration_id: int):
     logger.info(f"[CRM] Starting full sync for integration {integration_id}")
-    status = _sync_status.setdefault(integration_id, {})
-    status.update(phase="recordings", stage="recordings", stage_step=1, stage_label="Записи звонков", done=False)
+    _sync_status.update(integration_id, phase="recordings", stage="recordings",
+                        stage_step=1, stage_label="Записи звонков", done=False)
 
     try:
-        await sync_crm_recordings_task(integration_id)
-        logger.info(f"[CRM] Recordings sync done, starting entity sync...")
+        # Блокировку эта задача не отдаёт: она снимается в finally ниже,
+        # когда закончатся и сущности.
+        await sync_crm_recordings_task(integration_id, owns_lock=False)
+        logger.info("[CRM] Recordings sync done, starting entity sync...")
     except Exception as e:
         logger.error(f"[CRM] Recordings sync error: {e}")
 
-    status.update(phase="entities", done=False)
+    _sync_status.update(integration_id, phase="entities", done=False)
     db = SessionLocal()
     try:
         integration = db.query(CRMIntegration).get(integration_id)
@@ -1036,7 +1084,8 @@ async def _run_full_sync(integration_id: int):
             return
 
         def _on_stage(stage_name: str, step: int, total: int):
-            status.update(
+            _sync_status.update(
+                integration_id,
                 stage=stage_name,
                 stage_step=step + 1,
                 stage_total=total + 1,
@@ -1045,28 +1094,32 @@ async def _run_full_sync(integration_id: int):
 
         service = CRMServiceFactory.create(integration, db)
         results = await full_crm_sync(service, db, integration_id, on_stage=_on_stage)
-        status["entity_results"] = results
 
         # Статусы стадий из full_crm_sync: ok / failed / unsupported. Нужны,
         # чтобы отличить «сущностей нет» от «стадия упала» и от «эта CRM
         # сущности не синхронизирует» — раньше все три давали ноль и
         # показывались пользователю как успешная синхронизация.
         stage_status = results.get("stages", {})
-        status["entity_support"] = _entity_support(stage_status)
-        status["failed_stages"] = [
-            _STAGE_LABELS.get(n, n) for n, st in stage_status.items() if st == STAGE_FAILED
-        ]
         logger.info(f"[CRM] Full sync complete for integration {integration_id}: {results}")
         total_recs = db.query(CRMRecording).filter(CRMRecording.integration_id == integration_id).count()
-        status.update(
+        current = _sync_status.get(integration_id) or {}
+        _sync_status.update(
+            integration_id,
+            entity_results=results,
+            entity_support=_entity_support(stage_status),
+            failed_stages=[
+                _STAGE_LABELS.get(n, n) for n, st in stage_status.items() if st == STAGE_FAILED
+            ],
             phase="done", done=True, recordings_count=total_recs,
-            stage="done", stage_step=status.get("stage_total", 8), stage_label="Готово",
+            stage="done", stage_step=current.get("stage_total", 8), stage_label="Готово",
         )
     except Exception as e:
         logger.error(f"[CRM] Full sync error: {e}")
-        status.update(phase="error", error=str(e)[:300], done=True)
+        _sync_status.update(integration_id, phase="error", error=str(e)[:300], done=True)
     finally:
         db.close()
+        # Полный прогон закончен целиком — только теперь интеграция свободна.
+        _sync_status.release(integration_id)
 
 
 @router.post("/crm/integrations/{integration_id}/enable-webhook")

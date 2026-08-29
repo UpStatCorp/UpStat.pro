@@ -486,6 +486,12 @@ async function syncAllCRM(id) {
   try {
     const r = await fetch('/crm/sync-all/' + id, { method: 'POST' });
     if (r.ok) { pollSyncStatus(id); }
+    else if (r.status === 409) {
+      // Синхронизация уже идёт в другом процессе. Не ошибка: показываем
+      // её ход, а не сообщение о сбое, иначе пользователь жмёт ещё раз —
+      // именно так на проде и получились два параллельных прогона.
+      pollSyncStatus(id);
+    }
     else { closeSyncModal(); alert('Ошибка запуска синхронизации'); btn.disabled = false; }
   } catch (e) { closeSyncModal(); alert(e.message); btn.disabled = false; }
 }
@@ -497,6 +503,12 @@ async function syncCRM(id) {
   try {
     const r = await fetch('/crm/sync/' + id, { method: 'POST' });
     if (r.ok) { pollSyncStatus(id); }
+    else if (r.status === 409) {
+      // Синхронизация уже идёт в другом процессе. Не ошибка: показываем
+      // её ход, а не сообщение о сбое, иначе пользователь жмёт ещё раз —
+      // именно так на проде и получились два параллельных прогона.
+      pollSyncStatus(id);
+    }
     else { closeSyncModal(); alert('Ошибка запуска синхронизации'); btn.disabled = false; }
   } catch (e) { closeSyncModal(); alert(e.message); btn.disabled = false; }
 }
@@ -566,8 +578,14 @@ function updateSyncUI(d) {
     desc.textContent = 'Загружаем записи звонков...';
     const pct = d.stage_total > 0 ? Math.round((1 / d.stage_total) * 50) : 10;
     prog.style.width = pct + '%';
+    // found и pages обновляются по ходу выборки, а не только в конце:
+    // сохранение идёт одной пачкой, и до него показывать больше нечего.
     if (d.found > 0) {
-      detail.textContent = 'Найдено ' + d.found + ' записей' + (d.saved > 0 ? ', новых: ' + d.saved : '');
+      const pages = d.pages > 0 ? ', страниц обработано: ' + d.pages : '';
+      detail.textContent = 'Найдено ' + d.found + ' записей' + pages
+        + (d.saved > 0 ? ', новых: ' + d.saved : '');
+    } else if (d.pages > 0) {
+      detail.textContent = 'Страниц обработано: ' + d.pages;
     } else {
       detail.textContent = 'Запрашиваем API ' + crm + '...';
     }

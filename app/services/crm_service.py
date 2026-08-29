@@ -191,8 +191,15 @@ class CRMService:
 
     async def get_recordings(self, db: Session, limit: int = 100,
                              initial_sync_completed: bool = False,
-                             last_sync_at: Optional[datetime] = None) -> List[Dict[str, Any]]:
-        """Получить список записей из CRM"""
+                             last_sync_at: Optional[datetime] = None,
+                             on_progress: Optional[Any] = None) -> List[Dict[str, Any]]:
+        """
+        Получить список записей из CRM.
+
+        ``on_progress(pages, collected)`` — необязательный колбэк прогресса,
+        вызывается по ходу выборки. Реализации, которые его не поддерживают,
+        просто не вызывают: вызывающий код обязан работать и без него.
+        """
         raise NotImplementedError("Subclasses must implement this method")
     
     async def download_recording(self, recording_url: str, save_path: str) -> bool:
@@ -209,6 +216,13 @@ class AmoCRMService(CRMService):
     def __init__(self, integration: CRMIntegration, db: Optional[Session] = None):
         super().__init__(integration, db)
         self.base_url = f"https://{integration.crm_domain}.amocrm.ru{self.API_VERSION}" if integration.crm_domain else None
+        # Справочники и прогресс живут один прогон get_recordings; значения
+        # по умолчанию нужны, если _get_recordings_from_notes вызовут отдельно.
+        self._user_names_cache: Dict[int, str] = {}
+        self._lead_names_cache: Dict[int, str] = {}
+        self._pages_done = 0
+        self._collected_so_far = 0
+        self._on_progress: Optional[Any] = None
     
     def get_oauth_url(self, client_id: str, redirect_uri: str, state: str) -> str:
         """Получить URL для OAuth авторизации"""
@@ -309,10 +323,31 @@ class AmoCRMService(CRMService):
 
     async def get_recordings(self, db: Session, limit: int = 100,
                              initial_sync_completed: bool = False,
-                             last_sync_at: Optional[datetime] = None) -> List[Dict[str, Any]]:
-        """Получить список записей звонков из AmoCRM (из /calls, примечаний к сделкам и контактам)"""
+                             last_sync_at: Optional[datetime] = None,
+                             on_progress: Optional[Any] = None) -> List[Dict[str, Any]]:
+        """
+        Записи звонков из AmoCRM — из примечаний к сделкам и контактам.
+
+        Ресурса ``/api/v4/calls`` здесь нет намеренно: он не поддерживает GET
+        и на любой запрос отвечает 405 Method Not Allowed (проверено на проде
+        29.08.2026). Это эндпоинт для ДОБАВЛЕНИЯ звонков. Прежде ветка с ним
+        существовала, общий except превращал 405 в пустой ответ, и в логах
+        это выглядело как «звонков нет».
+
+        ``on_progress(pages, collected)`` вызывается после каждой обработанной
+        страницы: записи сохраняются одной пачкой в самом конце, поэтому без
+        этого пользователю нечего показывать все несколько минут выборки.
+        """
         seen_ids: set = set()
         recordings: List[Dict[str, Any]] = []
+
+        # Справочники на весь прогон: без них шёл запрос за именем менеджера
+        # и названием сделки на КАЖДОЕ примечание, по 2–7 секунд каждый.
+        self._user_names_cache = await _amocrm_user_names(self)
+        self._lead_names_cache = {}
+        self._pages_done = 0
+        self._collected_so_far = 0
+        self._on_progress = on_progress
 
         if not initial_sync_completed:
             date_from = (datetime.utcnow() - timedelta(days=365 * 3)).timestamp()
@@ -323,74 +358,21 @@ class AmoCRMService(CRMService):
         else:
             date_from = (datetime.utcnow() - timedelta(days=30)).timestamp()
 
-        skipped_short = 0
+        # Ресурс /calls не читается: GET на него возвращает 405 Method Not
+        # Allowed — это эндпоинт для добавления звонков. Ветка, которая его
+        # опрашивала, удалена 29.08.2026: она давала гарантированную ошибку
+        # и лишний запрос при каждой синхронизации. Все записи приходят
+        # из примечаний ниже.
 
-        # 1) Звонки из ресурса /calls (телефония/виджет) — пагинация
-        logger.info("[AmoCRM] Fetching calls from /calls endpoint...")
-        page = 1
-        calls_count = 0
-        calls_with_link = 0
-        while True:
-            calls_data = await self._make_api_request(
-                "/calls",
-                params={
-                    "filter[created_at][from]": int(date_from),
-                    "limit": 250,
-                    "page": page,
-                    "with": "call_result"
-                }
-            )
-            if not calls_data or "_embedded" not in calls_data:
-                if page == 1:
-                    logger.info(f"[AmoCRM] /calls returned: {json.dumps(calls_data or {}, ensure_ascii=False)[:500]}")
-                break
-            calls_list = calls_data["_embedded"].get("calls", [])
-            if not calls_list:
-                break
-            calls_count += len(calls_list)
-            for call in calls_list:
-                if not call.get("link"):
-                    continue
-                calls_with_link += 1
-                duration = call.get("duration", 0)
-                if duration < self.MIN_CALL_DURATION:
-                    skipped_short += 1
-                    continue
-                cid = str(call["id"])
-                if cid in seen_ids:
-                    continue
-                seen_ids.add(cid)
-                contact_info = await self._get_contact_info(call.get("contact_id"))
-                recordings.append({
-                    "crm_record_id": cid,
-                    "crm_call_id": cid,
-                    "call_date": datetime.fromtimestamp(call["created_at"]),
-                    "duration_seconds": duration,
-                    "direction": "inbound" if call.get("direction") == "inbound" else "outbound",
-                    "recording_url": call["link"],
-                    "manager_name": call.get("responsible_user_name", ""),
-                    "client_name": contact_info.get("name", ""),
-                    "client_phone": call.get("phone", ""),
-                    "client_company": contact_info.get("company", ""),
-                    "crm_metadata": {
-                        "source": call.get("source", ""),
-                        "call_result": call.get("call_result", ""),
-                        "call_status": call.get("call_status", ""),
-                        "note": call.get("note", "")
-                    }
-                })
-            if len(calls_list) < 250:
-                break
-            page += 1
-        logger.info(f"[AmoCRM] /calls: total={calls_count}, with_link={calls_with_link}, "
-                     f"short(<{self.MIN_CALL_DURATION}s)={skipped_short}, added={len(recordings)}")
-
-        # 2) Звонки из примечаний к сделкам (leads/notes: call_in, call_out)
+        # 1) Звонки из примечаний к сделкам (leads/notes: call_in, call_out)
         notes_recordings = await self._get_recordings_from_notes("leads", db, date_from, seen_ids)
         recordings.extend(notes_recordings)
         logger.info(f"[AmoCRM] leads/notes: added={len(notes_recordings)}")
 
-        # 3) Звонки из примечаний к контактам (contacts/notes: call_in, call_out)
+        # Счётчик прогресса продолжается со второго источника, а не обнуляется.
+        self._collected_so_far = len(recordings)
+
+        # 2) Звонки из примечаний к контактам (contacts/notes: call_in, call_out)
         notes_contacts = await self._get_recordings_from_notes("contacts", db, date_from, seen_ids)
         recordings.extend(notes_contacts)
         logger.info(f"[AmoCRM] contacts/notes: added={len(notes_contacts)}")
@@ -448,16 +430,27 @@ class AmoCRMService(CRMService):
                     continue
                 seen_ids.add(crm_record_id)
 
+                # Имя менеджера — из справочника, загруженного один раз на
+                # прогон. Прежде здесь был запрос /users/{id} на каждое
+                # примечание, по 2–7 секунд.
                 manager_name = ""
-                if note.get("responsible_user_id"):
-                    manager_name = await self._get_user_name(note["responsible_user_id"]) or ""
+                responsible_id = _safe_int(note.get("responsible_user_id"))
+                if responsible_id:
+                    manager_name = self._user_names_cache.get(responsible_id, "")
                 if not manager_name and isinstance(params_note.get("call_responsible"), str):
                     manager_name = params_note["call_responsible"]
 
                 entity_name = ""
                 entity_id = note.get("entity_id")
                 if entity_type == "leads" and entity_id:
-                    entity_name = await self._get_lead_name(entity_id) or ""
+                    # У одной сделки обычно несколько звонков: запоминаем
+                    # название, чтобы не спрашивать его повторно.
+                    entity_key = _safe_int(entity_id)
+                    if entity_key in self._lead_names_cache:
+                        entity_name = self._lead_names_cache[entity_key]
+                    else:
+                        entity_name = await self._get_lead_name(entity_id) or ""
+                        self._lead_names_cache[entity_key] = entity_name
                 elif entity_type == "contacts" and entity_id:
                     ci = await self._get_contact_info(entity_id)
                     entity_name = ci.get("name", "")
@@ -480,6 +473,17 @@ class AmoCRMService(CRMService):
                         "note_type": note.get("note_type", ""),
                     }
                 })
+
+            # Страница обработана — сообщаем наверх, иначе до самого конца
+            # выборки пользователю нечего показать.
+            self._pages_done += 1
+            if self._on_progress:
+                try:
+                    self._on_progress(self._pages_done, self._collected_so_far + len(result))
+                except Exception as exc:
+                    # Прогресс — вспомогательная вещь, ронять из-за него
+                    # синхронизацию нельзя.
+                    logger.debug(f"on_progress failed: {exc}")
 
             if len(notes) < per_page:
                 break
@@ -676,8 +680,14 @@ class Bitrix24WebhookService(CRMService):
 
     async def get_recordings(self, db: Session, limit: int = 100,
                              initial_sync_completed: bool = False,
-                             last_sync_at: Optional[datetime] = None) -> List[Dict[str, Any]]:
-        """Получить список записей звонков из Bitrix24 (Webhook)"""
+                             last_sync_at: Optional[datetime] = None,
+                             on_progress: Optional[Any] = None) -> List[Dict[str, Any]]:
+        """
+        Получить список записей звонков из Bitrix24 (Webhook).
+
+        ``on_progress`` принимается ради общей сигнатуры, но не вызывается:
+        постраничный прогресс для Bitrix24 не заведён — отдельная задача.
+        """
         return await self._bitrix24_get_recordings(
             initial_sync_completed=initial_sync_completed,
             last_sync_at=last_sync_at,
@@ -1536,8 +1546,14 @@ class Bitrix24Service(CRMService):
 
     async def get_recordings(self, db: Session, limit: int = 100,
                              initial_sync_completed: bool = False,
-                             last_sync_at: Optional[datetime] = None) -> List[Dict[str, Any]]:
-        """Получить список записей звонков из Bitrix24 (OAuth)"""
+                             last_sync_at: Optional[datetime] = None,
+                             on_progress: Optional[Any] = None) -> List[Dict[str, Any]]:
+        """
+        Получить список записей звонков из Bitrix24 (OAuth).
+
+        ``on_progress`` принимается ради общей сигнатуры, но не вызывается:
+        постраничный прогресс для Bitrix24 не заведён — отдельная задача.
+        """
         return await self._bitrix24_get_recordings(
             initial_sync_completed=initial_sync_completed,
             last_sync_at=last_sync_at,
@@ -2449,8 +2465,93 @@ async def sync_amocrm_deals(service: CRMService, db: Session, integration_id: in
             count += 1
         db.commit()
 
+    count += await _amocrm_backfill_deals_from_recordings(
+        service, db, integration_id, user_names, statuses
+    )
+
     logger.info(f"[AmoCRM Sync] deals: {count}")
     return count
+
+
+async def _amocrm_backfill_deals_from_recordings(
+    service: CRMService, db: Session, integration_id: int,
+    user_names: Dict[int, str], statuses: Dict[tuple, Dict[str, Any]],
+) -> int:
+    """
+    Добрать сделки, на которые ссылаются записи, но которых нет в списке.
+
+    ``GET /api/v4/leads`` возвращает не все сделки: на проде из 128 в списке
+    оказалось 30 — только те, у кого назначен ответственный
+    (``responsible_user_id != 0``). Остальные списком не отдаются, но по
+    прямому ``GET /leads/{id}`` доступны и возвращают 200.
+
+    Без добора привязка записей к сделкам не работала вовсе: 124 записи из
+    примечаний к сделкам не находили свою сделку в ``crm_deals``.
+
+    Запросов ровно столько, сколько РАЗНЫХ недостающих сделок (на проде 98),
+    и только один раз: при следующей синхронизации они уже в базе.
+    """
+    known = {
+        row[0] for row in db.query(CRMDeal.bitrix_id).filter(
+            CRMDeal.integration_id == integration_id
+        ).all()
+    }
+
+    wanted: set = set()
+    recordings = db.query(CRMRecording.crm_metadata_json).filter(
+        CRMRecording.integration_id == integration_id,
+        CRMRecording.crm_metadata_json.isnot(None),
+    ).all()
+    for (meta_json,) in recordings:
+        try:
+            meta = json.loads(meta_json) if isinstance(meta_json, str) else meta_json
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(meta, dict) or meta.get("entity_type") != "leads":
+            continue
+        entity_id = _safe_int(meta.get("entity_id"))
+        if entity_id and entity_id not in known:
+            wanted.add(entity_id)
+
+    if not wanted:
+        return 0
+
+    logger.info(f"[AmoCRM Sync] backfilling {len(wanted)} deals missing from /leads list")
+    added = 0
+    for amo_id in sorted(wanted):
+        item = await service._make_api_request(f"/leads/{amo_id}")
+        if not item or not item.get("id"):
+            logger.debug(f"[AmoCRM Sync] deal {amo_id} is not retrievable, skipped")
+            continue
+
+        deal = CRMDeal(bitrix_id=amo_id, integration_id=integration_id)
+        db.add(deal)
+
+        pipeline_id = _safe_int(item.get("pipeline_id"))
+        status_id = _safe_int(item.get("status_id"))
+        names = statuses.get((pipeline_id, status_id), {})
+
+        deal.title = item.get("name")
+        deal.stage_id = str(status_id) if status_id is not None else None
+        deal.stage_name = names.get("status_name")
+        deal.category_id = pipeline_id
+        deal.category_name = names.get("pipeline_name")
+        deal.opportunity = _safe_float(item.get("price"))
+        deal.closed, deal.is_won = _amocrm_outcome(status_id)
+        deal.close_date = _amocrm_ts(item.get("closed_at"))
+        deal.created_at = _amocrm_ts(item.get("created_at"))
+        deal.updated_at = _amocrm_ts(item.get("updated_at"))
+        deal.assigned_by_id = _safe_int(item.get("responsible_user_id"))
+        deal.assigned_by_name = user_names.get(deal.assigned_by_id)
+        deal.contact_id = _amocrm_embedded_id(item, "contacts")
+        deal.company_id = _amocrm_embedded_id(item, "companies")
+        deal.crm_metadata_json = json.dumps(item, ensure_ascii=False, default=str)
+        deal.synced_at = datetime.utcnow()
+        added += 1
+
+    db.commit()
+    logger.info(f"[AmoCRM Sync] backfilled deals: {added}")
+    return added
 
 
 async def sync_amocrm_contacts(service: CRMService, db: Session, integration_id: int) -> int:

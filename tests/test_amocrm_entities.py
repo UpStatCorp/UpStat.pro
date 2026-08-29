@@ -304,3 +304,154 @@ async def test_linking_skips_records_without_usable_metadata(sessions):
         assert await link_amocrm_recordings_to_entities(service, db, 1) == 0
     finally:
         db.close()
+
+
+# ── Добор сделок, которых нет в списочной выборке ────────────────────────
+#
+# GET /api/v4/leads возвращает не все сделки: на проде из ~128 в списке
+# оказалось 30 — только с назначенным ответственным. Остальные доступны
+# по прямому GET /leads/{id}. Без добора привязка записей к сделкам не
+# работала вовсе.
+
+def _recording_for_lead(db, lead_id, rec_id):
+    rec = CRMRecording(
+        integration_id=1, user_id=1, crm_record_id=rec_id,
+        call_date=datetime(2026, 1, 1),
+        crm_metadata_json='{"entity_type": "leads", "entity_id": %d}' % lead_id,
+    )
+    db.add(rec)
+    db.commit()
+    return rec
+
+
+def _service_with_list_and_direct(list_leads, direct_leads):
+    """Список отдаёт одно, прямой запрос по id — другое (как на проде)."""
+    responses = {
+        "/users": {"_embedded": {"users": [{"id": 55, "name": "Пётр Иванов"}]}},
+        "/leads/pipelines": {"_embedded": {"pipelines": [{
+            "id": 7, "name": "Продажи",
+            "_embedded": {"statuses": [{"id": AMOCRM_STATUS_WON, "name": "Успешно"}]},
+        }]}},
+        "/leads": {"_embedded": {"leads": list_leads}},
+    }
+    for lead in direct_leads:
+        responses[f"/leads/{lead['id']}"] = lead
+    return _FakeAmoService(responses)
+
+
+@pytest.mark.asyncio
+async def test_deals_missing_from_list_are_backfilled(sessions):
+    db = sessions()
+    try:
+        # Записи ссылаются на две сделки, которых в списке нет.
+        _recording_for_lead(db, 34296679, "leads_note_34296679_1")
+        _recording_for_lead(db, 34296067, "leads_note_34296067_2")
+
+        service = _service_with_list_and_direct(
+            list_leads=[_lead(id=33011097)],
+            direct_leads=[_lead(id=34296679, name="Без ответственного",
+                                responsible_user_id=0),
+                          _lead(id=34296067, name="Тоже без", responsible_user_id=0)],
+        )
+
+        count = await sync_amocrm_deals(service, db, integration_id=1)
+
+        ids = sorted(d.bitrix_id for d in db.query(CRMDeal).all())
+        assert ids == [33011097, 34296067, 34296679]
+        assert count == 3
+    finally:
+        db.close()
+
+
+@pytest.mark.asyncio
+async def test_backfilled_deal_keeps_analytics_fields(sessions):
+    """Добранная сделка должна быть полноценной, а не заглушкой."""
+    db = sessions()
+    try:
+        _recording_for_lead(db, 34296679, "leads_note_34296679_1")
+        service = _service_with_list_and_direct(
+            list_leads=[],
+            direct_leads=[_lead(id=34296679, price=5000)],
+        )
+
+        await sync_amocrm_deals(service, db, integration_id=1)
+
+        deal = db.query(CRMDeal).filter(CRMDeal.bitrix_id == 34296679).one()
+        assert deal.closed is True
+        assert deal.is_won is True
+        assert deal.opportunity == 5000
+        assert deal.stage_name == "Успешно"
+        assert deal.assigned_by_name == "Пётр Иванов"
+    finally:
+        db.close()
+
+
+@pytest.mark.asyncio
+async def test_backfill_does_not_refetch_deals_already_present(sessions):
+    """Повторная синхронизация не должна снова дёргать API по тем же сделкам."""
+    db = sessions()
+    try:
+        _recording_for_lead(db, 34296679, "leads_note_34296679_1")
+        direct = [_lead(id=34296679)]
+
+        first = _service_with_list_and_direct([], direct)
+        await sync_amocrm_deals(first, db, integration_id=1)
+        assert "/leads/34296679" in first.calls
+
+        second = _service_with_list_and_direct([], direct)
+        await sync_amocrm_deals(second, db, integration_id=1)
+        assert "/leads/34296679" not in second.calls
+    finally:
+        db.close()
+
+
+@pytest.mark.asyncio
+async def test_backfill_requests_each_deal_once_not_per_recording(sessions):
+    """Три записи одной сделки — один запрос, а не три."""
+    db = sessions()
+    try:
+        for n in range(3):
+            _recording_for_lead(db, 34296679, f"leads_note_34296679_{n}")
+
+        service = _service_with_list_and_direct([], [_lead(id=34296679)])
+        await sync_amocrm_deals(service, db, integration_id=1)
+
+        assert service.calls.count("/leads/34296679") == 1
+    finally:
+        db.close()
+
+
+@pytest.mark.asyncio
+async def test_unavailable_deal_is_skipped_not_fatal(sessions):
+    """Удалённая сделка (запрос вернул пусто) не должна ронять синхронизацию."""
+    db = sessions()
+    try:
+        _recording_for_lead(db, 999999, "leads_note_999999_1")
+        service = _service_with_list_and_direct([_lead(id=33011097)], [])
+
+        count = await sync_amocrm_deals(service, db, integration_id=1)
+
+        assert count == 1
+        assert db.query(CRMDeal).count() == 1
+    finally:
+        db.close()
+
+
+@pytest.mark.asyncio
+async def test_contact_recordings_do_not_trigger_deal_backfill(sessions):
+    db = sessions()
+    try:
+        rec = CRMRecording(
+            integration_id=1, user_id=1, crm_record_id="contacts_note_900_1",
+            call_date=datetime(2026, 1, 1),
+            crm_metadata_json='{"entity_type": "contacts", "entity_id": 900}',
+        )
+        db.add(rec)
+        db.commit()
+
+        service = _service_with_list_and_direct([], [])
+        await sync_amocrm_deals(service, db, integration_id=1)
+
+        assert not [c for c in service.calls if c.startswith("/leads/9")]
+    finally:
+        db.close()
