@@ -427,6 +427,23 @@ async def oauth_callback(
 # Подробности и история — services/sync_status.py.
 _sync_status = get_sync_status_store()
 
+
+def _count_recordings(db: Session, integration_id: int) -> int:
+    """
+    Число записей интеграции с учётом ещё не записанных в БД.
+
+    ``SessionLocal`` создан с ``autoflush=False`` (database.py), поэтому
+    добавленные через ``db.add`` записи до ``commit`` в БД не попадают, и
+    ``COUNT`` их не видит. Без явного ``flush`` при первой синхронизации в
+    ``recordings_count`` сохранялся 0 при 227 реально скачанных записях, а
+    при последующих счётчик отставал на последнюю партию: в карточке
+    интеграции пользователь видел «Записей: 0».
+    """
+    db.flush()
+    return db.query(CRMRecording).filter(
+        CRMRecording.integration_id == integration_id
+    ).count()
+
 @router.post("/crm/sync/{integration_id}")
 async def sync_recordings(integration_id: int, background_tasks: BackgroundTasks, request: Request, db: Session = Depends(get_db)):
     """Синхронизировать записи из CRM"""
@@ -573,7 +590,7 @@ async def sync_crm_recordings_task(integration_id: int, owns_lock: bool = False)
                 new_count += 1
 
         integration.last_sync_at = datetime.utcnow()
-        integration.recordings_count = db.query(CRMRecording).filter(CRMRecording.integration_id == integration.id).count()
+        integration.recordings_count = _count_recordings(db, integration.id)
         if not integration.initial_sync_completed:
             integration.initial_sync_completed = True
             logger.info(f"[Sync] Initial sync completed for integration {integration_id}")
@@ -677,7 +694,7 @@ async def sync_crm_chats_task(integration_id: int):
                 new_count += 1
 
         integration.last_sync_at = datetime.utcnow()
-        integration.recordings_count = db.query(CRMRecording).filter(CRMRecording.integration_id == integration.id).count()
+        integration.recordings_count = _count_recordings(db, integration.id)
         db.commit()
 
         if new_count > 0:
