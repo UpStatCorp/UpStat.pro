@@ -15,7 +15,10 @@ import os
 import pytest
 from cryptography.fernet import Fernet
 
-os.environ.setdefault("DATABASE_URL", "postgresql://unused:unused@localhost/unused")
+# Присваиваем, а не setdefault: CI задаёт DATABASE_URL=sqlite:///, который
+# app/database.py отвергает на импорте. Подключения по этому URL не будет —
+# create_engine ленивый, а тесты работают на своём SQLite-движке.
+os.environ["DATABASE_URL"] = "postgresql://unused:unused@localhost/unused"
 os.environ.setdefault("CRM_ENCRYPTION_KEY", Fernet.generate_key().decode())
 
 import services.crm_service as crm_service
