@@ -589,13 +589,17 @@ function updateSyncUI(d) {
     if (er.leads) parts.push('лидов: ' + er.leads);
     if (er.contacts) parts.push('контактов: ' + er.contacts);
     if (er.companies) parts.push('компаний: ' + er.companies);
-    if (er.linked) parts.push('привязано: ' + er.linked);
+    if (er.linking) parts.push('привязано: ' + er.linking);
     detail.textContent = parts.length > 0 ? parts.join(', ') : 'Этап ' + (d.stage_step || 1) + ' из ' + (d.stage_total || 8);
   } else if (d.phase === 'done') {
-    // entity_support приходит с бэкенда: 'full' — все применимые стадии
-    // отработали, 'partial' — часть упала, 'none' — для этой CRM сущности
-    // не синхронизируются вовсе. Раньше все три показывались одинаково
-    // зелёной галочкой, и пустой результат читался как успех.
+    // entity_support приходит с бэкенда и различает четыре исхода:
+    //   'full'     — синхронизировано всё;
+    //   'limited'  — запущенное прошло, но часть сущностей эта CRM не умеет
+    //                (не сбой, повтор не поможет);
+    //   'partial'  — часть стадий упала (сбой, повтор имеет смысл);
+    //   'none'     — для этой CRM сущности не синхронизируются вовсе.
+    // Раньше все четыре показывались зелёной галочкой, и пустой результат
+    // читался как успех.
     const support = d.entity_support || 'full';
     const neutral = support !== 'full';
     icon.innerHTML = neutral
@@ -606,24 +610,32 @@ function updateSyncUI(d) {
 
     const er = d.entity_results || {};
     const saved = d.saved || 0;
+    // Счётчик есть только у выполненной стадии: отсутствие ключа означает
+    // «стадия не выполнялась», а не ноль сущностей.
+    const num = (v) => (typeof v === 'number' ? v : 0);
 
     if (support === 'none') {
       title.textContent = 'Записи звонков загружены';
-      desc.textContent = 'Загружено новых записей: ' + saved + '. Синхронизация сделок '
-        + 'и контактов для amoCRM пока не поддерживается — анализ звонков работает, '
-        + 'оценка вероятности сделки будет недоступна.';
+      desc.textContent = 'Загружено новых записей: ' + saved
+        + '. Синхронизация сделок и контактов для этой CRM не поддерживается.';
     } else if (support === 'partial') {
       const failed = d.failed_stages || [];
       title.textContent = 'Синхронизация завершена частично';
       desc.textContent = 'Синхронизация завершена частично. Не удалось загрузить: '
         + failed.join(', ') + '. Попробуйте запустить синхронизацию повторно.';
+    } else if (support === 'limited') {
+      title.textContent = 'Синхронизация завершена';
+      desc.textContent = 'Загружено: ' + num(er.deals) + ' сделок, '
+        + num(er.contacts) + ' контактов, ' + num(er.companies) + ' компаний. '
+        + 'Неразобранные заявки, товары и задачи не синхронизируются — '
+        + 'на аналитику по сделкам это не влияет.';
     } else {
       title.textContent = 'Синхронизация завершена';
       const parts = [];
       if (saved > 0) parts.push(saved + ' новых записей');
       if (er.deals) parts.push(er.deals + ' сделок');
       if (er.contacts) parts.push(er.contacts + ' контактов');
-      if (er.linked) parts.push(er.linked + ' привязок');
+      if (er.linking) parts.push(er.linking + ' привязок');
       desc.textContent = parts.length > 0 ? parts.join(', ') : 'Все данные актуальны';
     }
 
