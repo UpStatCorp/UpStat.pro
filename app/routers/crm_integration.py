@@ -851,15 +851,20 @@ def _entity_support(stage_status: dict) -> str:
     Сводка по стадиям синхронизации сущностей для показа пользователю.
 
     "none"    — ни одна стадия не применима к этому типу CRM;
-    "partial" — часть стадий упала;
-    "full"    — все применимые стадии отработали.
+    "partial" — часть стадий упала (сбой, имеет смысл повторить);
+    "limited" — все запущенные стадии прошли, но часть сущностей эта CRM
+                не поддерживает (не сбой, повтор не поможет);
+    "full"    — синхронизировано всё.
     """
     if not stage_status:
         return "none"
-    if all(st == STAGE_UNSUPPORTED for st in stage_status.values()):
+    values = list(stage_status.values())
+    if all(st == STAGE_UNSUPPORTED for st in values):
         return "none"
-    if any(st == STAGE_FAILED for st in stage_status.values()):
+    if any(st == STAGE_FAILED for st in values):
         return "partial"
+    if any(st == STAGE_UNSUPPORTED for st in values):
+        return "limited"
     return "full"
 
 

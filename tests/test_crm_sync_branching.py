@@ -44,8 +44,16 @@ def test_bitrix24_keeps_all_stages():
     assert [name for name, _ in _stages_for("bitrix24_webhook")] == list(_ENTITY_STAGE_NAMES)
 
 
-def test_amocrm_has_no_entity_stages():
-    assert _stages_for("amocrm") == []
+def test_amocrm_has_its_own_stages():
+    """
+    У amoCRM свой набор: сделки, контакты, компании и привязка. Лидов,
+    товаров и активностей у неё нет — эти стадии не запускаются.
+    """
+    names = [name for name, _ in _stages_for("amocrm")]
+    assert names == ["deals", "contacts", "companies", "linking"]
+    assert "leads" not in names
+    assert "activities" not in names
+    assert "products" not in names
 
 
 def test_unknown_crm_type_is_explicit_error():
@@ -57,15 +65,26 @@ def test_unknown_crm_type_is_explicit_error():
 # ── C. Честный результат ─────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_amocrm_result_says_unsupported_not_zero():
+async def test_amocrm_marks_missing_entities_unsupported(monkeypatch):
     """
-    Для amoCRM в результате не должно быть счётчиков: ноль читается как
-    «сущностей нет». Вместо них — статус unsupported по каждой стадии.
+    Выполненные стадии дают счётчик, а сущности, которых у amoCRM нет,
+    помечены unsupported — не нулями, которые читаются как «данных нет».
     """
+    async def _count(service, db, integration_id):
+        return 3
+
+    monkeypatch.setattr(crm_service, "_amocrm_stages",
+                        lambda: [("deals", _count), ("contacts", _count),
+                                 ("companies", _count), ("linking", _count)])
+
     results = await full_crm_sync(_StubService("amocrm"), db=None, integration_id=1)
 
-    assert results["stages"] == {n: STAGE_UNSUPPORTED for n in _ENTITY_STAGE_NAMES}
-    assert [k for k in results if k != "stages"] == [], "счётчиков быть не должно"
+    assert results["deals"] == 3
+    assert results["stages"]["deals"] == "ok"
+    assert results["stages"]["leads"] == STAGE_UNSUPPORTED
+    assert results["stages"]["products"] == STAGE_UNSUPPORTED
+    assert results["stages"]["activities"] == STAGE_UNSUPPORTED
+    assert "leads" not in results, "у неподдерживаемой стадии счётчика быть не должно"
 
 
 @pytest.mark.asyncio
@@ -83,8 +102,9 @@ async def test_failed_stage_has_status_but_no_count(monkeypatch):
     results = await full_crm_sync(_StubService("bitrix24"), db=None, integration_id=1)
 
     assert results["deals"] == 7
-    assert results["stages"] == {"deals": "ok", "leads": "failed"}
-    assert "leads" not in results
+    assert results["stages"]["deals"] == "ok"
+    assert results["stages"]["leads"] == "failed"
+    assert "leads" not in results, "упавшая стадия не должна выдавать себя за ноль"
 
 
 # ── D. Склейка base_url и endpoint ───────────────────────────────────────
@@ -149,3 +169,9 @@ def test_entity_support_summary():
     assert _entity_support({n: STAGE_UNSUPPORTED for n in _ENTITY_STAGE_NAMES}) == "none"
     assert _entity_support({"deals": "ok", "leads": "failed"}) == "partial"
     assert _entity_support({"deals": "ok", "leads": "ok"}) == "full"
+    # Часть сущностей CRM не поддерживает: это не сбой, повтор не поможет.
+    assert _entity_support({"deals": "ok", "leads": STAGE_UNSUPPORTED}) == "limited"
+    # Сбой важнее ограничения: его показываем в первую очередь.
+    assert _entity_support(
+        {"deals": "failed", "leads": STAGE_UNSUPPORTED}
+    ) == "partial"

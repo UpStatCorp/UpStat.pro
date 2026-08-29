@@ -2242,9 +2242,382 @@ async def sync_crm_activities(service: CRMService, db: Session, integration_id: 
 # гасились в except и пользователь видел успех — см. STAGE_UNSUPPORTED ниже.
 # Имена стадий в порядке выполнения — отдельно от функций, чтобы их можно было
 # перечислить, не вызывая построение списка.
+# ── amoCRM: синхронизация сущностей ──────────────────────────────────────
+#
+# Отдельный набор функций, а не адаптация bitrix-овских: у amoCRM другие
+# эндпоинты (/api/v4/*), другая пагинация (page/limit вместо start) и другая
+# модель — «lead» здесь означает сделку, а не лид.
+
+# Зарезервированные статусы amoCRM. Одинаковы во ВСЕХ воронках аккаунта.
+AMOCRM_STATUS_WON = 142
+AMOCRM_STATUS_LOST = 143
+
+# Размер страницы: максимум, который отдаёт amoCRM за один запрос.
+_AMOCRM_PAGE_LIMIT = 250
+
+
+def _amocrm_outcome(status_id) -> tuple:
+    """
+    Правило закрытия сделки amoCRM → (closed, is_won).
+
+    У amoCRM НЕТ поля «сделка закрыта» — в отличие от Bitrix24 с его CLOSED=Y.
+    Закрытость выражена двумя зарезервированными статусами, одинаковыми во всех
+    воронках: 142 «успешно реализовано» и 143 «закрыто и не реализовано». Любой
+    другой статус означает, что сделка в работе.
+
+    Это правило, а не перенос поля, и на нём держится вся CRM-аналитика:
+    win-rate, conversion и cycle фильтруют по closed/is_won.
+
+    Для открытой сделки is_won = None, а не False: «ещё не выиграна» и
+    «проиграна» — разные вещи, и аналитика считает выигрыши по is_won == True.
+    """
+    sid = _safe_int(status_id)
+    if sid == AMOCRM_STATUS_WON:
+        return True, True
+    if sid == AMOCRM_STATUS_LOST:
+        return True, False
+    return False, None
+
+
+def _amocrm_ts(val) -> Optional[datetime]:
+    """Unix-таймстамп amoCRM → datetime. Ноль и None означают «нет значения»."""
+    ts = _safe_int(val)
+    if not ts:
+        return None
+    try:
+        return datetime.fromtimestamp(ts)
+    except (ValueError, OSError, OverflowError):
+        return None
+
+
+def _amocrm_field(item: Dict[str, Any], code: str) -> Optional[str]:
+    """
+    Первое значение пользовательского поля по коду (PHONE, EMAIL).
+
+    Телефон и почта у amoCRM лежат не атрибутами объекта, а в
+    custom_fields_values — там же, где произвольные поля клиента.
+    """
+    for field in item.get("custom_fields_values") or []:
+        if field.get("field_code") == code:
+            values = field.get("values") or []
+            if values:
+                value = values[0].get("value")
+                return str(value) if value is not None else None
+    return None
+
+
+def _amocrm_embedded_id(item: Dict[str, Any], key: str) -> Optional[int]:
+    """
+    ID связанной сущности из _embedded: основной контакт или компания.
+
+    У сделки может быть несколько контактов; основной помечен is_main.
+    Если пометки нет — берём первый, как это делает интерфейс amoCRM.
+    """
+    items = ((item.get("_embedded") or {}).get(key)) or []
+    if not items:
+        return None
+    for linked in items:
+        if linked.get("is_main"):
+            return _safe_int(linked.get("id"))
+    return _safe_int(items[0].get("id"))
+
+
+async def _amocrm_pages(service: CRMService, endpoint: str, entity_key: str,
+                        params: Optional[Dict[str, Any]] = None):
+    """
+    Постраничный обход коллекции amoCRM.
+
+    Пустой ответ (204/без _embedded) — законный признак конца выборки,
+    а не ошибка: amoCRM так отвечает на страницу за последней.
+    """
+    page = 1
+    while True:
+        page_params = dict(params or {})
+        page_params.update({"limit": _AMOCRM_PAGE_LIMIT, "page": page})
+        data = await service._make_api_request(endpoint, params=page_params)
+        if not data or "_embedded" not in data:
+            return
+        items = (data["_embedded"] or {}).get(entity_key) or []
+        if not items:
+            return
+        yield items
+        if len(items) < _AMOCRM_PAGE_LIMIT:
+            return
+        page += 1
+
+
+async def _amocrm_user_names(service: CRMService) -> Dict[int, str]:
+    """
+    Справочник id → имя ответственного, один раз на прогон синхронизации.
+
+    Без него каждая сделка требовала бы своего запроса к /users: именно так
+    устроена текущая выборка записей звонков, и она стоит ~3.5 минуты на
+    227 записей.
+    """
+    names: Dict[int, str] = {}
+    async for users in _amocrm_pages(service, "/users", "users"):
+        for user in users:
+            uid = _safe_int(user.get("id"))
+            if uid is None:
+                continue
+            name = (user.get("name") or "").strip()
+            if not name:
+                name = " ".join(
+                    part for part in (user.get("first_name"), user.get("last_name")) if part
+                ).strip()
+            if name:
+                names[uid] = name
+    return names
+
+
+async def _amocrm_statuses(service: CRMService) -> Dict[tuple, Dict[str, Any]]:
+    """
+    Справочник (pipeline_id, status_id) → названия воронки и статуса.
+
+    Ключ составной: статусы 142/143 присутствуют в КАЖДОЙ воронке, поэтому
+    словарь по одному status_id склеил бы разные воронки в одну.
+
+    Всё приходит одним запросом: /leads/pipelines отдаёт воронки вместе со
+    статусами в _embedded.
+    """
+    result: Dict[tuple, Dict[str, Any]] = {}
+    data = await service._make_api_request("/leads/pipelines")
+    pipelines = ((data or {}).get("_embedded") or {}).get("pipelines") or []
+    for pipeline in pipelines:
+        pid = _safe_int(pipeline.get("id"))
+        pname = pipeline.get("name") or ""
+        statuses = ((pipeline.get("_embedded") or {}).get("statuses")) or []
+        for status in statuses:
+            sid = _safe_int(status.get("id"))
+            if pid is None or sid is None:
+                continue
+            result[(pid, sid)] = {
+                "status_name": status.get("name") or "",
+                "pipeline_name": pname,
+            }
+    return result
+
+
+async def sync_amocrm_deals(service: CRMService, db: Session, integration_id: int) -> int:
+    """
+    Синхронизировать сделки amoCRM (/api/v4/leads).
+
+    В приоритете шесть полей, которые читает CRM-аналитика: closed, is_won,
+    close_date, opportunity, created_at, assigned_by_name. Остальные
+    заполняются попутно и ни на что не влияют, если пусты.
+    """
+    user_names = await _amocrm_user_names(service)
+    statuses = await _amocrm_statuses(service)
+
+    count = 0
+    # with=contacts,companies — связи приходят вместе со сделкой, иначе
+    # понадобился бы отдельный запрос на каждую.
+    async for items in _amocrm_pages(service, "/leads", "leads",
+                                     params={"with": "contacts,companies"}):
+        for item in items:
+            amo_id = _safe_int(item.get("id"))
+            if amo_id is None:
+                continue
+            deal = db.query(CRMDeal).filter(
+                CRMDeal.bitrix_id == amo_id,
+                CRMDeal.integration_id == integration_id,
+            ).first()
+            if not deal:
+                deal = CRMDeal(bitrix_id=amo_id, integration_id=integration_id)
+                db.add(deal)
+
+            pipeline_id = _safe_int(item.get("pipeline_id"))
+            status_id = _safe_int(item.get("status_id"))
+            names = statuses.get((pipeline_id, status_id), {})
+
+            deal.title = item.get("name")
+            deal.stage_id = str(status_id) if status_id is not None else None
+            deal.stage_name = names.get("status_name")
+            deal.category_id = pipeline_id
+            deal.category_name = names.get("pipeline_name")
+            deal.opportunity = _safe_float(item.get("price"))
+            deal.closed, deal.is_won = _amocrm_outcome(status_id)
+            deal.close_date = _amocrm_ts(item.get("closed_at"))
+            deal.created_at = _amocrm_ts(item.get("created_at"))
+            deal.updated_at = _amocrm_ts(item.get("updated_at"))
+            deal.assigned_by_id = _safe_int(item.get("responsible_user_id"))
+            deal.assigned_by_name = user_names.get(deal.assigned_by_id)
+            deal.contact_id = _amocrm_embedded_id(item, "contacts")
+            deal.company_id = _amocrm_embedded_id(item, "companies")
+            deal.crm_metadata_json = json.dumps(item, ensure_ascii=False, default=str)
+            deal.synced_at = datetime.utcnow()
+            count += 1
+        db.commit()
+
+    logger.info(f"[AmoCRM Sync] deals: {count}")
+    return count
+
+
+async def sync_amocrm_contacts(service: CRMService, db: Session, integration_id: int) -> int:
+    """Синхронизировать контакты amoCRM (/api/v4/contacts)."""
+    user_names = await _amocrm_user_names(service)
+
+    count = 0
+    async for items in _amocrm_pages(service, "/contacts", "contacts",
+                                     params={"with": "companies"}):
+        for item in items:
+            amo_id = _safe_int(item.get("id"))
+            if amo_id is None:
+                continue
+            contact = db.query(CRMContact).filter(
+                CRMContact.bitrix_id == amo_id,
+                CRMContact.integration_id == integration_id,
+            ).first()
+            if not contact:
+                contact = CRMContact(bitrix_id=amo_id, integration_id=integration_id)
+                db.add(contact)
+
+            contact.name = item.get("first_name") or item.get("name")
+            contact.last_name = item.get("last_name")
+            contact.full_name = item.get("name")
+            contact.phone = _amocrm_field(item, "PHONE")
+            contact.email = _amocrm_field(item, "EMAIL")
+            contact.company_id = _amocrm_embedded_id(item, "companies")
+            contact.assigned_by_id = _safe_int(item.get("responsible_user_id"))
+            contact.assigned_by_name = user_names.get(contact.assigned_by_id)
+            contact.created_at = _amocrm_ts(item.get("created_at"))
+            contact.updated_at = _amocrm_ts(item.get("updated_at"))
+            contact.crm_metadata_json = json.dumps(item, ensure_ascii=False, default=str)
+            contact.synced_at = datetime.utcnow()
+            count += 1
+        db.commit()
+
+    logger.info(f"[AmoCRM Sync] contacts: {count}")
+    return count
+
+
+async def sync_amocrm_companies(service: CRMService, db: Session, integration_id: int) -> int:
+    """Синхронизировать компании amoCRM (/api/v4/companies)."""
+    user_names = await _amocrm_user_names(service)
+
+    count = 0
+    async for items in _amocrm_pages(service, "/companies", "companies"):
+        for item in items:
+            amo_id = _safe_int(item.get("id"))
+            if amo_id is None:
+                continue
+            company = db.query(CRMCompany).filter(
+                CRMCompany.bitrix_id == amo_id,
+                CRMCompany.integration_id == integration_id,
+            ).first()
+            if not company:
+                company = CRMCompany(bitrix_id=amo_id, integration_id=integration_id)
+                db.add(company)
+
+            company.title = item.get("name")
+            company.phone = _amocrm_field(item, "PHONE")
+            company.email = _amocrm_field(item, "EMAIL")
+            company.web = _amocrm_field(item, "WEB")
+            company.assigned_by_id = _safe_int(item.get("responsible_user_id"))
+            company.assigned_by_name = user_names.get(company.assigned_by_id)
+            company.created_at = _amocrm_ts(item.get("created_at"))
+            company.updated_at = _amocrm_ts(item.get("updated_at"))
+            company.crm_metadata_json = json.dumps(item, ensure_ascii=False, default=str)
+            company.synced_at = datetime.utcnow()
+            count += 1
+        db.commit()
+
+    logger.info(f"[AmoCRM Sync] companies: {count}")
+    return count
+
+
+async def link_amocrm_recordings_to_entities(service: CRMService, db: Session,
+                                             integration_id: int) -> int:
+    """
+    Привязать записи звонков amoCRM к сделкам и контактам.
+
+    Обращений к API здесь нет вообще. Записи из примечаний уже несут
+    entity_type ("leads"/"contacts") и entity_id — прямой внешний ключ на
+    сущность, его кладёт _get_recordings_from_notes.
+
+    Это НЕ адаптация link_recordings_to_entities_async: та читает
+    owner_type/owner_id с кодами Bitrix24 ("1" — лид, "2" — сделка) и при
+    их отсутствии идёт в crm.activity.get, которого у amoCRM нет.
+
+    Записи из /calls пока не привязываются: contact_id там запрашивается, но
+    в метаданные не попадает — отдельная задача.
+    """
+    recordings = db.query(CRMRecording).filter(
+        CRMRecording.integration_id == integration_id,
+        CRMRecording.deal_id.is_(None),
+        CRMRecording.contact_crm_id.is_(None),
+    ).all()
+
+    linked = 0
+    for rec in recordings:
+        if not rec.crm_metadata_json:
+            continue
+        try:
+            meta = (json.loads(rec.crm_metadata_json)
+                    if isinstance(rec.crm_metadata_json, str) else rec.crm_metadata_json)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(meta, dict):
+            continue
+
+        entity_type = meta.get("entity_type")
+        entity_id = _safe_int(meta.get("entity_id"))
+        if not entity_id:
+            continue
+
+        changed = False
+        if entity_type == "leads":
+            deal = db.query(CRMDeal).filter(
+                CRMDeal.bitrix_id == entity_id,
+                CRMDeal.integration_id == integration_id,
+            ).first()
+            if deal:
+                rec.deal_id = deal.id
+                changed = True
+                # Заодно контакт сделки, как это делает bitrix-ветка.
+                if deal.contact_id:
+                    contact = db.query(CRMContact).filter(
+                        CRMContact.bitrix_id == deal.contact_id,
+                        CRMContact.integration_id == integration_id,
+                    ).first()
+                    if contact:
+                        rec.contact_crm_id = contact.id
+        elif entity_type == "contacts":
+            contact = db.query(CRMContact).filter(
+                CRMContact.bitrix_id == entity_id,
+                CRMContact.integration_id == integration_id,
+            ).first()
+            if contact:
+                rec.contact_crm_id = contact.id
+                changed = True
+
+        if changed:
+            linked += 1
+
+    db.commit()
+    logger.info(f"[AmoCRM Sync] linked recordings: {linked}")
+    return linked
+
+
 _ENTITY_STAGE_NAMES = (
     "deals", "leads", "contacts", "companies", "products", "activities", "linking",
 )
+
+
+def _amocrm_stages() -> List[Any]:
+    """
+    Стадии для amoCRM.
+
+    Имена совпадают с bitrix-овскими: их знают _STAGE_LABELS и интерфейс.
+    Отсутствующие здесь стадии (leads, products, activities) остаются
+    unsupported — у amoCRM нет соответствующих сущностей, см. full_crm_sync.
+    """
+    return [
+        ("deals", sync_amocrm_deals),
+        ("contacts", sync_amocrm_contacts),
+        ("companies", sync_amocrm_companies),
+        ("linking", link_amocrm_recordings_to_entities),
+    ]
 
 
 def _bitrix24_stages() -> List[Any]:
@@ -2274,10 +2647,7 @@ def _stages_for(crm_type: str) -> List[Any]:
     нельзя — именно так неподдерживаемая CRM и выглядела успешной.
     """
     if crm_type == "amocrm":
-        # Для amoCRM синхронизация сущностей не реализована: записи звонков
-        # скачиваются отдельной задачей (sync_crm_recordings_task) и работают,
-        # а сделки/лиды/контакты требуют вызовов /api/v4/* — отдельная задача.
-        return []
+        return _amocrm_stages()
     elif crm_type in ("bitrix24", "bitrix24_webhook"):
         return _bitrix24_stages()
     else:
@@ -2304,14 +2674,12 @@ async def full_crm_sync(
     stages = _stages_for(crm_type)
 
     results: Dict[str, Any] = {}
-    stage_status: Dict[str, str] = {}
+    # Стартуем с «не поддерживается» по всем известным стадиям: то, что данная
+    # CRM не умеет, должно быть названо, а не пропущено молча. Выполненные
+    # стадии перезапишут свой статус ниже.
+    stage_status: Dict[str, str] = {name: STAGE_UNSUPPORTED for name in _ENTITY_STAGE_NAMES}
 
     if not stages:
-        # Ни одной применимой стадии: помечаем все известные как
-        # неподдерживаемые, чтобы вызывающий мог сказать это пользователем,
-        # а не показывать пустой успех.
-        for name in _ENTITY_STAGE_NAMES:
-            stage_status[name] = STAGE_UNSUPPORTED
         logger.info(
             f"[CRM Sync] Entity sync is not implemented for crm_type={crm_type}; "
             f"skipping all {len(_ENTITY_STAGE_NAMES)} stages"
