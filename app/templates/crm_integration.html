@@ -592,17 +592,41 @@ function updateSyncUI(d) {
     if (er.linked) parts.push('привязано: ' + er.linked);
     detail.textContent = parts.length > 0 ? parts.join(', ') : 'Этап ' + (d.stage_step || 1) + ' из ' + (d.stage_total || 8);
   } else if (d.phase === 'done') {
-    icon.innerHTML = '<svg viewBox="0 0 20 20" fill="#10b981" width="44" height="44"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>';
-    title.textContent = 'Синхронизация завершена';
+    // entity_support приходит с бэкенда: 'full' — все применимые стадии
+    // отработали, 'partial' — часть упала, 'none' — для этой CRM сущности
+    // не синхронизируются вовсе. Раньше все три показывались одинаково
+    // зелёной галочкой, и пустой результат читался как успех.
+    const support = d.entity_support || 'full';
+    const neutral = support !== 'full';
+    icon.innerHTML = neutral
+      ? '<svg viewBox="0 0 20 20" fill="#94a3b8" width="44" height="44"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/></svg>'
+      : '<svg viewBox="0 0 20 20" fill="#10b981" width="44" height="44"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>';
     prog.style.width = '100%';
-    prog.style.background = 'var(--success)';
+    prog.style.background = neutral ? '#94a3b8' : 'var(--success)';
+
     const er = d.entity_results || {};
-    const parts = [];
-    if (d.saved > 0) parts.push(d.saved + ' новых записей');
-    if (er.deals) parts.push(er.deals + ' сделок');
-    if (er.contacts) parts.push(er.contacts + ' контактов');
-    if (er.linked) parts.push(er.linked + ' привязок');
-    desc.textContent = parts.length > 0 ? parts.join(', ') : 'Все данные актуальны';
+    const saved = d.saved || 0;
+
+    if (support === 'none') {
+      title.textContent = 'Записи звонков загружены';
+      desc.textContent = 'Загружено новых записей: ' + saved + '. Синхронизация сделок '
+        + 'и контактов для amoCRM пока не поддерживается — анализ звонков работает, '
+        + 'оценка вероятности сделки будет недоступна.';
+    } else if (support === 'partial') {
+      const failed = d.failed_stages || [];
+      title.textContent = 'Синхронизация завершена частично';
+      desc.textContent = 'Синхронизация завершена частично. Не удалось загрузить: '
+        + failed.join(', ') + '. Попробуйте запустить синхронизацию повторно.';
+    } else {
+      title.textContent = 'Синхронизация завершена';
+      const parts = [];
+      if (saved > 0) parts.push(saved + ' новых записей');
+      if (er.deals) parts.push(er.deals + ' сделок');
+      if (er.contacts) parts.push(er.contacts + ' контактов');
+      if (er.linked) parts.push(er.linked + ' привязок');
+      desc.textContent = parts.length > 0 ? parts.join(', ') : 'Все данные актуальны';
+    }
+
     detail.textContent = d.recordings_count ? 'Всего записей: ' + d.recordings_count : '';
     doneBtn.style.display = 'inline-flex';
     doneBtn.textContent = 'Готово';

@@ -21,6 +21,7 @@ from models import (
 from services.crm_service import (
     CRMServiceFactory, AmoCRMService, Bitrix24Service, Bitrix24WebhookService,
     CRMCredentialsError, full_crm_sync, sync_crm_deals, sync_crm_leads,
+    STAGE_FAILED, STAGE_UNSUPPORTED,
 )
 from services.pipeline import run_pipeline, run_pipeline_from_raw_text
 from services.queue import use_queue, enqueue_analyze_recording, enqueue_batch
@@ -363,7 +364,7 @@ async def sync_crm_recordings_task(integration_id: int):
             logger.warning(f"[Sync] Integration {integration_id} not found in DB")
             return
         logger.info(f"[Sync] Creating service for {integration.crm_type}, domain={integration.crm_domain}")
-        service = CRMServiceFactory.create(integration)
+        service = CRMServiceFactory.create(integration, db)
         status["phase"] = "fetching"
         is_initial = not integration.initial_sync_completed
         logger.info(f"[Sync] Calling get_recordings (initial={is_initial})...")
@@ -480,7 +481,7 @@ async def sync_crm_chats_task(integration_id: int):
         integration = db.query(CRMIntegration).filter(CRMIntegration.id == integration_id).first()
         if not integration:
             return
-        service = CRMServiceFactory.create(integration)
+        service = CRMServiceFactory.create(integration, db)
         
         if not hasattr(service, 'get_chats'):
             logger.warning(f"Service for integration {integration_id} does not support chats")
@@ -833,7 +834,7 @@ async def _delayed_entity_sync(integration_id: int, entity: str, delay: int = 5)
         integration = db.query(CRMIntegration).get(integration_id)
         if not integration:
             return
-        service = CRMServiceFactory.create(integration)
+        service = CRMServiceFactory.create(integration, db)
         if entity == "deals":
             await sync_crm_deals(service, db, integration_id)
         elif entity == "leads":
@@ -843,6 +844,23 @@ async def _delayed_entity_sync(integration_id: int, entity: str, delay: int = 5)
         logger.error(f"[Webhook] Entity sync error ({entity}): {e}")
     finally:
         db.close()
+
+
+def _entity_support(stage_status: dict) -> str:
+    """
+    Сводка по стадиям синхронизации сущностей для показа пользователю.
+
+    "none"    — ни одна стадия не применима к этому типу CRM;
+    "partial" — часть стадий упала;
+    "full"    — все применимые стадии отработали.
+    """
+    if not stage_status:
+        return "none"
+    if all(st == STAGE_UNSUPPORTED for st in stage_status.values()):
+        return "none"
+    if any(st == STAGE_FAILED for st in stage_status.values()):
+        return "partial"
+    return "full"
 
 
 _STAGE_LABELS = {
@@ -907,9 +925,19 @@ async def _run_full_sync(integration_id: int):
                 stage_label=_STAGE_LABELS.get(stage_name, stage_name),
             )
 
-        service = CRMServiceFactory.create(integration)
+        service = CRMServiceFactory.create(integration, db)
         results = await full_crm_sync(service, db, integration_id, on_stage=_on_stage)
         status["entity_results"] = results
+
+        # Статусы стадий из full_crm_sync: ok / failed / unsupported. Нужны,
+        # чтобы отличить «сущностей нет» от «стадия упала» и от «эта CRM
+        # сущности не синхронизирует» — раньше все три давали ноль и
+        # показывались пользователю как успешная синхронизация.
+        stage_status = results.get("stages", {})
+        status["entity_support"] = _entity_support(stage_status)
+        status["failed_stages"] = [
+            _STAGE_LABELS.get(n, n) for n, st in stage_status.items() if st == STAGE_FAILED
+        ]
         logger.info(f"[CRM] Full sync complete for integration {integration_id}: {results}")
         total_recs = db.query(CRMRecording).filter(CRMRecording.integration_id == integration_id).count()
         status.update(
@@ -945,7 +973,7 @@ async def enable_webhook(integration_id: int, request: Request, db: Session = De
 async def _process_single_recording(db: Session, recording: CRMRecording):
     """Скачивает/обрабатывает запись (звонок или чат) и создаёт план тренировок"""
     integration = recording.integration
-    service = CRMServiceFactory.create(integration)
+    service = CRMServiceFactory.create(integration, db)
     
     is_chat = getattr(recording, 'record_type', 'call') == 'chat'
     
@@ -1300,7 +1328,7 @@ async def debug_crm_api(integration_id: int, request: Request, db: Session = Dep
     if not integration or not integration.is_active:
         raise HTTPException(404, "Интеграция не найдена или не активна")
 
-    service = CRMServiceFactory.create(integration)
+    service = CRMServiceFactory.create(integration, db)
     if not hasattr(service, "debug_api"):
         raise HTTPException(400, "Debug не поддерживается для этого типа CRM")
 

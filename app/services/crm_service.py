@@ -4,6 +4,7 @@ import json
 import logging
 import asyncio
 import httpx
+from contextlib import contextmanager
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 from urllib.parse import urlencode, urlparse, parse_qs
@@ -96,8 +97,16 @@ def assert_encryption_key_valid() -> None:
 class CRMService:
     """Базовый класс для интеграции с CRM системами"""
     
-    def __init__(self, integration: CRMIntegration):
+    def __init__(self, integration: CRMIntegration, db: Optional[Session] = None):
+        """
+        ``db`` — сессия, которой принадлежит ``integration``.
+
+        Нужна для сохранения обновлённых токенов: объект пишется в БД только
+        той сессией, в identity map которой он лежит. Без неё сохранение
+        уходило в никуда — см. ``save_tokens``.
+        """
         self.integration = integration
+        self.db = db
         self.access_token = self._decrypt_token(integration.access_token) if integration.access_token else None
         self.refresh_token = self._decrypt_token(integration.refresh_token) if integration.refresh_token else None
     
@@ -125,19 +134,61 @@ class CRMService:
             ) from exc
     
     def save_tokens(self, db: Session, access_token: str, refresh_token: Optional[str] = None, expires_in: Optional[int] = None):
-        """Сохраняет токены в БД"""
-        self.integration.access_token = self._encrypt_token(access_token)
+        """
+        Сохраняет токены в БД.
+
+        Пишем в объект, принадлежащий ИМЕННО ``db``. Раньше атрибуты ставились
+        на ``self.integration`` независимо от того, чья это сессия: если объект
+        загрузила другая сессия, ``db.commit()`` для него — no-op (SQLAlchemy
+        пишет только объекты из своей identity map), и обновлённый токен молча
+        не сохранялся. ``merge`` возвращает копию, управляемую этой сессией.
+        """
+        target = self.integration if self.integration in db else db.merge(self.integration)
+
+        target.access_token = self._encrypt_token(access_token)
+        # Новый refresh_token приходит не всегда: часть CRM присылает его только
+        # при первичной выдаче и молчит при обновлении. Затирать прежний в этом
+        # случае нельзя. У amoCRM refresh одноразовый — прежний уже погашен на
+        # стороне CRM, и если новый не сохранить, интеграция умирает до ручного
+        # переподключения.
         if refresh_token:
-            self.integration.refresh_token = self._encrypt_token(refresh_token)
+            target.refresh_token = self._encrypt_token(refresh_token)
         if expires_in:
-            self.integration.token_expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
-        self.integration.updated_at = datetime.utcnow()
+            target.token_expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
+        target.updated_at = datetime.utcnow()
         db.commit()
-        
-        # Обновляем локальные токены
+
+        # Дальше работаем с тем объектом, который реально связан с БД.
+        self.integration = target
+
+        # Обновляем локальные токены. refresh_token — по тому же правилу, что и
+        # в БД: пустой ответ не должен обнулять рабочий токен в памяти.
         self.access_token = access_token
-        self.refresh_token = refresh_token
+        if refresh_token:
+            self.refresh_token = refresh_token
     
+    @contextmanager
+    def _token_refresh_session(self):
+        """
+        Сессия для обновления токенов.
+
+        Отдаёт сессию-владельца ``self.integration``, если она известна: только
+        её ``commit()`` реально запишет новые токены. Закрывать её нельзя —
+        она принадлежит вызывающему коду и нужна ему дальше.
+
+        Если владелец не передан (сервис создан без ``db``), открывается своя
+        сессия; корректность сохранения в этом случае обеспечивает ``merge``
+        внутри ``save_tokens``.
+        """
+        if self.db is not None:
+            yield self.db
+            return
+        db = SessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
     async def get_recordings(self, db: Session, limit: int = 100,
                              initial_sync_completed: bool = False,
                              last_sync_at: Optional[datetime] = None) -> List[Dict[str, Any]]:
@@ -155,8 +206,8 @@ class AmoCRMService(CRMService):
     OAUTH_URL = "https://www.amocrm.ru/oauth"
     API_VERSION = "/api/v4"
     
-    def __init__(self, integration: CRMIntegration):
-        super().__init__(integration)
+    def __init__(self, integration: CRMIntegration, db: Optional[Session] = None):
+        super().__init__(integration, db)
         self.base_url = f"https://{integration.crm_domain}.amocrm.ru{self.API_VERSION}" if integration.crm_domain else None
     
     def get_oauth_url(self, client_id: str, redirect_uri: str, state: str) -> str:
@@ -230,7 +281,11 @@ class AmoCRMService(CRMService):
             "Content-Type": "application/json"
         }
         
-        url = f"{self.base_url}{endpoint}"
+        # Ровно один слеш на стыке независимо от того, как передан endpoint.
+        # Внутренние вызовы передают его со слешем ("/calls"), общий код
+        # синхронизации — без ("crm.activity.get"); простая склейка давала
+        # ".../api/v4crm.activity.get" и гарантированный 404.
+        url = f"{self.base_url.rstrip('/')}/{endpoint.lstrip('/')}"
         
         async with httpx.AsyncClient() as client:
             try:
@@ -240,16 +295,13 @@ class AmoCRMService(CRMService):
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 401:
                     # Токен истек, пробуем обновить
-                    db = SessionLocal()
-                    try:
+                    with self._token_refresh_session() as db:
                         if await self.refresh_access_token(db):
                             # Повторяем запрос с новым токеном
                             headers["Authorization"] = f"Bearer {self.access_token}"
                             response = await client.request(method, url, headers=headers, **kwargs)
                             response.raise_for_status()
                             return response.json()
-                    finally:
-                        db.close()
                 logger.error(f"API request failed: {e}")
                 return None
     
@@ -555,8 +607,8 @@ class AmoCRMService(CRMService):
 class Bitrix24WebhookService(CRMService):
     """Сервис для интеграции с Bitrix24 через вебхуки (входящие вебхуки)"""
     
-    def __init__(self, integration: CRMIntegration):
-        super().__init__(integration)
+    def __init__(self, integration: CRMIntegration, db: Optional[Session] = None):
+        super().__init__(integration, db)
         # Для вебхука токен хранится в access_token, а базовый URL извлекается из него
         if integration.access_token:
             webhook_url = self._decrypt_token(integration.access_token)
@@ -1348,8 +1400,8 @@ class Bitrix24Service(CRMService):
     
     OAUTH_URL = "https://oauth.bitrix.info/oauth/authorize/"
     
-    def __init__(self, integration: CRMIntegration):
-        super().__init__(integration)
+    def __init__(self, integration: CRMIntegration, db: Optional[Session] = None):
+        super().__init__(integration, db)
         self.base_url = f"https://{integration.crm_domain}/rest" if integration.crm_domain else None
     
     def get_oauth_url(self, client_id: str, redirect_uri: str, state: str) -> str:
@@ -1453,8 +1505,7 @@ class Bitrix24Service(CRMService):
                     if "error" in data:
                         err_code = data.get("error", "")
                         if err_code in ["expired_token", "invalid_token"]:
-                            db = SessionLocal()
-                            try:
+                            with self._token_refresh_session() as db:
                                 if await self.refresh_access_token(db):
                                     request_params["auth"] = self.access_token
                                     if has_complex_params:
@@ -1463,8 +1514,6 @@ class Bitrix24Service(CRMService):
                                         response = await client.get(url, params=request_params)
                                     response.raise_for_status()
                                     return response.json()
-                            finally:
-                                db.close()
                         if err_code in ("QUERY_LIMIT_EXCEEDED", "OPERATION_TIME_LIMIT"):
                             wait = 2 ** (attempt + 1)
                             logger.warning(f"[Bitrix24 OAuth] Rate limit on {method}, retry in {wait}s")
@@ -1760,11 +1809,8 @@ class Bitrix24Service(CRMService):
                             logger.warning(f"[Bitrix24 OAuth] Download attempt {attempt+1}: got HTML")
                             if attempt < 1:
                                 # Попробуем обновить токен
-                                db = SessionLocal()
-                                try:
+                                with self._token_refresh_session() as db:
                                     await self.refresh_access_token(db)
-                                finally:
-                                    db.close()
                                 await asyncio.sleep(2)
                                 continue
                             break
@@ -2186,18 +2232,25 @@ async def sync_crm_activities(service: CRMService, db: Session, integration_id: 
     return count
 
 
-async def full_crm_sync(
-    service: CRMService,
-    db: Session,
-    integration_id: int,
-    on_stage: Optional[Any] = None,
-) -> Dict[str, int]:
-    """Полная синхронизация всех CRM-сущностей.
+# Стадии синхронизации сущностей по типам CRM.
+#
+# Все sync_crm_* и link_recordings_to_entities_async написаны под REST-методы
+# Bitrix24 (crm.deal.list, crm.activity.get и т. д.) и его модель данных
+# (числовой bitrix_id, OWNER_TYPE_ID). Для amoCRM не применима ни одна из них:
+# методов с такими именами у неё нет, а crm_record_id имеет вид
+# "leads_note_34219303_359851513". Раньше список стадий был общим, ошибки
+# гасились в except и пользователь видел успех — см. STAGE_UNSUPPORTED ниже.
+# Имена стадий в порядке выполнения — отдельно от функций, чтобы их можно было
+# перечислить, не вызывая построение списка.
+_ENTITY_STAGE_NAMES = (
+    "deals", "leads", "contacts", "companies", "products", "activities", "linking",
+)
 
-    ``on_stage`` — optional callback(stage_name, step_index, total_steps)
-    called before each stage so the caller can update external progress.
-    """
-    stages = [
+
+def _bitrix24_stages() -> List[Any]:
+    # Список строится в функции, а не в константе модуля: часть стадий
+    # (link_recordings_to_entities_async) определена ниже по файлу.
+    return [
         ("deals", sync_crm_deals),
         ("leads", sync_crm_leads),
         ("contacts", sync_crm_contacts),
@@ -2206,22 +2259,79 @@ async def full_crm_sync(
         ("activities", sync_crm_activities),
         ("linking", link_recordings_to_entities_async),
     ]
-    total = len(stages)
-    results: Dict[str, int] = {}
 
+STAGE_OK = "ok"
+STAGE_FAILED = "failed"
+STAGE_UNSUPPORTED = "unsupported"
+
+
+def _stages_for(crm_type: str) -> List[Any]:
+    """
+    Набор стадий синхронизации сущностей для типа CRM.
+
+    Явная цепочка по crm_type, как в CRMServiceFactory.create: тип известен
+    заранее, и подбирать стадии перебором «попробовать и поймать исключение»
+    нельзя — именно так неподдерживаемая CRM и выглядела успешной.
+    """
+    if crm_type == "amocrm":
+        # Для amoCRM синхронизация сущностей не реализована: записи звонков
+        # скачиваются отдельной задачей (sync_crm_recordings_task) и работают,
+        # а сделки/лиды/контакты требуют вызовов /api/v4/* — отдельная задача.
+        return []
+    elif crm_type in ("bitrix24", "bitrix24_webhook"):
+        return _bitrix24_stages()
+    else:
+        raise ValueError(f"Unsupported CRM type: {crm_type}")
+
+
+async def full_crm_sync(
+    service: CRMService,
+    db: Session,
+    integration_id: int,
+    on_stage: Optional[Any] = None,
+) -> Dict[str, Any]:
+    """Полная синхронизация всех CRM-сущностей.
+
+    ``on_stage`` — optional callback(stage_name, step_index, total_steps)
+    called before each stage so the caller can update external progress.
+
+    Возвращает счётчики по выполненным стадиям плюс ключ ``stages`` — статус
+    каждой стадии (``ok`` / ``failed`` / ``unsupported``). Счётчик появляется
+    ТОЛЬКО у стадии со статусом ``ok``: раньше упавшая стадия писала 0, и ноль
+    от ошибки был неотличим от честного «сущностей нет».
+    """
+    crm_type = service.integration.crm_type
+    stages = _stages_for(crm_type)
+
+    results: Dict[str, Any] = {}
+    stage_status: Dict[str, str] = {}
+
+    if not stages:
+        # Ни одной применимой стадии: помечаем все известные как
+        # неподдерживаемые, чтобы вызывающий мог сказать это пользователем,
+        # а не показывать пустой успех.
+        for name in _ENTITY_STAGE_NAMES:
+            stage_status[name] = STAGE_UNSUPPORTED
+        logger.info(
+            f"[CRM Sync] Entity sync is not implemented for crm_type={crm_type}; "
+            f"skipping all {len(_ENTITY_STAGE_NAMES)} stages"
+        )
+        results["stages"] = stage_status
+        return results
+
+    total = len(stages)
     for idx, (name, func) in enumerate(stages):
         if on_stage:
             on_stage(name, idx + 1, total)
         try:
-            if name == "linking":
-                results[name] = await func(service, db, integration_id)
-            else:
-                results[name] = await func(service, db, integration_id)
+            results[name] = await func(service, db, integration_id)
+            stage_status[name] = STAGE_OK
         except Exception as e:
             logger.error(f"[CRM Sync] {name} error: {e}")
-            results[name] = 0
+            stage_status[name] = STAGE_FAILED
 
-    logger.info(f"[CRM Sync] Full sync done: {results}")
+    results["stages"] = stage_status
+    logger.info(f"[CRM Sync] Full sync done ({crm_type}): {results}")
     return results
 
 
@@ -2420,20 +2530,26 @@ class CRMServiceFactory:
     """Фабрика для создания сервисов CRM"""
     
     @staticmethod
-    def create(integration: CRMIntegration) -> CRMService:
-        """Создать сервис для конкретной CRM"""
+    def create(integration: CRMIntegration, db: Optional[Session] = None) -> CRMService:
+        """
+        Создать сервис для конкретной CRM.
+
+        ``db`` — сессия, которой принадлежит ``integration``. Передавать её
+        обязательно везде, где сервис может обновить токен: без неё
+        сохранение уходит в отдельную сессию (см. ``CRMService.save_tokens``).
+        """
         if integration.crm_type == "amocrm":
-            return AmoCRMService(integration)
+            return AmoCRMService(integration, db)
         elif integration.crm_type == "bitrix24":
             # Определяем тип подключения: OAuth или Webhook
             # Если есть refresh_token - это OAuth, иначе - Webhook
             if integration.refresh_token:
-                return Bitrix24Service(integration)
+                return Bitrix24Service(integration, db)
             else:
-                return Bitrix24WebhookService(integration)
+                return Bitrix24WebhookService(integration, db)
         elif integration.crm_type == "bitrix24_webhook":
             # Явно указан вебхук
-            return Bitrix24WebhookService(integration)
+            return Bitrix24WebhookService(integration, db)
         else:
             raise ValueError(f"Unsupported CRM type: {integration.crm_type}")
     

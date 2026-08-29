@@ -224,10 +224,20 @@ no-op: SQLAlchemy пишет только объекты из identity map св�
 **Стадия `linking` — 227 обречённых запросов, ~80 секунд впустую.**
 `link_recordings_to_entities_async` (`crm_service.py:2228`, докстринг
 буквально «запрос к Bitrix API crm.activity.get») для amoCRM делает
-`https://upstat.amocrm.ru/api/v4crm.activity.get?ID=leads_note_...` —
-без слеша между base_url и endpoint, метода `crm.activity.get` у amoCRM
-не существует, `crm_record_id` там вида `leads_note_…`, не числовой
-bitrix-id. Все 227 — 404.
+`https://upstat.amocrm.ru/api/v4crm.activity.get?ID=leads_note_...`.
+Все 227 — 404.
+
+**Уточнение 29.08.2026:** механизм здесь ДРУГОЙ, не тот, что у стадий
+выше. Вызов в `link_recordings_to_entities_async` идёт с именованным
+`params={"ID": ...}`, который у amo уходит в `**kwargs` и дальше в httpx
+как query-параметры — `AttributeError` не возникает, `method` остаётся
+`"GET"`. Ломается склейка `f"{self.base_url}{endpoint}"` в
+`AmoCRMService._make_api_request`: `endpoint="crm.activity.get"` передан
+без ведущего слеша, отсюда `…/api/v4crm.activity.get`. Диагноз через
+`AttributeError` верен только для `sync_crm_deals/leads/contacts/`
+`companies/activities` (позиционный вызов), но не для `linking`.
+Плюс метода `crm.activity.get` у amoCRM не существует, а `crm_record_id`
+там вида `leads_note_…`, не числовой bitrix-id.
 
 **Выборка записей** — отдельная неэффективность, 3 мин 39 сек на 227
 записей, не баг, но основная доля общего ожидания.
@@ -285,7 +295,9 @@ bitrix-id. Все 227 — 404.
 
 ### 15. Статус синхронизации CRM живёт в модульном словаре процесса
 
-`app/routers/crm_integration.py:280` — `_sync_status: dict = {}`. Бэкенд
+`app/routers/crm_integration.py:310` — `_sync_status: dict = {}` (в
+WORKAROUNDS.md указана строка 280, файл с тех пор сдвинулся; искать по
+имени). Бэкенд
 запускается с `WEB_CONCURRENCY=4` (`Dockerfile:41`), nginx без `ip_hash`:
 запуск синхронизации и опрос статуса попадают в разные воркеры. Словарь
 к тому же никогда не очищается.
