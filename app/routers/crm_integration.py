@@ -1,11 +1,13 @@
 import os
 import json
+import re
 import uuid
 import asyncio
 import httpx
 import logging
 from datetime import datetime, timedelta
 from typing import List, Optional
+from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, Request, HTTPException, BackgroundTasks, Form, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session, selectinload
@@ -46,6 +48,103 @@ BITRIX24_CLIENT_SECRET = os.getenv("BITRIX24_CLIENT_SECRET", "")
 BITRIX24_REDIRECT_URI = os.getenv("BITRIX24_REDIRECT_URI", "http://localhost:8000/crm/oauth/callback")
 
 MAX_BATCH_SIZE = 30
+
+# Зоны Bitrix24. Тот же allowlist, что в SSRF-проверке вебхук-подключения
+# ниже: два пути подключения одной CRM не должны понимать домен по-разному.
+_BITRIX24_HOST_RE = re.compile(
+    r"^[a-z0-9][a-z0-9\-]*\.bitrix24\.(ru|com|eu|de|fr|es|pl|in|ua|by|kz|ltd|site)$"
+)
+
+# У amoCRM base_url собирается как https://{crm_domain}.amocrm.ru, поэтому
+# в crm_domain должен лежать ТОЛЬКО поддомен.
+_AMOCRM_HOST_RE = re.compile(r"^([a-z0-9][a-z0-9\-]*)\.amocrm\.ru$")
+
+
+def _host_from_input(value: str) -> str:
+    """
+    Приводит ввод пользователя к голому хосту.
+
+    Принимает и домен, и URL целиком: в форму регулярно вставляют адрес
+    из адресной строки браузера.
+    """
+    raw = (value or "").strip().lower()
+    if "://" in raw:
+        raw = urlparse(raw).hostname or ""
+    return raw.strip("/").split("/")[0].split("?")[0]
+
+
+def _normalize_bitrix24_domain(value: str) -> str:
+    """
+    Хост портала Bitrix24 из пользовательского ввода.
+
+    Прежняя реализация делала
+    ``domain.replace(".bitrix24.ru", "").replace(".bitrix24.com", "")`` и затем
+    дописывала ``.bitrix24.ru``. Из 12 проверенных зон корректно
+    обрабатывалась одна: ``acme.bitrix24.kz`` превращался в
+    ``acme.bitrix24.kz.bitrix24.ru``, а ``acme.bitrix24.com`` — молча
+    в ``acme.bitrix24.ru``, то есть в ЧУЖОЙ портал.
+
+    Здесь хост сохраняется как есть и проверяется по allowlist. Ввод одного
+    имени портала без зоны по-прежнему достраивается до ``.bitrix24.ru`` —
+    это самый частый случай и единственный, где угадывание безопасно.
+    """
+    host = _host_from_input(value)
+    if not host:
+        raise HTTPException(400, "Домен Bitrix24 обязателен")
+    if "." not in host:
+        host = f"{host}.bitrix24.ru"
+    if not _BITRIX24_HOST_RE.match(host):
+        raise HTTPException(
+            400,
+            "Некорректный домен Bitrix24. Укажите адрес портала целиком, "
+            "например acme.bitrix24.ru или acme.bitrix24.kz.",
+        )
+    return host
+
+
+def _normalize_amocrm_domain(value: str) -> str:
+    """
+    Поддомен amoCRM из пользовательского ввода.
+
+    Нормализации у amoCRM не было вообще: ``crm_domain`` сохранялся как
+    введено, а ``CRMService`` строит ``https://{crm_domain}.amocrm.ru`` —
+    поэтому ввод полного домена давал ``acme.amocrm.ru.amocrm.ru``.
+
+    Зона ``.amocrm.com`` отклоняется явно, а не приводится к ``.ru``:
+    базовый URL жёстко собирается с ``.amocrm.ru``, и тихое приведение
+    отправило бы запросы на чужой аккаунт.
+    """
+    host = _host_from_input(value)
+    if not host:
+        raise HTTPException(400, "Домен AmoCRM обязателен")
+    if "." not in host:
+        return host
+    match = _AMOCRM_HOST_RE.match(host)
+    if not match:
+        raise HTTPException(
+            400,
+            "Некорректный домен AmoCRM. Укажите адрес аккаунта, "
+            "например acme.amocrm.ru или просто acme.",
+        )
+    return match.group(1)
+
+
+def _require_oauth_credentials(crm_label: str, client_id: str, client_secret: str) -> None:
+    """
+    OAuth-приложение должно быть настроено ДО создания интеграции.
+
+    Пустые креды не проверялись нигде: пользователь проходил форму,
+    в БД появлялась мёртвая запись, и он получал ссылку вида
+    ``/oauth/authorize?client_id=&...``, на которую CRM отвечала ошибкой.
+    На проде BITRIX24_CLIENT_ID и BITRIX24_CLIENT_SECRET пустые.
+    """
+    if not (client_id or "").strip() or not (client_secret or "").strip():
+        logger.error(f"OAuth credentials are not configured for {crm_label}")
+        raise HTTPException(
+            503,
+            f"Подключение {crm_label} сейчас недоступно: на сервере не настроено "
+            "OAuth-приложение. Обратитесь в поддержку.",
+        )
 
 
 @router.get("/crm", response_class=HTMLResponse)
@@ -89,9 +188,10 @@ async def connect_crm(crm_type: str, request: Request, db: Session = Depends(get
 
     if crm_type == "amocrm":
         form_data = await request.form()
-        domain = form_data.get("domain", "").strip()
-        if not domain:
-            raise HTTPException(400, "Домен AmoCRM обязателен")
+        # Проверяем креды до всякой записи в БД: иначе останется мёртвая
+        # интеграция, которую пользователю нечем оживить.
+        _require_oauth_credentials("AmoCRM", AMOCRM_CLIENT_ID, AMOCRM_CLIENT_SECRET)
+        domain = _normalize_amocrm_domain(form_data.get("domain", ""))
 
         existing = db.query(CRMIntegration).filter(
             CRMIntegration.user_id == user.id,
@@ -131,11 +231,9 @@ async def connect_crm(crm_type: str, request: Request, db: Session = Depends(get
 
     elif crm_type == "bitrix24":
         form_data = await request.form()
-        domain = form_data.get("domain", "").strip()
-        if not domain:
-            raise HTTPException(400, "Домен Bitrix24 обязателен")
-        domain = domain.replace(".bitrix24.ru", "").replace(".bitrix24.com", "")
-        full_domain = f"{domain}.bitrix24.ru"
+        _require_oauth_credentials("Bitrix24", BITRIX24_CLIENT_ID, BITRIX24_CLIENT_SECRET)
+        full_domain = _normalize_bitrix24_domain(form_data.get("domain", ""))
+        domain = full_domain
 
         existing = db.query(CRMIntegration).filter(
             CRMIntegration.user_id == user.id,
@@ -269,13 +367,28 @@ async def oauth_callback(
     # CRMCredentialsError отсюда уходил в 500 мимо всякой обработки.
     try:
         if integration.crm_type == "amocrm":
-            service = AmoCRMService(integration)
+            service = AmoCRMService(integration, db)
             client_id, client_secret, redirect_uri = AMOCRM_CLIENT_ID, AMOCRM_CLIENT_SECRET, AMOCRM_REDIRECT_URI
         elif integration.crm_type == "bitrix24":
-            service = Bitrix24Service(integration)
+            service = Bitrix24Service(integration, db)
             client_id, client_secret, redirect_uri = BITRIX24_CLIENT_ID, BITRIX24_CLIENT_SECRET, BITRIX24_REDIRECT_URI
         else:
             raise _UnsupportedCRM
+
+        # Интеграция могла быть создана до того, как переменные окружения
+        # опустели: без этой проверки обмен кода на токены уйдёт с пустым
+        # client_id и вернёт невнятную ошибку от CRM.
+        if not (client_id or "").strip() or not (client_secret or "").strip():
+            logger.error(
+                f"OAuth credentials are not configured for {integration.crm_type} "
+                f"(integration={integration.id})"
+            )
+            return HTMLResponse(
+                '<html><body><h2>Подключение недоступно</h2>'
+                '<p>На сервере не настроено OAuth-приложение для этой CRM. '
+                'Обратитесь в поддержку.</p><a href="/crm">Назад</a></body></html>',
+                status_code=503,
+            )
     except CRMCredentialsError as exc:
         logger.error(f"CRM credentials undecryptable (integration={integration.id}): {exc}")
         return HTMLResponse(
