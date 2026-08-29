@@ -195,6 +195,57 @@ no-op: SQLAlchemy пишет только объекты из identity map св�
 - [ ] передавать в `refresh_access_token` сессию, которой принадлежит
       `self.integration`, а не создавать новую
 
+### 11. Синхронизация сущностей CRM сломана для amoCRM целиком
+
+**Откуда:** пользователь подключил amoCRM на проде, синхронизация
+«висела» ~5 минут. Диагностика по логам прода, 28.08.2026. Только чтение,
+правок не делали.
+
+**Корень:** `full_crm_sync` (`crm_service.py:2200-2207`) вызывает для
+ЛЮБОЙ CRM один и тот же набор функций
+(`sync_crm_deals/leads/contacts/companies/activities`), но эти функции
+написаны только под Bitrix24.
+
+**Механизм:** несовместимые сигнатуры одноимённого метода —
+`AmoCRMService._make_api_request(self, endpoint: str, method: str = "GET", **kwargs)`
+(`crm_service.py:223`) против
+`Bitrix24Service._make_api_request(self, method: str, params: dict = None)`
+(`crm_service.py:1423`). Вызов на `crm_service.py:1846` —
+`service._make_api_request("crm.deal.list", params)` — для Bitrix24 верен,
+для amoCRM словарь `params` попадает в позиционный параметр `method`,
+дальше httpx делает `method.upper()` →
+`AttributeError: 'dict' object has no attribute 'upper'`.
+
+**Проглатывание:** `except Exception` на `crm_service.py:2219` ловит это
+молча, пользователю показывается успешное завершение синхронизации.
+Факт на проде: `{'deals': 0, 'leads': 0, 'contacts': 0, 'companies': 0,
+'products': 0, 'activities': 0}`.
+
+**Стадия `linking` — 227 обречённых запросов, ~80 секунд впустую.**
+`link_recordings_to_entities_async` (`crm_service.py:2228`, докстринг
+буквально «запрос к Bitrix API crm.activity.get») для amoCRM делает
+`https://upstat.amocrm.ru/api/v4crm.activity.get?ID=leads_note_...` —
+без слеша между base_url и endpoint, метода `crm.activity.get` у amoCRM
+не существует, `crm_record_id` там вида `leads_note_…`, не числовой
+bitrix-id. Все 227 — 404.
+
+**Выборка записей** — отдельная неэффективность, 3 мин 39 сек на 227
+записей, не баг, но основная доля общего ожидания.
+
+**Итог на проде:** записи скачались (227 шт., аудио на месте,
+`sync_status='available'`), анализ запускать можно. Сущности CRM не
+синхронизировались вообще — Win Probability по сделкам не работает.
+
+- [ ] `full_crm_sync` должен ветвиться по `integration.crm_type` вместо
+      единого списка стадий для всех CRM
+- [ ] для amoCRM либо написать свои `sync_crm_*` (через `/api/v4/leads`,
+      `/api/v4/contacts` и т.д.), либо явно отключить неприменимые стадии
+      вместо тихого проглатывания ошибки
+- [ ] `link_recordings_to_entities_async` для amoCRM либо переписать под
+      её модель данных, либо пропускать — сейчас гарантированно 404
+- [ ] решить приоритет: amoCRM у клиентов встречается чаще Bitrix24,
+      поэтому это не отложенная задача, а блокер запуска
+
 ---
 
 ## Закрыто
